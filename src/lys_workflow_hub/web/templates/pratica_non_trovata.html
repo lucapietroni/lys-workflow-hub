@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Pratica non trovata · LYS Workflow Hub{% endblock %}
+
+{% block content %}
+<section class="not-found">
+  <h1>Pratica non trovata</h1>
+  <p>
+    Nessuna pratica con il numero <strong>{{ numero }}</strong> nel database WinCar.
+    Potrebbe essere stata cancellata, oppure il numero non e' corretto.
+  </p>
+  <p>
+    <a class="btn btn-primary" href="/">Torna alla ricerca</a>
+  </p>
+</section>
+{% endblock %}

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}LYS Workflow Hub{% endblock %}</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/">
+        <span class="brand-mark">LYS</span>
+        <span class="brand-name">Workflow Hub</span>
+      </a>
+      <nav class="topnav">
+        <a href="/">Pratiche</a>
+        <a href="/docs" target="_blank" rel="noopener">API</a>
+      </nav>
+    </header>
+
+    <main class="container">
+      {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footbar">
+      <span>Carrozzeria LYS Auto srl</span>
+      <span class="dot">·</span>
+      <span>v{{ version }}</span>
+      <span class="dot">·</span>
+      <span>Lettura WinCar in sola lettura</span>
+    </footer>
+  </body>
+</html>

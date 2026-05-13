@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Cerca pratica · LYS Workflow Hub{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <h1>Cerca una pratica</h1>
+  <p class="subtitle">
+    Digita il cognome del cliente, la targa, oppure il numero pratica WinCar.
+    L'app capisce da sola che tipo di ricerca fare.
+  </p>
+  <form method="get" action="/" class="search-form" autocomplete="off">
+    <input
+      type="text"
+      name="q"
+      value="{{ query }}"
+      placeholder="es. Rossi · AB123CD · 766"
+      autofocus
+      aria-label="Termine di ricerca"
+    />
+    <button type="submit">Cerca</button>
+  </form>
+</section>
+
+{% if query %}
+  <section class="results">
+    <header class="results-header">
+      <h2>
+        {% if search_kind == "numero" %}
+          Pratica numero <strong>{{ query }}</strong>
+        {% elif search_kind == "targa" %}
+          Pratiche con targa contenente <strong>{{ query|upper }}</strong>
+        {% else %}
+          Pratiche per cognome / ragione sociale <strong>{{ query }}</strong>
+        {% endif %}
+      </h2>
+      <span class="badge">{{ results|length }} risultat{% if results|length == 1 %}o{% else %}i{% endif %}</span>
+    </header>
+
+    {% if results %}
+      <table class="results-table">
+        <thead>
+          <tr>
+            <th class="num">N.</th>
+            <th>Cliente</th>
+            <th>Targa</th>
+            <th>Veicolo</th>
+            <th>Data sinistro</th>
+            <th class="actions"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in results %}
+          <tr>
+            <td class="num">{{ r.numero }}</td>
+            <td>{{ r.cliente_nominativo or "—" }}</td>
+            <td><code>{{ r.targa or "—" }}</code></td>
+            <td>
+              {%- if r.marca or r.modello -%}
+                {{ (r.marca ~ " " ~ r.modello)|trim }}
+              {%- else -%}—{%- endif -%}
+            </td>
+            <td>{{ r.data_sinistro.strftime("%d/%m/%Y") if r.data_sinistro else "—" }}</td>
+            <td class="actions"><a class="btn-link" href="/pratiche/{{ r.numero }}">Apri →</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="empty">
+        Nessun risultato.
+        Verifica che il termine cercato sia corretto, oppure prova solo le prime
+        lettere del cognome / le prime cifre della targa.
+      </div>
+    {% endif %}
+  </section>
+{% else %}
+  <section class="hints">
+    <h2>Suggerimenti rapidi</h2>
+    <ul>
+      <li>Per cercare per <strong>numero pratica</strong>: digita solo cifre, es. <code>766</code>.</li>
+      <li>Per cercare per <strong>targa</strong>: digita le cifre (anche solo le prime), es. <code>AB123</code>.</li>
+      <li>Per cercare per <strong>cognome / ragione sociale</strong>: digita lettere, es. <code>rossi</code> o <code>srl</code>.</li>
+    </ul>
+  </section>
+{% endif %}
+{% endblock %}

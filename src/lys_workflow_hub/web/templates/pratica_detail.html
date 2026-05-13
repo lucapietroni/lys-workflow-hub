@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Pratica {{ pratica.numero }} · LYS Workflow Hub{% endblock %}
+
+{% macro row(label, value) %}
+  <div class="field">
+    <span class="field-label">{{ label }}</span>
+    <span class="field-value">{{ value if value not in (None, "", "—") else "—" }}</span>
+  </div>
+{% endmacro %}
+
+{% block content %}
+<nav class="breadcrumb">
+  <a href="/">← Torna alla ricerca</a>
+</nav>
+
+<header class="pratica-header">
+  <div>
+    <span class="badge">Pratica</span>
+    <h1>N. {{ pratica.numero }}</h1>
+    {% if pratica.data_creazione %}
+      <p class="meta">Aperta il {{ pratica.data_creazione.strftime("%d/%m/%Y") }}</p>
+    {% endif %}
+  </div>
+  <div class="pratica-actions">
+    <!-- Placeholder: i workflow A (cessione) e B (vandalismo) si attaccheranno qui in M1.3 -->
+    <button class="btn btn-primary" disabled title="Disponibile in M1.3">
+      Genera cessione del credito
+    </button>
+    <button class="btn" disabled title="Disponibile in M2">
+      Richiesta vandalismo
+    </button>
+  </div>
+</header>
+
+<section class="card">
+  <h2>Cliente</h2>
+  <div class="grid">
+    {{ row("Nominativo / Ragione sociale", pratica.cliente.nominativo) }}
+    {{ row("Codice fiscale", pratica.cliente.codice_fiscale) }}
+    {{ row("Partita IVA", pratica.cliente.partita_iva) }}
+    {{ row("Via", pratica.cliente.via) }}
+    {{ row("Comune", pratica.cliente.citta) }}
+    {{ row("CAP", pratica.cliente.cap) }}
+    {{ row("Provincia", pratica.cliente.provincia) }}
+    {{ row("Telefono", pratica.cliente.telefono) }}
+    {{ row("Cellulare", pratica.cliente.cellulare) }}
+    {{ row("Email", pratica.cliente.email) }}
+  </div>
+</section>
+
+<section class="card">
+  <h2>Veicolo del cliente</h2>
+  <div class="grid">
+    {{ row("Targa", pratica.veicolo.targa) }}
+    {{ row("Marca", pratica.veicolo.marca) }}
+    {{ row("Modello", pratica.veicolo.modello) }}
+    {{ row("Telaio", pratica.veicolo.telaio) }}
+  </div>
+</section>
+
+<section class="card">
+  <h2>Sinistro</h2>
+  <div class="grid">
+    {{ row("Data", pratica.sinistro.data.strftime("%d/%m/%Y") if pratica.sinistro.data else None) }}
+    {{ row("Ora", pratica.sinistro.ora) }}
+    {{ row("Comune", pratica.sinistro.comune) }}
+    {{ row("Via", pratica.sinistro.via) }}
+    {{ row("Numero sinistro", pratica.sinistro.numero) }}
+    {{ row("Tipo", pratica.sinistro.tipo) }}
+  </div>
+  {% if pratica.sinistro.dinamica %}
+    <div class="dinamica">
+      <span class="field-label">Dinamica</span>
+      <p>{{ pratica.sinistro.dinamica }}</p>
+    </div>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Controparte</h2>
+  <div class="grid">
+    {{ row("Proprietario", pratica.controparte.proprietario) }}
+    {{ row("Conducente", pratica.controparte.conducente) }}
+    {{ row("Veicolo", pratica.controparte.veicolo_descrizione) }}
+    {{ row("Targa", pratica.controparte.targa) }}
+    {{ row("Indirizzo", pratica.controparte.indirizzo) }}
+    {{ row("Comune", pratica.controparte.citta) }}
+    {{ row("Compagnia assicurativa", pratica.controparte.compagnia) }}
+    {{ row("Numero polizza", pratica.controparte.numero_polizza) }}
+  </div>
+</section>
+
+<section class="card">
+  <h2>Assicurazione cliente <span class="tag">utile per richieste KASKO / vandalismo</span></h2>
+  <div class="grid">
+    {{ row("Compagnia", pratica.assicurazione_cliente.nome) }}
+    {{ row("Indirizzo", pratica.assicurazione_cliente.indirizzo) }}
+    {{ row("Comune", pratica.assicurazione_cliente.citta) }}
+    {{ row("CAP", pratica.assicurazione_cliente.cap) }}
+    {{ row("Provincia", pratica.assicurazione_cliente.provincia) }}
+    {{ row("Numero polizza", pratica.assicurazione_cliente.numero_polizza) }}
+    {{ row("Agenzia", pratica.assicurazione_cliente.agenzia) }}
+  </div>
+</section>
+
+<aside class="hint">
+  Vuoi i dati in formato JSON?
+  <a href="/api/pratiche/{{ pratica.numero }}" target="_blank" rel="noopener">apri /api/pratiche/{{ pratica.numero }}</a>.
+</aside>
+{% endblock %}

@@ -8,31 +8,52 @@ Avvio in produzione (Windows service via NSSM):
 """
 from __future__ import annotations
 
+import logging
+import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
 from lys_workflow_hub import __version__
 from lys_workflow_hub.config import get_settings
+from lys_workflow_hub.core.schema_check import (
+    SchemaCheckError,
+    assert_schema_ok,
+)
+from lys_workflow_hub.core.wincar_repository import WinCarRepository
+from lys_workflow_hub.web.api import router as api_router
+from lys_workflow_hub.web.routes import router as pages_router
+
+
+logger = logging.getLogger("lys_workflow_hub")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+WEB_DIR = Path(__file__).parent / "web"
+STATIC_DIR = WEB_DIR / "static"
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Eventi di startup/shutdown.
-
-    In startup vorremo:
-    - eseguire lo schema-check su WinCar e bloccare l'app se le colonne attese mancano;
-    - aprire il pool di connessioni ODBC;
-    - inizializzare il DB interno SQLite.
-
-    Per ora è un placeholder.
-    """
+    """Schema check al boot. Vedi `core/schema_check.py`."""
     settings = get_settings()
-    print(f"[startup] LYS Workflow Hub v{__version__} env={settings.app_env}")
-    print(f"[startup] WinCar archivio: {settings.wincar_archivio}")
+    logger.info("LYS Workflow Hub v%s - env=%s", __version__, settings.app_env)
+    logger.info("WinCar archivio: %s", settings.wincar_archivio)
+
+    try:
+        repo = WinCarRepository.from_settings(settings)
+        result = assert_schema_ok(repo)
+        logger.info(result.explain())
+    except SchemaCheckError as exc:
+        logger.error("Schema check fallito:\n%s", exc)
+        if settings.app_env == "production":
+            sys.exit(2)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Schema check non eseguito (WinCar non raggiungibile?): %s", exc)
+
     yield
-    print("[shutdown] arrivederci")
+    logger.info("LYS Workflow Hub: shutdown")
 
 
 app = FastAPI(
@@ -42,43 +63,39 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Mount file statici (CSS, eventualmente JS / immagini in futuro).
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-@app.get("/", response_class=HTMLResponse)
-async def root() -> str:
-    """Pagina di benvenuto provvisoria."""
-    return f"""
-    <!doctype html>
-    <html lang="it">
-      <head><meta charset="utf-8"><title>LYS Workflow Hub</title></head>
-      <body style="font-family: system-ui; max-width: 720px; margin: 4rem auto; color: #1f3a5f">
-        <h1>LYS Workflow Hub</h1>
-        <p>Versione {__version__} — scheletro iniziale.</p>
-        <p>Endpoint utili:</p>
-        <ul>
-          <li><a href="/health">/health</a></li>
-          <li><a href="/docs">/docs</a> (OpenAPI)</li>
-        </ul>
-      </body>
-    </html>
-    """
+# Router: pagine HTML (root) e API JSON (/api).
+app.include_router(pages_router)
+app.include_router(api_router)
 
 
 @app.get("/health")
 async def health() -> dict:
-    """Sanity check di base."""
+    """Sanity check di base, NON tocca WinCar."""
     return {"status": "ok", "version": __version__}
 
 
 def main() -> None:
-    """Avvio in modalità sviluppo con auto-reload."""
+    """Avvio in modalita' sviluppo con auto-reload limitato a `src/`.
+
+    Il default di uvicorn osserva l'intera cwd inclusi `.venv\\Lib\\site-packages`,
+    cosa che su Windows + OneDrive fa scattare reload in loop. Limitiamo il
+    watcher alla cartella sorgente del nostro pacchetto.
+    """
     import uvicorn
 
     settings = get_settings()
+    reload = settings.app_env == "development"
+    src_dir = Path(__file__).resolve().parent.parent  # src/
     uvicorn.run(
         "lys_workflow_hub.main:app",
         host=settings.app_host,
         port=settings.app_port,
-        reload=(settings.app_env == "development"),
+        reload=reload,
+        reload_dirs=[str(src_dir)] if reload else None,
     )
 
 
