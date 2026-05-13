@@ -1,0 +1,42 @@
+# Web framework
+fastapi>=0.110
+uvicorn[standard]>=0.27
+jinja2>=3.1
+python-multipart>=0.0.9
+
+# Config
+pydantic>=2.6
+pydantic-settings>=2.2
+python-dotenv>=1.0
+
+# WinCar (Microsoft Access) read-only
+pyodbc>=5.0
+
+# Documenti
+python-docx>=1.1
+# docx2pdf su Windows usa COM/Word; in alternativa LibreOffice headless da CLI
+docx2pdf>=0.1.8
+
+# Codice fiscale italiano
+codicefiscale>=0.9
+
+# DB interno
+# (sqlite3 nella stdlib)
+
+# Posta (M3)
+imapclient>=3.0
+mail-parser>=3.15
+
+# AI (M3)
+anthropic>=0.34
+
+# Push notification (M3)
+requests>=2.31
+
+# Test
+pytest>=8.0
+pytest-cov>=4.1
+
+# Dev tools (opzionale)
+ruff>=0.4
+mypy>=1.10

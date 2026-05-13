@@ -1,0 +1,123 @@
+# =============================================================================
+# CRITICO: file e cartelle che NON devono mai finire su GitHub
+# =============================================================================
+
+# Dati reali di WinCar (database e backup)
+*.mdb
+*.accdb
+*.ldb
+*.mdb.BAK
+*.mdb.20*
+wincar-sample/
+WinCar/
+Archivio/
+
+# Dump di schema o esempi: contengono dati di clienti reali
+wincar_schema*.txt
+wincar_dump*.txt
+schema_dump*.txt
+
+# Credenziali e configurazione locale
+.env
+.env.local
+.env.production
+*.env
+secrets.json
+credentials.json
+*.pem
+*.key
+
+# Database interno dell'app (può contenere log con dati personali)
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+data/alerts/
+data/eml_archive/
+
+# Documenti generati dall'app (cessioni firmate, lettere, ecc.)
+output/
+generated/
+cessioni_firmate/
+documenti_compilati/
+
+# =============================================================================
+# Python
+# =============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.pyenv/
+
+# Test e coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Type checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+
+# =============================================================================
+# Editor e sistema operativo
+# =============================================================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# OneDrive
+~$*
+
+# =============================================================================
+# Log
+# =============================================================================
+*.log
+logs/
+*.log.*
+
+# =============================================================================
+# Documenti temporanei o di lavoro (i .docx ufficiali in docs/ sono permessi)
+# =============================================================================
+~$*.docx
+*.tmp
+*.bak
