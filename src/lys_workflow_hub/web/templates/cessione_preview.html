@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}Cessione credito · Pratica {{ pratica.numero }} · LYS Workflow Hub{% endblock %}
+
+{% macro field(label, name, value, type="text", required=False, hint="") %}
+  <div class="form-field {% if required and not value %}is-missing{% endif %}">
+    <label for="f_{{ name }}">
+      {{ label }}{% if required %} <span class="req">*</span>{% endif %}
+    </label>
+    {% if type == "textarea" %}
+      <textarea id="f_{{ name }}" name="{{ name }}" rows="3"
+        {% if required %}required{% endif %}>{{ value or "" }}</textarea>
+    {% else %}
+      <input id="f_{{ name }}" name="{{ name }}" type="{{ type }}"
+        value="{{ value if value not in (None, '') else '' }}"
+        {% if required %}required{% endif %}
+        autocomplete="off" />
+    {% endif %}
+    {% if hint %}<small class="hint">{{ hint }}</small>{% endif %}
+  </div>
+{% endmacro %}
+
+{% block content %}
+<nav class="breadcrumb">
+  <a href="/pratiche/{{ pratica.numero }}">← Torna alla pratica {{ pratica.numero }}</a>
+</nav>
+
+<header class="pratica-header">
+  <div>
+    <span class="badge">Cessione del credito</span>
+    <h1>Anteprima documento</h1>
+    <p class="meta">Pratica n. {{ pratica.numero }} · cedente: <strong>{{ pratica.cliente.nominativo or "—" }}</strong></p>
+  </div>
+</header>
+
+{% if data.cf_info and not data.cf_info.valido %}
+  <div class="alert alert-warn">
+    <strong>Attenzione:</strong> il codice fiscale del cliente non è stato decodificato
+    ({{ data.cf_info.motivo_invalidita }}). Data e luogo di nascita sono da inserire a mano.
+  </div>
+{% endif %}
+
+{% if mancanti %}
+  <div class="alert alert-warn">
+    <strong>Campi da completare ({{ mancanti|length }}):</strong>
+    {{ mancanti|join(", ") }}. Compilali sotto prima di generare il documento.
+  </div>
+{% endif %}
+
+<form method="post" action="/pratiche/{{ pratica.numero }}/cessione" class="cessione-form">
+
+  <section class="card">
+    <h2>Cedente</h2>
+    <div class="form-grid">
+      {{ field("Nome completo (Cognome Nome)", "cedente_nome_completo", data.cedente_nome_completo, required=True) }}
+      {{ field("Codice fiscale", "cedente_codice_fiscale", data.cedente_codice_fiscale, required=True,
+               hint="16 caratteri. Data e luogo di nascita si auto-aggiornano nel documento finale.") }}
+      {{ field("Luogo di nascita", "cedente_luogo_nascita", data.cedente_luogo_nascita, required=True,
+               hint="Estratto dal CF; modificabile.") }}
+      {{ field("Data di nascita", "cedente_data_nascita",
+               data.cedente_data_nascita.isoformat() if data.cedente_data_nascita else "",
+               type="date", required=True, hint="Estratta dal CF; modificabile.") }}
+      <div class="form-field">
+        <label for="f_cedente_sesso">Sesso</label>
+        <select id="f_cedente_sesso" name="cedente_sesso">
+          <option value="M" {% if data.cedente_sesso == "M" %}selected{% endif %}>M</option>
+          <option value="F" {% if data.cedente_sesso == "F" %}selected{% endif %}>F</option>
+        </select>
+        <small class="hint">Influenza "Il/La sottoscritto/a".</small>
+      </div>
+      {{ field("Residenza — via e civico", "cedente_residenza_via", data.cedente_residenza_via, required=True) }}
+      {{ field("Residenza — comune", "cedente_residenza_comune", data.cedente_residenza_comune, required=True) }}
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Cedente come ditta <span class="tag">opzionale</span></h2>
+    <div class="form-field checkbox-field">
+      <label>
+        <input type="checkbox" name="e_ditta" {% if data.e_ditta %}checked{% endif %} />
+        Il cedente firma in qualità di legale rappresentante di una ditta
+      </label>
+    </div>
+    <div class="form-grid">
+      {{ field("Ragione sociale", "ditta_nome", data.ditta_nome) }}
+      {{ field("Partita IVA", "ditta_partita_iva", data.ditta_partita_iva) }}
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Sinistro</h2>
+    <div class="form-grid">
+      {{ field("Data", "sinistro_data",
+               data.sinistro_data.isoformat() if data.sinistro_data else "",
+               type="date", required=True) }}
+      {{ field("Ora (HH:MM)", "sinistro_ora", data.sinistro_ora) }}
+      {{ field("Comune", "sinistro_comune", data.sinistro_comune, required=True) }}
+      {{ field("Via", "sinistro_via", data.sinistro_via, required=True) }}
+    </div>
+    {{ field("Dinamica (descrizione breve)", "sinistro_dinamica", data.sinistro_dinamica,
+             type="textarea", required=True,
+             hint="Riempi se mancante. Sara' il testo principale del paragrafo PREMESSO.") }}
+  </section>
+
+  <section class="card">
+    <h2>Veicolo del cedente</h2>
+    <div class="form-grid">
+      {{ field("Marca e modello", "veicolo_cedente_descrizione", data.veicolo_cedente_descrizione, required=True) }}
+      {{ field("Targa", "veicolo_cedente_targa", data.veicolo_cedente_targa, required=True) }}
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Controparte</h2>
+    <div class="form-grid">
+      {{ field("Veicolo controparte (marca/modello)", "controparte_veicolo_descrizione",
+               data.controparte_veicolo_descrizione, required=True) }}
+      {{ field("Targa controparte", "controparte_veicolo_targa", data.controparte_veicolo_targa, required=True) }}
+      {{ field("Proprietario / ditta", "controparte_proprietario", data.controparte_proprietario, required=True) }}
+      {{ field("Conducente", "controparte_conducente", data.controparte_conducente, required=True) }}
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Assicurazione controparte</h2>
+    <div class="form-grid">
+      {{ field("Compagnia", "controparte_compagnia", data.controparte_compagnia, required=True) }}
+      {{ field("Numero polizza", "controparte_polizza", data.controparte_polizza, required=True) }}
+    </div>
+  </section>
+
+  <div class="form-actions">
+    <a href="/pratiche/{{ pratica.numero }}" class="btn">Annulla</a>
+    <button type="submit" class="btn btn-primary">Genera documento (.docx)</button>
+  </div>
+</form>
+{% endblock %}

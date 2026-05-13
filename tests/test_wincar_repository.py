@@ -35,7 +35,7 @@ SAMPLE_ROW_DICT = {
     "F_CAPCLI": "00100",
     "F_PROCLI": "RM",
     "F_PARIVA": "",
-    "F_CODFIS": "RSSMRA80A01H501Z",
+    "F_CODFIS": "RSSMRA80A01H501U",
     "F_TELEFO": "0612345678",
     "F_CELLUL": "3331234567",
     "F__EMAIL": "mario.rossi@example.com",
@@ -141,7 +141,7 @@ def test_search_returns_pratica_summary(repo, mock_pyodbc):
     assert s.cliente_nominativo == "rossi mario"
     assert s.targa == "AB123CD"
     assert s.marca == "FIAT"
-    assert s.codice_fiscale == "RSSMRA80A01H501Z"
+    assert s.codice_fiscale == "RSSMRA80A01H501U"
     # data_sinistro deve essere una date pulita, senza ora
     assert s.data_sinistro is not None and s.data_sinistro.year == 2026
 
@@ -192,7 +192,7 @@ def test_get_pratica_returns_full_object(repo, mock_pyodbc):
     assert isinstance(pratica, Pratica)
     assert pratica.numero == 766
     assert pratica.cliente.nominativo == "rossi mario"
-    assert pratica.cliente.codice_fiscale == "RSSMRA80A01H501Z"
+    assert pratica.cliente.codice_fiscale == "RSSMRA80A01H501U"
     assert pratica.cliente.partita_iva is None  # stringa vuota normalizzata a None
     assert pratica.veicolo.targa == "AB123CD"
     assert pratica.sinistro.dinamica == "Tamponamento posteriore al semaforo."

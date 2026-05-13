@@ -17,8 +17,8 @@ python-docx>=1.1
 # docx2pdf su Windows usa COM/Word; in alternativa LibreOffice headless da CLI
 docx2pdf>=0.1.8
 
-# Codice fiscale italiano
-codicefiscale>=0.9
+# Codice fiscale italiano (pacchetto di fabiocaccamo, importa come `codicefiscale`)
+python-codicefiscale>=0.9
 
 # DB interno
 # (sqlite3 nella stdlib)

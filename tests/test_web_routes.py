@@ -28,7 +28,7 @@ def _sample_summary() -> PraticaSummary:
         marca="FIAT",
         modello="Punto",
         data_sinistro=date(2026, 5, 8),
-        codice_fiscale="RSSMRA80A01H501Z",
+        codice_fiscale="RSSMRA80A01H501U",
     )
 
 
@@ -38,7 +38,7 @@ def _sample_pratica() -> Pratica:
         data_creazione=datetime(2026, 5, 10, 14, 30),
         cliente=Cliente(
             nominativo="rossi mario",
-            codice_fiscale="RSSMRA80A01H501Z",
+            codice_fiscale="RSSMRA80A01H501U",
             partita_iva=None,
             via="Via Roma 12",
             citta="Roma",
@@ -135,7 +135,7 @@ def test_pratica_detail_renders_all_sections(client_with_mock_repo):
     assert "N. 766" in response.text
     for section in ("Cliente", "Veicolo", "Sinistro", "Controparte", "Assicurazione cliente"):
         assert section in response.text
-    assert "RSSMRA80A01H501Z" in response.text
+    assert "RSSMRA80A01H501U" in response.text
     assert "Tamponamento posteriore al semaforo." in response.text
     assert "Allianz" in response.text
 

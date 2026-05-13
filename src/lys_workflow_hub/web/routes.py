@@ -1,26 +1,38 @@
 """Pagine HTML server-side rendered con Jinja2.
 
-Tre route principali:
-    GET /                        Home + form di ricerca, con eventuale lista risultati
-    GET /pratiche/{numero}       Dettaglio pratica
-    GET /pratica/non-trovata     Pagina di errore amichevole (non e' un 404)
+Route principali:
+    GET  /                              Home + form di ricerca, con eventuale lista risultati
+    GET  /pratiche/{numero}             Dettaglio pratica
+    GET  /pratiche/{numero}/cessione    Anteprima/edit dati cessione del credito
+    POST /pratiche/{numero}/cessione    Genera e scarica il .docx
 """
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
+from typing import Any
 
-from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from lys_workflow_hub import __version__
 from lys_workflow_hub.core.wincar_repository import WinCarRepository
+from lys_workflow_hub.workflows.cessione_credito import (
+    filename_for,
+    from_pratica,
+    generate,
+)
 
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 router = APIRouter(tags=["pages"])
+
+DOCX_MIME = (
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+)
 
 
 def get_repository() -> WinCarRepository:
@@ -29,6 +41,11 @@ def get_repository() -> WinCarRepository:
 
 def _common_context() -> dict:
     return {"version": __version__}
+
+
+# --------------------------------------------------------------------------- #
+#  Home & dettaglio pratica
+# --------------------------------------------------------------------------- #
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -80,3 +97,85 @@ def pratica_detail(
             request, "pratica_non_trovata.html", context, status_code=404
         )
     return templates.TemplateResponse(request, "pratica_detail.html", context)
+
+
+# --------------------------------------------------------------------------- #
+#  Workflow A — Cessione del credito
+# --------------------------------------------------------------------------- #
+
+
+def _parse_date(value: Any) -> date | None:
+    if not value:
+        return None
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value))
+    except ValueError:
+        return None
+
+
+def _build_overrides(form: dict[str, Any]) -> dict[str, Any]:
+    """Converte il dizionario form HTML in override tipizzati per `from_pratica`."""
+    overrides: dict[str, Any] = {}
+    for key, raw in form.items():
+        if key in ("cedente_data_nascita", "sinistro_data"):
+            overrides[key] = _parse_date(raw)
+        elif key == "e_ditta":
+            overrides[key] = str(raw).lower() in ("on", "true", "1", "yes")
+        elif key in ("cedente_sesso",):
+            overrides[key] = "F" if str(raw).upper() == "F" else "M"
+        else:
+            overrides[key] = (raw or "").strip() if isinstance(raw, str) else raw
+    # se la checkbox e_ditta non e' stata inviata, FastAPI non la includera':
+    # in tal caso la trattiamo come False solo se compaiono altri campi ditta.
+    overrides.setdefault("e_ditta", False)
+    return overrides
+
+
+@router.get("/pratiche/{numero}/cessione", response_class=HTMLResponse)
+def cessione_preview(
+    numero: int,
+    request: Request,
+    repo: WinCarRepository = Depends(get_repository),
+) -> HTMLResponse:
+    """Anteprima editabile della cessione del credito.
+
+    Mostra un form pre-compilato con i dati estratti da WinCar e derivati dal
+    codice fiscale. L'operatore puo' correggere o completare i campi (in
+    particolare la dinamica del sinistro) prima di generare il documento.
+    """
+    pratica = repo.get_pratica(numero)
+    context = _common_context()
+    context["numero"] = numero
+    if pratica is None:
+        return templates.TemplateResponse(
+            request, "pratica_non_trovata.html", context, status_code=404
+        )
+    data = from_pratica(pratica)
+    context["pratica"] = pratica
+    context["data"] = data
+    context["mancanti"] = data.campi_mancanti()
+    return templates.TemplateResponse(request, "cessione_preview.html", context)
+
+
+@router.post("/pratiche/{numero}/cessione")
+async def cessione_generate(
+    numero: int,
+    request: Request,
+    repo: WinCarRepository = Depends(get_repository),
+) -> Response:
+    """Genera e scarica il documento .docx di cessione del credito."""
+    pratica = repo.get_pratica(numero)
+    if pratica is None:
+        raise HTTPException(404, "Pratica non trovata.")
+    form = await request.form()
+    overrides = _build_overrides(dict(form))
+    data = from_pratica(pratica, overrides=overrides)
+    docx_bytes = generate(data)
+    fname = filename_for(data)
+    return Response(
+        content=docx_bytes,
+        media_type=DOCX_MIME,
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
