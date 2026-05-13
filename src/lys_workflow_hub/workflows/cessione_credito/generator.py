@@ -77,13 +77,13 @@ def _add_title(doc, text: str) -> None:
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p.paragraph_format.space_after = Pt(4)
-    _add_run(p, text, bold=True, size=22, color=COLOR_BLUE)
+    _add_run(p, text, bold=True, size=22, color=COLOR_BLACK)
     # Linea decorativa sottile
     p2 = doc.add_paragraph()
     p2.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p2.paragraph_format.space_before = Pt(0)
     p2.paragraph_format.space_after = Pt(18)
-    _add_run(p2, "─" * 32, color=COLOR_BLUE)
+    _add_run(p2, "─" * 32, color=COLOR_BLACK)
 
 
 def _add_section_label(doc, text: str) -> None:
@@ -92,7 +92,7 @@ def _add_section_label(doc, text: str) -> None:
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p.paragraph_format.space_before = Pt(18)
     p.paragraph_format.space_after = Pt(8)
-    _add_run(p, text, bold=True, size=13, color=COLOR_BLUE)
+    _add_run(p, text, bold=True, size=13, color=COLOR_BLACK)
 
 
 def _justified(doc):
@@ -142,7 +142,7 @@ def _add_signature_table(doc, *, with_date: str | None = None) -> None:
         cell.width = Cm(8.0)
         cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
         para = cell.paragraphs[0]
-        _add_run(para, label, bold=True, color=COLOR_GREY, size=10)
+        _add_run(para, label, bold=True, color=COLOR_BLACK, size=10)
         para.paragraph_format.space_before = Pt(36)  # spazio per la firma sopra
         para.paragraph_format.space_after = Pt(0)
         para.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -153,7 +153,7 @@ def _add_signature_table(doc, *, with_date: str | None = None) -> None:
         top.set(qn("w:val"), "single")
         top.set(qn("w:sz"), "6")
         top.set(qn("w:space"), "0")
-        top.set(qn("w:color"), "4A5568")
+        top.set(qn("w:color"), "000000")
         tc_borders.append(top)
         for side in ("left", "bottom", "right"):
             b = OxmlElement(f"w:{side}")
@@ -349,7 +349,7 @@ def generate(data: CessioneData, out: BinaryIO | None = None) -> bytes:
         "mezzo;",
 
         "inoltre il sottoscritto cedente si obbliga a conferire il mandato di "
-        f"gestione della pratica per il recupero dei danni (conseguenti al prefato "
+        f"gestione della pratica per il recupero dei danni (conseguenti al prefatto "
         f"sinistro) alla {CARROZZERIA_NOME} in forma irrevocabile.",
     ]
     for testo in altre_clausole:
@@ -383,7 +383,7 @@ def generate(data: CessioneData, out: BinaryIO | None = None) -> bytes:
     _add_run(
         fp,
         f"{CARROZZERIA_NOME}  ·  {CARROZZERIA_VIA}, {CARROZZERIA_CAP} {CARROZZERIA_COMUNE}  ·  P.IVA {CARROZZERIA_PIVA}",
-        color=COLOR_GREY, size=8,
+        color=COLOR_BLACK, size=8,
     )
 
     # ------------- Output -------------
