@@ -24,7 +24,8 @@ class Settings(BaseSettings):
     )
 
     # --- WinCar ---
-    wincar_archivio: Path = Field(default=Path(r"C:\WinCar\Archivio"))
+    # Nome variabile storico "archivio"; sul disco la cartella si chiama "Archivi" (plurale).
+    wincar_archivio: Path = Field(default=Path(r"C:\WinCar\Archivi"))
     wincar_odbc_driver: str = Field(default="Microsoft Access Driver (*.mdb, *.accdb)")
 
     # --- App ---

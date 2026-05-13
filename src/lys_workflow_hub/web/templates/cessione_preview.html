@@ -130,7 +130,16 @@
 
   <div class="form-actions">
     <a href="/pratiche/{{ pratica.numero }}" class="btn">Annulla</a>
-    <button type="submit" class="btn btn-primary">Genera documento (.docx)</button>
+    <button type="submit"
+            class="btn"
+            formaction="/pratiche/{{ pratica.numero }}/cessione">
+      Scarica .docx
+    </button>
+    <button type="submit"
+            class="btn btn-primary"
+            formaction="/pratiche/{{ pratica.numero }}/cessione/pdf">
+      Genera PDF per stampa
+    </button>
   </div>
 </form>
 {% endblock %}

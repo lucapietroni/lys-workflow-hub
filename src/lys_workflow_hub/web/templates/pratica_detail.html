@@ -13,6 +13,14 @@
   <a href="/">← Torna alla ricerca</a>
 </nav>
 
+{% if uploaded %}
+  <div class="alert alert-success">
+    <strong>Scansione archiviata.</strong>
+    Il file <code>{{ uploaded }}</code> e' stato salvato nella cartella WinCar
+    <code>Pratiche\{{ pratica.numero }}\Pubblici\Allegati\</code>.
+  </div>
+{% endif %}
+
 <header class="pratica-header">
   <div>
     <span class="badge">Pratica</span>
@@ -102,8 +110,79 @@
   </div>
 </section>
 
+<section class="card">
+  <h2>Scansione cessione firmata</h2>
+  {% if scansioni %}
+    <p class="meta" style="margin-top:-6px">
+      Documenti gia' archiviati per questa pratica (in <code>Pratiche\{{ pratica.numero }}\Pubblici\Allegati\</code>):
+    </p>
+    <ul class="files-list">
+      {% for f in scansioni %}
+      <li>
+        <span class="file-name">{{ f.nome_file }}</span>
+        <span class="file-meta">{{ f.data_archiviazione.strftime("%d/%m/%Y") }} · {{ f.size_label }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="meta" style="margin-top:-6px">
+      Nessuna scansione firmata archiviata per questa pratica.
+    </p>
+  {% endif %}
+
+  <form method="post"
+        action="/pratiche/{{ pratica.numero }}/cessione/firmata"
+        enctype="multipart/form-data"
+        class="upload-form"
+        id="upload-form">
+    <label for="file_upload" class="dropzone" id="dropzone">
+      <span class="dropzone-title">Carica scansione firmata</span>
+      <span class="dropzone-hint">Trascina qui il PDF, oppure clicca per scegliere il file.</span>
+      <span class="dropzone-selected" id="dropzone-selected"></span>
+      <input type="file" id="file_upload" name="file" accept="application/pdf" required hidden />
+    </label>
+    <div class="form-actions" style="border:none; padding-top:8px; margin-top:0;">
+      <button type="submit" class="btn btn-primary">Archivia in WinCar</button>
+    </div>
+  </form>
+</section>
+
 <aside class="hint">
   Vuoi i dati in formato JSON?
   <a href="/api/pratiche/{{ pratica.numero }}" target="_blank" rel="noopener">apri /api/pratiche/{{ pratica.numero }}</a>.
 </aside>
+
+<script>
+  // Drag & drop + nome file scelto
+  (function() {
+    var dz = document.getElementById("dropzone");
+    var input = document.getElementById("file_upload");
+    var label = document.getElementById("dropzone-selected");
+    if (!dz || !input) return;
+    function showName() {
+      label.textContent = input.files && input.files[0] ? input.files[0].name : "";
+      dz.classList.toggle("has-file", !!(input.files && input.files[0]));
+    }
+    input.addEventListener("change", showName);
+    ["dragenter", "dragover"].forEach(function(ev) {
+      dz.addEventListener(ev, function(e) {
+        e.preventDefault(); e.stopPropagation();
+        dz.classList.add("drag-active");
+      });
+    });
+    ["dragleave", "drop"].forEach(function(ev) {
+      dz.addEventListener(ev, function(e) {
+        e.preventDefault(); e.stopPropagation();
+        dz.classList.remove("drag-active");
+      });
+    });
+    dz.addEventListener("drop", function(e) {
+      var files = e.dataTransfer && e.dataTransfer.files;
+      if (files && files.length) {
+        input.files = files;
+        showName();
+      }
+    });
+  })();
+</script>
 {% endblock %}

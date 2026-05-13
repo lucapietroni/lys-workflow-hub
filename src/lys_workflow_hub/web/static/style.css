@@ -346,6 +346,61 @@ code {
   border-color: #E0C078;
   color: #6B5613;
 }
+.alert-success {
+  background: #E8F5EC;
+  border-color: #8AC09B;
+  color: #1F5A33;
+}
+.alert code {
+  background: rgba(0,0,0,0.06);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+/* ====== Files list (scansioni archiviate) ====== */
+.files-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 18px;
+  border: 1px solid var(--lys-grey-300);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.files-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--lys-grey-100);
+  font-size: 0.92rem;
+}
+.files-list li:last-child { border-bottom: none; }
+.files-list .file-name { font-family: "SF Mono", Menlo, Consolas, monospace; color: var(--lys-grey-900); }
+.files-list .file-meta { font-size: 0.82rem; color: var(--lys-grey-500); }
+
+/* ====== Upload (drag & drop) ====== */
+.upload-form { margin-top: 8px; }
+.dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 28px 20px;
+  border: 2px dashed var(--lys-grey-300);
+  border-radius: var(--radius);
+  background: var(--lys-grey-50);
+  color: var(--lys-grey-700);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.dropzone:hover { border-color: var(--lys-blue); background: var(--lys-blue-soft); }
+.dropzone.drag-active { border-color: var(--lys-blue); background: var(--lys-blue-soft); }
+.dropzone.has-file { border-style: solid; border-color: var(--lys-blue); background: var(--lys-blue-soft); }
+.dropzone-title { font-weight: 600; font-size: 1.05rem; color: var(--lys-blue); }
+.dropzone-hint { font-size: 0.88rem; color: var(--lys-grey-500); }
+.dropzone-selected { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 0.9rem; color: var(--lys-grey-900); margin-top: 4px; }
 
 .cessione-form { margin-top: 4px; }
 
