@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}Conferma invio PEC · Pratica {{ pratica.numero }} · LYS Workflow Hub{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb">
+  <a href="/pratiche/{{ pratica.numero }}/vandalismo">← Torna all'anteprima</a>
+</nav>
+
+<header class="pratica-header">
+  <div>
+    <span class="badge">Conferma invio PEC</span>
+    <h1>Pronti all'invio</h1>
+    <p class="meta">
+      Pratica n. {{ pratica.numero }} · assicurato: <strong>{{ data.assicurato_nome_completo or "—" }}</strong>
+    </p>
+  </div>
+</header>
+
+{% if dry_run %}
+  <div class="alert alert-warn">
+    <strong>Modalità dry-run attiva</strong> (PEC_DRY_RUN=true in .env).
+    L'app NON aprirà alcuna connessione SMTP: il file .eml verrà comunque
+    archiviato e l'invio registrato in DB con esito <code>DRY_RUN</code>.
+    Per inviare davvero, imposta <code>PEC_DRY_RUN=false</code> e riavvia.
+  </div>
+{% endif %}
+
+{% if mancanti %}
+  <div class="alert alert-warn">
+    <strong>Attenzione:</strong> ci sono ancora campi obbligatori vuoti:
+    {{ mancanti|join(", ") }}.
+    L'invio sarà bloccato finché non li completi nella schermata di anteprima.
+  </div>
+{% endif %}
+
+<section class="card">
+  <h2>Riepilogo invio</h2>
+  <div class="grid">
+    <div class="field">
+      <span class="field-label">Da</span>
+      <span class="field-value"><strong>{{ sender_display }}</strong> &lt;<code>{{ sender_email or "—" }}</code>&gt;</span>
+    </div>
+    <div class="field">
+      <span class="field-label">A (PEC)</span>
+      <span class="field-value"><code>{{ data.compagnia_pec or "—" }}</code></span>
+    </div>
+    <div class="field">
+      <span class="field-label">Compagnia</span>
+      <span class="field-value">{{ data.polizza_compagnia_nome or "—" }}{% if compagnia and compagnia.ufficio_sinistri %} · {{ compagnia.ufficio_sinistri }}{% endif %}</span>
+    </div>
+    <div class="field">
+      <span class="field-label">Allegati</span>
+      <span class="field-value">{{ allegati_selezionati|length }} file · {{ dimensione_totale_label }}</span>
+    </div>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Oggetto</h2>
+  <p style="margin:0; font-size:1rem; color:var(--lys-grey-900); font-weight:500;">
+    {{ pec_subject }}
+  </p>
+</section>
+
+<section class="card">
+  <h2>Corpo PEC</h2>
+  <div class="pec-preview">
+    <textarea class="pec-body" readonly rows="22">{{ pec_body }}</textarea>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Allegati al messaggio ({{ allegati_selezionati|length }})</h2>
+  {% if allegati_selezionati %}
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Tipo</th>
+          <th>Nome file</th>
+          <th>Dimensione</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in allegati_selezionati %}
+        <tr>
+          <td>
+            {% if a.categoria == "cessione" %}Cessione firmata
+            {% elif a.categoria == "denuncia" %}Denuncia
+            {% elif a.categoria == "foto" %}Foto
+            {% else %}Documento{% endif %}
+          </td>
+          <td><code>{{ a.nome_file }}</code></td>
+          <td>{{ a.size_label }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="meta">Nessun allegato selezionato. Torna all'anteprima per spuntare i file da allegare.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Invia ora</h2>
+  {% if not data.compagnia_pec %}
+    <div class="alert alert-warn">
+      Indirizzo PEC destinatario mancante. Non posso inviare. Torna alla
+      schermata precedente e completa il campo "Indirizzo PEC".
+    </div>
+  {% elif not sender_email %}
+    <div class="alert alert-warn">
+      Indirizzo PEC mittente mancante. Imposta <code>PEC_SMTP_USER</code>
+      nel file <code>.env</code> e riavvia l'app.
+    </div>
+  {% endif %}
+
+  <form method="post" action="/pratiche/{{ pratica.numero }}/vandalismo/invia"
+        onsubmit="return confirm('Confermare invio PEC a ' + {{ data.compagnia_pec|tojson }} + ' ?');">
+    {# Replico tutti i campi del form vandalismo per mantenere lo stato. #}
+    {% for k, v in form_values.items() %}
+      <input type="hidden" name="{{ k }}" value="{{ v if v is not none else '' }}" />
+    {% endfor %}
+    {% for nome in allegati_selezionati_nomi %}
+      <input type="hidden" name="allegati_selezionati" value="{{ nome }}" />
+    {% endfor %}
+    <div class="form-actions">
+      <a href="/pratiche/{{ pratica.numero }}/vandalismo" class="btn">Annulla, torna all'anteprima</a>
+      <button type="submit" class="btn btn-primary"
+              {% if mancanti or not data.compagnia_pec or not sender_email %}disabled{% endif %}>
+        {% if dry_run %}Esegui dry-run{% else %}Conferma e invia PEC{% endif %}
+      </button>
+    </div>
+  </form>
+</section>
+{% endblock %}

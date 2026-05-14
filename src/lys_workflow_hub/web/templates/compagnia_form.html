@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}
+  {% if compagnia %}Modifica {{ compagnia.nome }}{% else %}Nuova compagnia{% endif %} · LYS Workflow Hub
+{% endblock %}
+
+{% macro field(label, name, value, type="text", required=False, hint="") %}
+  <div class="form-field">
+    <label for="f_{{ name }}">
+      {{ label }}{% if required %} <span class="req">*</span>{% endif %}
+    </label>
+    {% if type == "textarea" %}
+      <textarea id="f_{{ name }}" name="{{ name }}" rows="3"
+        {% if required %}required{% endif %}>{{ value or "" }}</textarea>
+    {% else %}
+      <input id="f_{{ name }}" name="{{ name }}" type="{{ type }}"
+        value="{{ value if value not in (None, '') else '' }}"
+        {% if required %}required{% endif %}
+        autocomplete="off" />
+    {% endif %}
+    {% if hint %}<small class="hint">{{ hint }}</small>{% endif %}
+  </div>
+{% endmacro %}
+
+{% block content %}
+<nav class="breadcrumb">
+  <a href="/compagnie">← Torna alla lista compagnie</a>
+</nav>
+
+<header class="pratica-header">
+  <div>
+    <span class="badge">Anagrafica</span>
+    <h1>
+      {% if compagnia %}Modifica compagnia{% else %}Nuova compagnia{% endif %}
+    </h1>
+    {% if compagnia %}
+      <p class="meta">ID interno: {{ compagnia.id }}
+        {% if compagnia.updated_at %} · ultima modifica: {{ compagnia.updated_at.strftime("%d/%m/%Y %H:%M") }}{% endif %}
+      </p>
+    {% endif %}
+  </div>
+</header>
+
+{% if error %}
+  <div class="alert alert-warn"><strong>Errore:</strong> {{ error }}</div>
+{% endif %}
+
+<form method="post"
+      action="{% if compagnia %}/compagnie/{{ compagnia.id }}{% else %}/compagnie/nuova{% endif %}"
+      class="cessione-form">
+
+  <section class="card">
+    <h2>Identificazione</h2>
+    <div class="form-grid">
+      {{ field("Nome compagnia (come riportato in WinCar)", "nome", values.nome, required=True,
+               hint="Verrà usato per il matching automatico con la pratica WinCar.") }}
+      {{ field("Indirizzo PEC", "pec", values.pec, type="email", required=True,
+               hint="Indirizzo di posta certificata dove inviare la richiesta.") }}
+      {{ field("Email ordinaria", "email", values.email, type="email",
+               hint="Opzionale, per CC/copia di cortesia.") }}
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Indirizzo postale</h2>
+    <div class="form-grid">
+      {{ field("Via e civico", "indirizzo", values.indirizzo) }}
+      {{ field("CAP", "cap", values.cap) }}
+      {{ field("Comune", "citta", values.citta) }}
+      {{ field("Provincia (sigla)", "provincia", values.provincia,
+               hint="Es. RM, MI, TO.") }}
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Ufficio sinistri</h2>
+    <div class="form-grid">
+      {{ field("Riferimento ufficio sinistri", "ufficio_sinistri", values.ufficio_sinistri,
+               hint="Es. \"Ufficio Sinistri Atti Vandalici\" o nominativo referente.") }}
+    </div>
+    {{ field("Note interne", "note", values.note, type="textarea",
+             hint="Annotazioni libere (orari, tempistiche di risposta, contatti diretti, ecc.).") }}
+  </section>
+
+  <div class="form-actions">
+    <a href="/compagnie" class="btn">Annulla</a>
+    <button type="submit" class="btn btn-primary">
+      {% if compagnia %}Salva modifiche{% else %}Crea compagnia{% endif %}
+    </button>
+  </div>
+</form>
+{% endblock %}

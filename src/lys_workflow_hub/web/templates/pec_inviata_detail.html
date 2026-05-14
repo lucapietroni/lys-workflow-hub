@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}PEC #{{ record.id }} · LYS Workflow Hub{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb">
+  <a href="/pec-inviate">← Torna alla cronologia</a>
+</nav>
+
+<header class="pratica-header">
+  <div>
+    <span class="badge">PEC inviata</span>
+    <h1>#{{ record.id }} · {{ record.esito_label }}</h1>
+    <p class="meta">
+      Pratica <a href="/pratiche/{{ record.numero_pratica }}">{{ record.numero_pratica }}</a>
+      · {{ record.data_invio.strftime("%d/%m/%Y %H:%M:%S") }}
+    </p>
+  </div>
+  <div class="pratica-actions">
+    {% if record.path_eml %}
+      <a class="btn" href="/pec-inviate/{{ record.id }}/scarica">Scarica .eml</a>
+    {% endif %}
+  </div>
+</header>
+
+{% if record.esito == "KO" and record.errore %}
+  <div class="alert alert-warn">
+    <strong>Errore di invio:</strong> <code>{{ record.errore }}</code>
+  </div>
+{% elif record.esito == "DRY_RUN" %}
+  <div class="alert alert-warn">
+    Invio simulato in modalità dry-run. Il file .eml è stato comunque archiviato.
+  </div>
+{% endif %}
+
+<section class="card">
+  <h2>Intestazione</h2>
+  <div class="grid">
+    <div class="field">
+      <span class="field-label">Da</span>
+      <span class="field-value"><code>{{ record.mittente_pec or "—" }}</code></span>
+    </div>
+    <div class="field">
+      <span class="field-label">A</span>
+      <span class="field-value"><code>{{ record.destinatario_pec or "—" }}</code></span>
+    </div>
+    <div class="field">
+      <span class="field-label">Compagnia</span>
+      <span class="field-value">{{ record.compagnia_nome or "—" }}</span>
+    </div>
+    <div class="field">
+      <span class="field-label">Message-ID</span>
+      <span class="field-value"><code>{{ record.message_id or "—" }}</code></span>
+    </div>
+    <div class="field">
+      <span class="field-label">Esito</span>
+      <span class="field-value"><strong>{{ record.esito_label }}</strong></span>
+    </div>
+    <div class="field">
+      <span class="field-label">File .eml archiviato</span>
+      <span class="field-value"><code>{{ record.path_eml or "—" }}</code></span>
+    </div>
+  </div>
+  <h3 class="card-subhead">Oggetto</h3>
+  <p style="margin:0; color:var(--lys-grey-900);">{{ record.oggetto }}</p>
+</section>
+
+<section class="card">
+  <h2>Estratto del corpo (primi 300 caratteri)</h2>
+  <pre style="white-space:pre-wrap; font-family: 'SF Mono', Menlo, Consolas, monospace; font-size:0.88rem; color:var(--lys-grey-900); margin:0;">{{ record.body_excerpt or "(corpo non registrato)" }}</pre>
+  <p class="meta" style="margin-top:12px;">
+    Per leggere il corpo completo della PEC apri il file <code>.eml</code> con un client email
+    (es. Thunderbird, Outlook) usando il pulsante "Scarica .eml" in alto.
+  </p>
+</section>
+
+<section class="card">
+  <h2>Allegati ({{ record.allegati|length }})</h2>
+  {% if record.allegati %}
+    <ul class="allegati-list">
+      {% for nome in record.allegati %}
+        <li class="allegato-row"><span class="allegato-name">{{ nome }}</span></li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="meta">Nessun allegato.</p>
+  {% endif %}
+</section>
+{% endblock %}

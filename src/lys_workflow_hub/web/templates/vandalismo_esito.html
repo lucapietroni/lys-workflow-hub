@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Esito invio PEC · Pratica {{ pratica.numero }} · LYS Workflow Hub{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb">
+  <a href="/pratiche/{{ pratica.numero }}">← Torna alla pratica {{ pratica.numero }}</a>
+</nav>
+
+<header class="pratica-header">
+  <div>
+    <span class="badge">Esito invio PEC</span>
+    <h1>
+      {% if esito.ok and dry_run %}
+        Dry-run completato
+      {% elif esito.ok %}
+        PEC inviata
+      {% else %}
+        Invio fallito
+      {% endif %}
+    </h1>
+    <p class="meta">Pratica n. {{ pratica.numero }} · {{ record.data_invio.strftime("%d/%m/%Y %H:%M:%S") }}</p>
+  </div>
+  <div class="pratica-actions">
+    <a class="btn" href="/pratiche/{{ pratica.numero }}">Vai alla pratica</a>
+    <a class="btn" href="/pec-inviate">Cronologia PEC inviate</a>
+  </div>
+</header>
+
+{% if esito.ok and dry_run %}
+  <div class="alert alert-warn">
+    <strong>Modalità dry-run.</strong>
+    Nessuna connessione SMTP è stata aperta. Il file .eml è stato comunque
+    generato e archiviato in <code>{{ record.path_eml }}</code> per audit.
+    Per inviare davvero, imposta <code>PEC_DRY_RUN=false</code> in
+    <code>.env</code> e riavvia l'app.
+  </div>
+{% elif esito.ok %}
+  <div class="alert alert-success">
+    <strong>PEC consegnata al provider SMTP.</strong>
+    Il server PEC ha accettato il messaggio. La compagnia riceverà a breve
+    la ricevuta di consegna. Il file .eml è archiviato in
+    <code>{{ record.path_eml }}</code>.
+  </div>
+{% else %}
+  <div class="alert alert-warn">
+    <strong>Invio fallito.</strong>
+    Il messaggio non è stato consegnato al server PEC.
+    Errore: <code>{{ esito.error or record.errore or "(nessun dettaglio)" }}</code>.
+    Verifica credenziali in <code>.env</code> e riprova.
+  </div>
+{% endif %}
+
+<section class="card">
+  <h2>Dettagli messaggio</h2>
+  <div class="grid">
+    <div class="field">
+      <span class="field-label">Message-ID</span>
+      <span class="field-value"><code>{{ record.message_id or "—" }}</code></span>
+    </div>
+    <div class="field">
+      <span class="field-label">Da</span>
+      <span class="field-value"><code>{{ record.mittente_pec or "—" }}</code></span>
+    </div>
+    <div class="field">
+      <span class="field-label">A</span>
+      <span class="field-value"><code>{{ record.destinatario_pec or "—" }}</code></span>
+    </div>
+    <div class="field">
+      <span class="field-label">Compagnia</span>
+      <span class="field-value">{{ record.compagnia_nome or "—" }}</span>
+    </div>
+    <div class="field">
+      <span class="field-label">Esito</span>
+      <span class="field-value"><strong>{{ record.esito_label }}</strong></span>
+    </div>
+    <div class="field">
+      <span class="field-label">Allegati</span>
+      <span class="field-value">{{ record.allegati|length }} file</span>
+    </div>
+  </div>
+  <h3 class="card-subhead">Oggetto</h3>
+  <p style="margin:0; color:var(--lys-grey-900);">{{ record.oggetto }}</p>
+  {% if record.allegati %}
+    <h3 class="card-subhead">File allegati</h3>
+    <ul class="allegati-list">
+      {% for nome in record.allegati %}
+        <li class="allegato-row"><span class="allegato-name">{{ nome }}</span></li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</section>
+
+<aside class="hint">
+  Le prossime risposte della compagnia (presa in carico, nomina perito, richiesta documenti, liquidazione)
+  saranno classificate automaticamente quando attiveremo M3 (lettura PEC in entrata + AI).
+</aside>
+{% endblock %}

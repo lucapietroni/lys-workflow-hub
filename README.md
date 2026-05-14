@@ -6,15 +6,58 @@ genera documenti precompilati (cessione del credito, richiesta risarcimento per 
 vandalico, ecc.), monitora le risposte delle compagnie assicurative via PEC ed email
 ordinaria, classifica le risposte con un modello AI e produce alert mirati.
 
-> Versione attuale: **0.1.0 — Foundation / Workflow A (cessione del credito)**
+> Versione attuale: **0.2.0 — Workflow A (cessione) + Workflow B (vandalismo, bozza PEC)**
 
 ## Stato del progetto
 
 | Milestone | Contenuto | Stato |
 |----|----|----|
-| **M1** | Fondazione + Workflow A (Cessione del credito) | in sviluppo |
-| **M2** | Workflow B (Richiesta risarcimento vandalismo) | pianificato |
-| **M3** | Sottosistema posta + AI + Workflow C (lettura risposte) | pianificato |
+| **M1** | Fondazione + Workflow A (Cessione del credito) | completata |
+| **M2** | Workflow B (Richiesta risarcimento vandalismo) — bozza PEC + anagrafica compagnie | completata |
+| **M2bis** | Invio effettivo via SMTP della PEC (InfoCert SSL 465) + audit | completata |
+| **M3** | Sottosistema posta in entrata + AI + Workflow C (lettura risposte) | pianificato |
+
+### Cosa fa M2-bis oggi
+
+- Pagina di **conferma pre-invio** con riepilogo: destinatario PEC, oggetto,
+  corpo completo, allegati con dimensione totale, eventuali warning (modalità
+  dry-run attiva, campi mancanti).
+- **Invio reale** via `smtplib` su SMTP_SSL porta 465 (default
+  InfoCert/Legalmail). Fallback automatico a STARTTLS se la porta è 587.
+- **Modalità dry-run** attivabile via `.env` (`PEC_DRY_RUN=true`): genera
+  comunque il `.eml` e lo archivia ma non apre connessione SMTP.
+- **Archiviazione `.eml`** in `C:\LYSApp\PEC_inviate\<anno>\` con nome
+  deterministico (timestamp + pratica + compagnia).
+- **DB SQLite `pec_inviate`** con record di ogni invio (data, destinatario,
+  oggetto, message-id, percorso file, esito, eventuale errore).
+- Pagine **`/pec-inviate`** (cronologia) e **`/pec-inviate/{id}`** (dettaglio
+  + download del file `.eml`).
+- Banner nella pagina vandalismo "PEC già inviata il …" quando ci sono
+  invii precedenti per la stessa pratica.
+
+### Cosa fa M2 oggi
+
+- Lettura della pratica WinCar in sola lettura, come per M1.
+- Scansione automatica delle cartelle WinCar della pratica:
+  `Pratiche\<n>\Pubblici\Foto\` (foto del danno) e
+  `Pratiche\<n>\Pubblici\Allegati\` (denuncia, cessione firmata, documenti).
+- Anagrafica interna delle **compagnie assicurative** (SQLite, CRUD da UI):
+  PEC, email, indirizzo postale, ufficio sinistri, note.
+- Matching automatico fra il nome compagnia letto da WinCar (`F_DEASCL`) e
+  l'anagrafica interna (normalizzazione: case, spazi, suffissi tipo S.p.A./srl).
+- Schermata di anteprima editabile della **bozza PEC**: oggetto + corpo
+  testuale completo (assicurato, polizza, veicolo, evento, denuncia,
+  cessione, elenco numerato allegati, richiesta di nomina perito, contatti
+  carrozzeria). L'operatore seleziona via checkbox quali allegati elencare.
+- Pulsanti: **Copia corpo PEC** (negli appunti) e **Scarica bozza .txt**
+  (file di testo con destinatario, oggetto e percorsi assoluti degli
+  allegati da agganciare nel client PEC).
+
+### Cosa NON fa ancora M2/M2-bis
+
+- La lettura delle PEC in arrivo e la classificazione AI delle risposte
+  delle compagnie (presa in carico, nomina perito, richiesta documenti,
+  liquidazione): rimandato a M3.
 
 Vedi `docs/Analisi_LYS_Workflow_Hub_v2.docx` per il documento di analisi completo
 e `docs/Decisioni_finalizzate_v2.docx` per il riepilogo delle decisioni di progetto.
@@ -108,9 +151,15 @@ lys-workflow-hub/
 │       │   └── schema_check.py         Verifica schema al boot
 │       ├── workflows/
 │       │   ├── cessione_credito/       Workflow A
-│       │   └── risarcimento_vandalismo/ Workflow B (pianificato)
+│       │   └── risarcimento_vandalismo/ Workflow B (M2)
+│       │       ├── data.py             modello RichiestaVandalismoData
+│       │       ├── allegati.py         scanner cartelle Foto/ e Allegati/
+│       │       └── pec_generator.py    builder oggetto + corpo PEC
 │       ├── integrations/           Lettore posta, AI, notifiche
 │       └── web/                    Route FastAPI + template Jinja2
+│           ├── routes.py               pagine pratica + workflow cessione (M1)
+│           ├── routes_vandalismo.py    pagine workflow vandalismo (M2)
+│           └── routes_compagnie.py     CRUD anagrafica compagnie (M2)
 ├── tests/                          Test unitari
 └── data/                           DB SQLite locale, eml_archive (gitignored)
 ```

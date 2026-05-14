@@ -33,6 +33,14 @@ class Settings(BaseSettings):
     app_port: int = Field(default=8000)
     app_env: str = Field(default="development")
     app_archivio_cessioni: Path = Field(default=Path(r"C:\LYSApp\Cessioni_firmate"))
+    # DB interno SQLite per anagrafica compagnie (M2) e in futuro altri metadati.
+    app_db_path: Path = Field(default=Path("data/lys_hub.db"))
+
+    # --- Carrozzeria (per intestazione PEC, contatti) ---
+    carrozzeria_pec: str = Field(default="")
+    carrozzeria_email: str = Field(default="")
+    carrozzeria_telefono: str = Field(default="")
+    carrozzeria_referente: str = Field(default="")
 
     # --- Posta in entrata (M3) ---
     pec_imap_host: str = Field(default="mbox.cert.legalmail.it")
@@ -57,6 +65,20 @@ class Settings(BaseSettings):
     pec_smtp_port: int = Field(default=465)
     pec_smtp_user: str = Field(default="")
     pec_smtp_password: str = Field(default="")
+
+    # Se True, l'app NON apre alcuna connessione SMTP: genera comunque il file
+    # .eml e lo archivia, registrando l'invio come "DRY_RUN" nel DB.
+    # Usato per testare il workflow di invio in sviluppo senza spammare le
+    # compagnie. In produzione lasciare False (default).
+    pec_dry_run: bool = Field(default=False)
+
+    # Cartella centrale dove salvare i .eml delle PEC inviate, partizionata per
+    # anno (sottocartella creata automaticamente al primo invio).
+    app_archivio_pec: Path = Field(default=Path(r"C:\LYSApp\PEC_inviate"))
+
+    # Display-name del mittente nella PEC ("From: <nome> <indirizzo>").
+    # Se vuoto, viene usata la ragione sociale della carrozzeria.
+    carrozzeria_pec_alias: str = Field(default="")
 
     # --- AI ---
     anthropic_api_key: str = Field(default="")

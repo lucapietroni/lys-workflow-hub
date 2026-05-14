@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}PEC inviate · LYS Workflow Hub{% endblock %}
+
+{% block content %}
+<header class="pratica-header">
+  <div>
+    <span class="badge">Audit</span>
+    <h1>PEC inviate</h1>
+    <p class="meta">
+      Cronologia degli invii reali e dry-run, dalla più recente alla più vecchia
+      (max 200 record).
+    </p>
+  </div>
+</header>
+
+<section class="card">
+  {% if not records %}
+    <p class="meta" style="margin-top:0">
+      Nessuna PEC ancora inviata. Quando invii una richiesta di risarcimento
+      dalla pagina di una pratica, comparirà qui.
+    </p>
+  {% else %}
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Data invio</th>
+          <th>Pratica</th>
+          <th>Compagnia</th>
+          <th>Destinatario</th>
+          <th>Esito</th>
+          <th class="col-actions"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in records %}
+        <tr>
+          <td>{{ r.data_invio.strftime("%d/%m/%Y %H:%M") }}</td>
+          <td><a href="/pratiche/{{ r.numero_pratica }}">{{ r.numero_pratica }}</a></td>
+          <td>{{ r.compagnia_nome or "—" }}</td>
+          <td><code>{{ r.destinatario_pec }}</code></td>
+          <td>
+            {% if r.esito == "OK" %}
+              <strong style="color: var(--lys-success);">Inviata</strong>
+            {% elif r.esito == "DRY_RUN" %}
+              <span style="color: var(--lys-warn);">Dry-run</span>
+            {% else %}
+              <strong style="color: #C24545;">Errore</strong>
+            {% endif %}
+          </td>
+          <td class="col-actions">
+            <a class="btn btn-sm" href="/pec-inviate/{{ r.id }}">Dettaglio</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</section>
+{% endblock %}

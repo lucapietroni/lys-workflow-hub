@@ -478,3 +478,174 @@ code {
   .form-actions { flex-direction: column-reverse; }
   .form-actions .btn { width: 100%; text-align: center; }
 }
+
+/* ====== M2 — varianti bottoni ====== */
+.btn-sm { padding: 4px 10px; font-size: 0.82rem; }
+.btn-danger {
+  border-color: #C24545;
+  color: #C24545;
+  background: var(--lys-white);
+}
+.btn-danger:hover:not([disabled]) {
+  background: #C24545;
+  border-color: #A93636;
+  color: var(--lys-white);
+}
+
+/* ====== M2 — sotto-intestazione card ====== */
+.card-subhead {
+  margin: 18px 0 10px;
+  font-size: 0.86rem;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--lys-grey-700);
+  font-weight: 600;
+}
+
+/* ====== M2 — tabella generica (lista compagnie) ====== */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+.table th, .table td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--lys-grey-100);
+  vertical-align: top;
+}
+.table th {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--lys-grey-500);
+  font-weight: 600;
+}
+.table tr:hover td { background: var(--lys-grey-50); }
+.table .col-actions { width: 1%; white-space: nowrap; text-align: right; }
+.table .col-actions .btn { margin-left: 6px; }
+.table code { font-size: 0.85rem; }
+
+/* ====== M2 — checklist allegati ====== */
+.allegati-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 8px;
+  border: 1px solid var(--lys-grey-300);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.allegato-row {
+  border-bottom: 1px solid var(--lys-grey-100);
+  padding: 8px 12px;
+  background: var(--lys-white);
+}
+.allegato-row:last-child { border-bottom: none; }
+.allegato-row:hover { background: var(--lys-grey-50); }
+.allegato-row label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+.allegato-name {
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.88rem;
+  color: var(--lys-grey-900);
+  flex: 1;
+  word-break: break-all;
+}
+.allegato-meta {
+  font-size: 0.78rem;
+  color: var(--lys-grey-500);
+  white-space: nowrap;
+}
+
+/* ====== M2 — preview corpo PEC ====== */
+.pec-preview {
+  border: 1px solid var(--lys-grey-300);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--lys-white);
+}
+.pec-meta {
+  padding: 10px 14px;
+  background: var(--lys-grey-50);
+  border-bottom: 1px solid var(--lys-grey-300);
+  font-size: 0.9rem;
+}
+.pec-meta div { margin: 2px 0; }
+.pec-meta strong { color: var(--lys-grey-700); margin-right: 6px; }
+.pec-body {
+  display: block;
+  width: 100%;
+  padding: 12px 14px;
+  border: none;
+  background: var(--lys-white);
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: var(--lys-grey-900);
+  resize: vertical;
+}
+.pec-body:focus { outline: none; background: #FCFDFF; }
+
+/* ====== M2 — miniature foto nella checklist allegati ====== */
+.foto-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--lys-grey-300);
+  border-radius: var(--radius);
+  background: var(--lys-grey-50);
+  list-style: none;
+  margin: 0 0 8px;
+}
+.foto-grid .allegato-row.foto-row {
+  border-bottom: none;
+  background: var(--lys-white);
+  border: 1px solid var(--lys-grey-300);
+  border-radius: var(--radius);
+  padding: 8px;
+}
+.foto-grid .allegato-row.foto-row:hover {
+  border-color: var(--lys-blue);
+}
+.foto-grid label {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+.foto-grid input[type="checkbox"] {
+  align-self: flex-start;
+}
+.foto-thumb {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--lys-grey-100);
+  border: 1px solid var(--lys-grey-300);
+}
+.foto-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.15s ease;
+}
+.foto-thumb:hover img {
+  transform: scale(1.03);
+}
+.foto-grid .allegato-name {
+  font-size: 0.78rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: none;
+}
+.foto-grid .allegato-meta {
+  font-size: 0.72rem;
+}

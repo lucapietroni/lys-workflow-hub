@@ -1,0 +1,299 @@
+{% extends "base.html" %}
+{% block title %}Richiesta vandalismo · Pratica {{ pratica.numero }} · LYS Workflow Hub{% endblock %}
+
+{% macro field(label, name, value, type="text", required=False, hint="") %}
+  <div class="form-field {% if required and not value %}is-missing{% endif %}">
+    <label for="f_{{ name }}">
+      {{ label }}{% if required %} <span class="req">*</span>{% endif %}
+    </label>
+    {% if type == "textarea" %}
+      <textarea id="f_{{ name }}" name="{{ name }}" rows="3"
+        {% if required %}required{% endif %}>{{ value or "" }}</textarea>
+    {% else %}
+      <input id="f_{{ name }}" name="{{ name }}" type="{{ type }}"
+        value="{{ value if value not in (None, '') else '' }}"
+        {% if required %}required{% endif %}
+        autocomplete="off" />
+    {% endif %}
+    {% if hint %}<small class="hint">{{ hint }}</small>{% endif %}
+  </div>
+{% endmacro %}
+
+{% block content %}
+<nav class="breadcrumb">
+  <a href="/pratiche/{{ pratica.numero }}">← Torna alla pratica {{ pratica.numero }}</a>
+</nav>
+
+<header class="pratica-header">
+  <div>
+    <span class="badge">Richiesta risarcimento vandalismo</span>
+    <h1>Bozza PEC</h1>
+    <p class="meta">
+      Pratica n. {{ pratica.numero }} ·
+      assicurato: <strong>{{ pratica.cliente.nominativo or "—" }}</strong> ·
+      veicolo: <strong>{{ data.veicolo_targa or "—" }}</strong>
+    </p>
+  </div>
+</header>
+
+{% if mancanti %}
+  <div class="alert alert-warn">
+    <strong>Campi da completare ({{ mancanti|length }}):</strong>
+    {{ mancanti|join(", ") }}. Compilali sotto e clicca <em>Rigenera anteprima</em>.
+  </div>
+{% endif %}
+
+{% if ultima_pec_ok %}
+  <div class="alert alert-success">
+    <strong>PEC già inviata per questa pratica</strong> il
+    {{ ultima_pec_ok.data_invio.strftime("%d/%m/%Y alle %H:%M") }} a
+    <code>{{ ultima_pec_ok.destinatario_pec }}</code>.
+    <a href="/pec-inviate/{{ ultima_pec_ok.id }}">Vedi dettaglio invio</a>.
+    Puoi comunque inviarne una seconda (verrà registrata come nuovo record).
+  </div>
+{% endif %}
+
+{% if not compagnia_match %}
+  <div class="alert alert-warn">
+    Nessuna compagnia trovata in anagrafica per
+    <strong>{{ data.polizza_compagnia_nome or "(nome non valorizzato)" }}</strong>.
+    <a href="/compagnie/nuova" target="_blank" rel="noopener">Aggiungila ora</a>
+    e poi rigenera l'anteprima, oppure inserisci la PEC manualmente sotto.
+  </div>
+{% else %}
+  <div class="alert alert-success">
+    Compagnia riconosciuta in anagrafica:
+    <strong>{{ compagnia_match.nome }}</strong>
+    (PEC <code>{{ compagnia_match.pec }}</code>).
+    <a href="/compagnie/{{ compagnia_match.id }}" target="_blank" rel="noopener">Modifica</a>
+  </div>
+{% endif %}
+
+<form method="post" action="/pratiche/{{ pratica.numero }}/vandalismo" class="cessione-form">
+
+  <section class="card">
+    <h2>Assicurato</h2>
+    <div class="form-grid">
+      {{ field("Nominativo completo", "assicurato_nome_completo",
+               data.assicurato_nome_completo, required=True) }}
+      {{ field("Codice fiscale", "assicurato_codice_fiscale",
+               data.assicurato_codice_fiscale, required=True) }}
+      {{ field("Luogo di nascita", "assicurato_luogo_nascita",
+               data.assicurato_luogo_nascita,
+               hint="Estratto dal CF; modificabile.") }}
+      {{ field("Data di nascita", "assicurato_data_nascita",
+               data.assicurato_data_nascita.isoformat() if data.assicurato_data_nascita else "",
+               type="date") }}
+      <div class="form-field">
+        <label for="f_assicurato_sesso">Sesso</label>
+        <select id="f_assicurato_sesso" name="assicurato_sesso">
+          <option value="M" {% if data.assicurato_sesso == "M" %}selected{% endif %}>M</option>
+          <option value="F" {% if data.assicurato_sesso == "F" %}selected{% endif %}>F</option>
+        </select>
+      </div>
+      {{ field("Telefono", "assicurato_telefono", data.assicurato_telefono) }}
+      {{ field("Email", "assicurato_email", data.assicurato_email, type="email") }}
+    </div>
+    <h3 class="card-subhead">Residenza</h3>
+    <div class="form-grid">
+      {{ field("Via e civico", "assicurato_residenza_via",
+               data.assicurato_residenza_via, required=True) }}
+      {{ field("Comune", "assicurato_residenza_comune",
+               data.assicurato_residenza_comune, required=True) }}
+      {{ field("CAP", "assicurato_residenza_cap", data.assicurato_residenza_cap) }}
+      {{ field("Provincia", "assicurato_residenza_provincia",
+               data.assicurato_residenza_provincia) }}
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Ditta <span class="tag">opzionale</span></h2>
+    <div class="form-field checkbox-field">
+      <label>
+        <input type="checkbox" name="e_ditta" {% if data.e_ditta %}checked{% endif %} />
+        L'assicurato firma in qualità di legale rappresentante di una ditta
+      </label>
+    </div>
+    <div class="form-grid">
+      {{ field("Ragione sociale", "ditta_nome", data.ditta_nome) }}
+      {{ field("Partita IVA", "ditta_partita_iva", data.ditta_partita_iva) }}
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Polizza</h2>
+    <div class="form-grid">
+      {{ field("Compagnia (nome esatto)", "polizza_compagnia_nome",
+               data.polizza_compagnia_nome, required=True) }}
+      {{ field("Numero polizza", "polizza_numero", data.polizza_numero, required=True) }}
+      {{ field("Agenzia", "polizza_agenzia", data.polizza_agenzia) }}
+    </div>
+    <h3 class="card-subhead">Indirizzi compagnia destinataria</h3>
+    <div class="form-grid">
+      {{ field("Indirizzo PEC", "compagnia_pec", data.compagnia_pec, type="email", required=True,
+               hint="Precompilato dall'anagrafica compagnie. Modificabile in casi puntuali.") }}
+      {{ field("Ufficio sinistri / referente", "compagnia_ufficio_sinistri",
+               data.compagnia_ufficio_sinistri) }}
+      {{ field("Indirizzo postale", "compagnia_indirizzo", data.compagnia_indirizzo) }}
+      {{ field("CAP", "compagnia_cap", data.compagnia_cap) }}
+      {{ field("Città", "compagnia_citta", data.compagnia_citta) }}
+      {{ field("Provincia", "compagnia_provincia", data.compagnia_provincia) }}
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Veicolo</h2>
+    <div class="form-grid">
+      {{ field("Marca e modello", "veicolo_marca_modello",
+               data.veicolo_marca_modello, required=True) }}
+      {{ field("Targa", "veicolo_targa", data.veicolo_targa, required=True) }}
+      {{ field("Numero di telaio", "veicolo_telaio", data.veicolo_telaio) }}
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Evento</h2>
+    <div class="form-grid">
+      {{ field("Data", "evento_data",
+               data.evento_data.isoformat() if data.evento_data else "",
+               type="date", required=True) }}
+      {{ field("Ora indicativa", "evento_ora", data.evento_ora) }}
+      {{ field("Via / luogo", "evento_luogo_via", data.evento_luogo_via, required=True) }}
+      {{ field("Comune", "evento_luogo_comune", data.evento_luogo_comune, required=True) }}
+    </div>
+    {{ field("Descrizione dei danni accertati", "evento_descrizione_danni",
+             data.evento_descrizione_danni, type="textarea", required=True,
+             hint="Elenco sintetico dei danni (es. \"graffi profondi sulla fiancata sinistra, vetro posteriore rotto, specchietto destro spezzato\").") }}
+  </section>
+
+  <section class="card">
+    <h2>Denuncia alle autorità</h2>
+    <div class="form-grid">
+      <div class="form-field">
+        <label for="f_denuncia_autorita">Autorità <span class="req">*</span></label>
+        <select id="f_denuncia_autorita" name="denuncia_autorita">
+          {% for opt in autorita_options %}
+            <option value="{{ opt }}" {% if data.denuncia_autorita == opt %}selected{% endif %}>{{ opt }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {{ field("Data della denuncia", "denuncia_data",
+               data.denuncia_data.isoformat() if data.denuncia_data else "",
+               type="date", required=True) }}
+      {{ field("Comando / Ufficio", "denuncia_comando", data.denuncia_comando,
+               hint="Es. \"Stazione Carabinieri di Roma Tomba di Nerone\".") }}
+      {{ field("Numero protocollo", "denuncia_protocollo", data.denuncia_protocollo) }}
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Allegati riconosciuti per questa pratica</h2>
+    <p class="meta" style="margin-top:-6px">
+      File trovati in <code>Pratiche\{{ pratica.numero }}\Pubblici\Foto\</code> e
+      <code>Pratiche\{{ pratica.numero }}\Pubblici\Allegati\</code>.
+      Spunta quelli da elencare nel corpo PEC.
+    </p>
+
+    {% if not allegati.tutti %}
+      <p class="meta">
+        Nessun file trovato. Controlla che foto e documenti siano stati salvati
+        nelle cartelle WinCar della pratica.
+      </p>
+    {% else %}
+      {% macro allegato_row(a) %}
+        <li class="allegato-row">
+          <label>
+            <input type="checkbox" name="allegati_selezionati" value="{{ a.nome_file }}"
+              {% if a.nome_file in allegati_selezionati_set %}checked{% endif %} />
+            <span class="allegato-name">{{ a.nome_file }}</span>
+            <span class="allegato-meta">{{ a.size_label }} · {{ a.data_modifica.strftime("%d/%m/%Y") }}</span>
+          </label>
+        </li>
+      {% endmacro %}
+
+      {% macro foto_row(a) %}
+        <li class="allegato-row foto-row">
+          <label>
+            <input type="checkbox" name="allegati_selezionati" value="{{ a.nome_file }}"
+              {% if a.nome_file in allegati_selezionati_set %}checked{% endif %} />
+            <a href="/pratiche/{{ pratica.numero }}/allegato?nome={{ a.nome_file|urlencode }}"
+               target="_blank" rel="noopener" class="foto-thumb"
+               title="Apri {{ a.nome_file }} a piena risoluzione">
+              <img src="/pratiche/{{ pratica.numero }}/allegato?nome={{ a.nome_file|urlencode }}"
+                   alt="{{ a.nome_file }}" loading="lazy" />
+            </a>
+            <span class="allegato-name">{{ a.nome_file }}</span>
+            <span class="allegato-meta">{{ a.size_label }} · {{ a.data_modifica.strftime("%d/%m/%Y") }}</span>
+          </label>
+        </li>
+      {% endmacro %}
+
+      {% if allegati.cessioni %}
+        <h3 class="card-subhead">Cessioni firmate ({{ allegati.cessioni|length }})</h3>
+        <ul class="allegati-list">
+          {% for a in allegati.cessioni %}{{ allegato_row(a) }}{% endfor %}
+        </ul>
+      {% endif %}
+
+      {% if allegati.denunce %}
+        <h3 class="card-subhead">Denunce / verbali ({{ allegati.denunce|length }})</h3>
+        <ul class="allegati-list">
+          {% for a in allegati.denunce %}{{ allegato_row(a) }}{% endfor %}
+        </ul>
+      {% endif %}
+
+      {% if allegati.foto %}
+        <h3 class="card-subhead">Foto del danno ({{ allegati.foto|length }})</h3>
+        <ul class="allegati-list foto-grid">
+          {% for a in allegati.foto %}{{ foto_row(a) }}{% endfor %}
+        </ul>
+      {% endif %}
+
+      {% if allegati.altri %}
+        <h3 class="card-subhead">Altri documenti ({{ allegati.altri|length }})</h3>
+        <ul class="allegati-list">
+          {% for a in allegati.altri %}{{ allegato_row(a) }}{% endfor %}
+        </ul>
+      {% endif %}
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Bozza PEC pronta da copiare</h2>
+    <div class="pec-preview">
+      <div class="pec-meta">
+        <div><strong>A:</strong> <code>{{ data.compagnia_pec or "(da inserire)" }}</code></div>
+        <div><strong>Oggetto:</strong> {{ pec_subject }}</div>
+      </div>
+      <textarea id="pec-body" class="pec-body" readonly rows="22">{{ pec_body }}</textarea>
+    </div>
+    <div class="form-actions" style="border:none; padding-top:8px; margin-top:0;">
+      <button type="button" class="btn" onclick="copyPecBody()">Copia corpo PEC</button>
+      <button type="submit" class="btn"
+              formaction="/pratiche/{{ pratica.numero }}/vandalismo/scarica">
+        Scarica bozza .txt
+      </button>
+      <button type="submit" class="btn">Rigenera anteprima</button>
+      <button type="submit" class="btn btn-primary"
+              formaction="/pratiche/{{ pratica.numero }}/vandalismo/conferma"
+              {% if mancanti %}disabled title="Completa i campi obbligatori prima di procedere"{% endif %}>
+        Procedi all'invio →
+      </button>
+    </div>
+  </section>
+</form>
+
+<script>
+  function copyPecBody() {
+    var ta = document.getElementById("pec-body");
+    if (!ta) return;
+    ta.select();
+    document.execCommand("copy");
+    ta.setSelectionRange(0, 0);
+    var btn = event.target;
+    var old = btn.textContent;
+    btn.textContent = "Copiato ✓";
+    setTimeout(function() { btn.textContent = old; }, 1500);
+  }
+</script>
+{% endblock %}

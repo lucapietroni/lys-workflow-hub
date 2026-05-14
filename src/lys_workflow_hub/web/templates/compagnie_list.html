@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Compagnie assicurative · LYS Workflow Hub{% endblock %}
+
+{% block content %}
+<header class="pratica-header">
+  <div>
+    <span class="badge">Anagrafica</span>
+    <h1>Compagnie assicurative</h1>
+    <p class="meta">
+      Indirizzi PEC e recapiti delle compagnie destinatarie delle richieste di
+      risarcimento. La PEC qui registrata viene precompilata automaticamente nelle
+      bozze generate dal workflow vandalismo (M2).
+    </p>
+  </div>
+  <div class="pratica-actions">
+    <a class="btn btn-primary" href="/compagnie/nuova">+ Nuova compagnia</a>
+  </div>
+</header>
+
+<section class="card">
+  {% if not compagnie %}
+    <p class="meta" style="margin-top:0">
+      Nessuna compagnia in anagrafica. Clicca su <strong>Nuova compagnia</strong>
+      per aggiungere la prima.
+    </p>
+  {% else %}
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Nome</th>
+          <th>PEC</th>
+          <th>Indirizzo</th>
+          <th>Ufficio sinistri</th>
+          <th class="col-actions"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in compagnie %}
+        <tr>
+          <td><strong>{{ c.nome }}</strong></td>
+          <td><code>{{ c.pec or "—" }}</code></td>
+          <td>{{ c.indirizzo_compatto or "—" }}</td>
+          <td>{{ c.ufficio_sinistri or "—" }}</td>
+          <td class="col-actions">
+            <a class="btn btn-sm" href="/compagnie/{{ c.id }}">Modifica</a>
+            <form method="post"
+                  action="/compagnie/{{ c.id }}/elimina"
+                  style="display:inline"
+                  onsubmit='return confirm("Eliminare definitivamente " + {{ c.nome|tojson }} + "?");'>
+              <button type="submit" class="btn btn-sm btn-danger">Elimina</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</section>
+{% endblock %}

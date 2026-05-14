@@ -25,6 +25,9 @@ from lys_workflow_hub.core.schema_check import (
 from lys_workflow_hub.core.wincar_repository import WinCarRepository
 from lys_workflow_hub.web.api import router as api_router
 from lys_workflow_hub.web.routes import router as pages_router
+from lys_workflow_hub.web.routes_compagnie import router as compagnie_router
+from lys_workflow_hub.web.routes_pec_log import router as pec_log_router
+from lys_workflow_hub.web.routes_vandalismo import router as vandalismo_router
 
 
 logger = logging.getLogger("lys_workflow_hub")
@@ -69,6 +72,9 @@ if STATIC_DIR.exists():
 
 # Router: pagine HTML (root) e API JSON (/api).
 app.include_router(pages_router)
+app.include_router(compagnie_router)
+app.include_router(vandalismo_router)
+app.include_router(pec_log_router)
 app.include_router(api_router)
 
 
