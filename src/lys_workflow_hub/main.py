@@ -1,14 +1,22 @@
 """Entry point dell'app web (FastAPI + Uvicorn).
 
-Avvio in sviluppo:
+Avvio in sviluppo (con auto-reload, log su terminale + file):
     python -m lys_workflow_hub.main
+
+Avvio in produzione (Task Scheduler, console nascosta, log su file):
+    .venv\\Scripts\\pythonw.exe -m lys_workflow_hub.main
 
 Avvio in produzione (Windows service via NSSM):
     uvicorn lys_workflow_hub.main:app --host 0.0.0.0 --port 8000
+
+I log finiscono sempre nel file configurato in `APP_LOG_PATH` (default
+`C:\\LYSApp\\logs\\lys-hub.log`) con rotazione automatica (5 MB x 5 file).
+Quando `python.exe` è in uso, vanno anche su stdout/stderr.
 """
 from __future__ import annotations
 
 import logging
+import logging.handlers
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -30,8 +38,77 @@ from lys_workflow_hub.web.routes_pec_log import router as pec_log_router
 from lys_workflow_hub.web.routes_vandalismo import router as vandalismo_router
 
 
+# -----------------------------------------------------------------------------
+#  Logging
+# -----------------------------------------------------------------------------
+
+
+def _configura_logging() -> None:
+    """Configura logging dell'app + dei logger uvicorn.
+
+    Output simultaneo su:
+      - stdout (`StreamHandler`) — visibile solo se l'app è lanciata con
+        `python.exe` (terminale attivo). Inutile ma innocuo con `pythonw.exe`.
+      - file con rotazione (`RotatingFileHandler`) — sempre attivo. È il modo
+        per leggere cosa fa l'app quando gira in background.
+
+    Cattura anche i logger di uvicorn/uvicorn.error/uvicorn.access in modo che
+    le richieste HTTP e gli errori del server finiscano nello stesso file.
+    """
+    settings = get_settings()
+    level_name = (settings.app_log_level or "INFO").upper()
+    level = getattr(logging, level_name, logging.INFO)
+
+    fmt = logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+    handlers: list[logging.Handler] = []
+
+    # File handler con rotazione (5 MB x 5 backup). La cartella viene creata
+    # se non esiste. In caso di errore (es. permessi), fallback su stderr.
+    try:
+        log_path = Path(settings.app_log_path)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        file_handler = logging.handlers.RotatingFileHandler(
+            filename=str(log_path),
+            maxBytes=5 * 1024 * 1024,
+            backupCount=5,
+            encoding="utf-8",
+        )
+        file_handler.setFormatter(fmt)
+        handlers.append(file_handler)
+    except OSError as exc:
+        sys.stderr.write(
+            f"WARN: impossibile aprire file di log {settings.app_log_path}: {exc}\n"
+        )
+
+    # Stream handler su stdout (visibile in dev / con python.exe).
+    stream_handler = logging.StreamHandler(stream=sys.stdout)
+    stream_handler.setFormatter(fmt)
+    handlers.append(stream_handler)
+
+    # Root logger: cancello eventuali handler default e installo i nostri.
+    root = logging.getLogger()
+    for h in list(root.handlers):
+        root.removeHandler(h)
+    for h in handlers:
+        root.addHandler(h)
+    root.setLevel(level)
+
+    # Uvicorn ha logger nominati: agganciamoli al root (propagate=True) e
+    # togliamo i loro handler default per evitare doppi log.
+    for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+        uv_logger = logging.getLogger(name)
+        for h in list(uv_logger.handlers):
+            uv_logger.removeHandler(h)
+        uv_logger.propagate = True
+        uv_logger.setLevel(level)
+
+
+_configura_logging()
 logger = logging.getLogger("lys_workflow_hub")
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 WEB_DIR = Path(__file__).parent / "web"
 STATIC_DIR = WEB_DIR / "static"

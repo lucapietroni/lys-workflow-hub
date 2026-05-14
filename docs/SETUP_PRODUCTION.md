@@ -224,9 +224,22 @@ rinomina in `.bat`):
 ```bat
 @echo off
 cd /d C:\LYSApp\lys-workflow-hub
-call .venv\Scripts\activate.bat
-python -m lys_workflow_hub.main
+.venv\Scripts\pythonw.exe -m lys_workflow_hub.main
 ```
+
+> 💡 Usiamo **`pythonw.exe`** (versione GUI di Python) invece di `python.exe`
+> così la finestra cmd non resta visibile durante l'esecuzione in background.
+> I log finiscono comunque in `C:\LYSApp\logs\lys-hub.log` (vedi §9 Logs).
+>
+> Se vuoi tenere visibile la finestra (utile in fase di rodaggio per vedere
+> cosa fa l'app), usa `python.exe` al posto di `pythonw.exe`: i log andranno
+> sia su console sia su file.
+
+> Se stai aggiornando da una versione precedente del progetto, **modifica il
+> tuo `start_lys.bat` esistente** sostituendo la riga `python -m lys_workflow_hub.main`
+> con `.venv\Scripts\pythonw.exe -m lys_workflow_hub.main` e rimuovi la riga
+> `call .venv\Scripts\activate.bat` (non serve più, `pythonw.exe` del venv
+> attiva già da solo il proprio ambiente).
 
 ### 5.2 Crea il Task Scheduler
 
@@ -459,13 +472,37 @@ Oppure scegli un'altra porta in `.env` (`APP_PORT=8001`).
 
 ### Logs dell'app
 
-L'app stampa i log a console. Se gira via Task Scheduler:
+L'app scrive **automaticamente** i log su file con rotazione, in:
 
-- Puoi redirezionarli a file modificando `start_lys.bat`:
-  ```bat
-  python -m lys_workflow_hub.main >> C:\LYSApp\logs\app.log 2>&1
-  ```
-- Crea prima la cartella `C:\LYSApp\logs\`.
+```
+C:\LYSApp\logs\lys-hub.log
+```
+
+Il file viene ruotato a 5 MB e conserva 5 backup (`lys-hub.log.1`, `.2`, …).
+Contiene sia i log dell'app sia quelli di uvicorn (richieste HTTP, errori).
+La cartella viene creata automaticamente al primo avvio.
+
+Per leggere in tempo reale cosa fa l'app, da PowerShell:
+
+```powershell
+Get-Content C:\LYSApp\logs\lys-hub.log -Wait -Tail 20
+```
+
+Se vuoi cambiare path o verbosità, modifica nel `.env`:
+
+```dotenv
+APP_LOG_PATH=C:\LYSApp\logs\lys-hub.log
+APP_LOG_LEVEL=INFO        # DEBUG / INFO / WARNING / ERROR
+```
+
+### "Avvio task ma vedo finestra cmd vuota / non vedo la finestra ma l'app non risponde"
+
+Se vedi la finestra cmd → il task sta usando `python.exe`. Aggiorna
+`start_lys.bat` per usare `.venv\Scripts\pythonw.exe` (vedi §5.1).
+
+Se non vedi nessuna finestra ma <http://localhost:8000> non risponde:
+apri `C:\LYSApp\logs\lys-hub.log` e cerca tracebacks o errori di config
+(es. driver Access non trovato, percorso WinCar errato, porta 8000 occupata).
 
 ---
 

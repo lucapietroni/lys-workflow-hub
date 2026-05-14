@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     app_archivio_cessioni: Path = Field(default=Path(r"C:\LYSApp\Cessioni_firmate"))
     # DB interno SQLite per anagrafica compagnie (M2) e in futuro altri metadati.
     app_db_path: Path = Field(default=Path("data/lys_hub.db"))
+    # Log su file con rotazione (5 MB x 5 file). La cartella viene creata
+    # automaticamente all'avvio. Utile per esecuzione in background con
+    # pythonw.exe / Task Scheduler quando non c'è una console attiva.
+    app_log_path: Path = Field(default=Path(r"C:\LYSApp\logs\lys-hub.log"))
+    app_log_level: str = Field(default="INFO")
 
     # --- Carrozzeria (per intestazione PEC, contatti) ---
     carrozzeria_pec: str = Field(default="")
