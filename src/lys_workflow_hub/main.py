@@ -17,9 +17,26 @@ from __future__ import annotations
 
 import logging
 import logging.handlers
+import os
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
+
+
+# -----------------------------------------------------------------------------
+#  Fix per pythonw.exe (nessuna console disponibile)
+# -----------------------------------------------------------------------------
+# Quando l'app è lanciata con `pythonw.exe` (Task Scheduler, console nascosta),
+# Python imposta `sys.stdout = sys.stderr = None`. Uvicorn ha un default
+# StreamHandler su stderr e crasha subito con AttributeError. Anche il nostro
+# logger lo farebbe. Redirigiamo entrambi su `os.devnull` PRIMA di qualsiasi
+# altro import che possa toccarli: il logging vero va su file via
+# RotatingFileHandler poco più sotto, quindi non perdiamo nulla.
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w", buffering=1, encoding="utf-8")
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w", buffering=1, encoding="utf-8")
+
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -162,19 +179,23 @@ async def health() -> dict:
 
 
 def main() -> None:
-    """Avvio in modalita' sviluppo con auto-reload limitato a `src/`.
+    """Avvio dell'app FastAPI tramite Uvicorn.
 
-    Il default di uvicorn osserva l'intera cwd inclusi `.venv\\Lib\\site-packages`,
-    cosa che su Windows + OneDrive fa scattare reload in loop. Limitiamo il
-    watcher alla cartella sorgente del nostro pacchetto.
+    In sviluppo abilita l'auto-reload limitato a `src/`. In produzione (env
+    diverso da development) il reload è spento.
     """
     import uvicorn
 
     settings = get_settings()
     reload = settings.app_env == "development"
     src_dir = Path(__file__).resolve().parent.parent  # src/
+    # log_config=None: NON lasciamo che uvicorn riconfiguri il logging.
+    # Vogliamo che usi gli handler che abbiamo installato in _configura_logging
+    # (RotatingFileHandler su disco), altrimenti rimette uno StreamHandler su
+    # stderr che, sotto pythonw.exe, non sarebbe utile (e in dev raddoppia i log).
     uvicorn.run(
         "lys_workflow_hub.main:app",
+        log_config=None,
         host=settings.app_host,
         port=settings.app_port,
         reload=reload,
