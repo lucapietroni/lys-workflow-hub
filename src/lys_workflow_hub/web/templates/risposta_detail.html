@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}Risposta #{{ mail.id }} · LYS Workflow Hub{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb">
+  <a href="/risposte">← Torna all'elenco risposte</a>
+</nav>
+
+<header class="pratica-header">
+  <div>
+    <span class="badge">
+      {% if classificazione %}{{ classificazione.categoria_label }}{% else %}Non classificata{% endif %}
+    </span>
+    <h1>Risposta #{{ mail.id }}</h1>
+    <p class="meta">
+      Ricevuta il {{ mail.ricevuto_at.strftime("%d/%m/%Y alle %H:%M") }} ·
+      {{ mail.casella }}
+    </p>
+  </div>
+  <div class="pratica-actions">
+    <a class="btn" href="/risposte/{{ mail.id }}/scarica">Scarica .eml</a>
+  </div>
+</header>
+
+{% if classificazione and classificazione.action_required %}
+  <div class="alert alert-warn">
+    <strong>Da gestire.</strong>
+    {{ classificazione.summary }}
+  </div>
+{% elif classificazione and classificazione.summary %}
+  <div class="alert alert-success">
+    {{ classificazione.summary }}
+  </div>
+{% endif %}
+
+<section class="card">
+  <h2>Intestazione</h2>
+  <div class="grid">
+    <div class="field">
+      <span class="field-label">Da</span>
+      <span class="field-value"><code>{{ mail.sender }}</code></span>
+    </div>
+    <div class="field">
+      <span class="field-label">A</span>
+      <span class="field-value"><code>{{ mail.recipients }}</code></span>
+    </div>
+    <div class="field">
+      <span class="field-label">Casella</span>
+      <span class="field-value">{{ mail.casella }}</span>
+    </div>
+    <div class="field">
+      <span class="field-label">Message-ID</span>
+      <span class="field-value"><code>{{ mail.message_id }}</code></span>
+    </div>
+    {% if mail.in_reply_to %}
+    <div class="field">
+      <span class="field-label">In-Reply-To</span>
+      <span class="field-value"><code>{{ mail.in_reply_to }}</code></span>
+    </div>
+    {% endif %}
+  </div>
+  <h3 class="card-subhead">Oggetto</h3>
+  <p style="margin:0; color:var(--lys-grey-900);">{{ mail.subject }}</p>
+</section>
+
+{% if classificazione %}
+<section class="card">
+  <h2>Classificazione AI</h2>
+  <div class="grid">
+    <div class="field">
+      <span class="field-label">Categoria</span>
+      <span class="field-value"><strong>{{ classificazione.categoria_label }}</strong></span>
+    </div>
+    <div class="field">
+      <span class="field-label">Confidence</span>
+      <span class="field-value">{{ "%.0f"|format((classificazione.confidence * 100)) }}%</span>
+    </div>
+    <div class="field">
+      <span class="field-label">Pratica collegata</span>
+      <span class="field-value">
+        {% if classificazione.pratica_numero %}
+          <a href="/pratiche/{{ classificazione.pratica_numero }}">{{ classificazione.pratica_numero }}</a>
+          <small class="meta">({{ classificazione.match_method }}, {{ "%.0f"|format(classificazione.match_confidence * 100) }}%)</small>
+        {% else %}
+          <span class="meta">— (nessun match)</span>
+        {% endif %}
+      </span>
+    </div>
+    {% if pec_inviata %}
+    <div class="field">
+      <span class="field-label">PEC originale</span>
+      <span class="field-value">
+        <a href="/pec-inviate/{{ pec_inviata.id }}">PEC #{{ pec_inviata.id }}</a>
+        del {{ pec_inviata.data_invio.strftime("%d/%m/%Y %H:%M") }}
+      </span>
+    </div>
+    {% endif %}
+    <div class="field">
+      <span class="field-label">Modello AI</span>
+      <span class="field-value">{{ classificazione.ai_model }} · {{ "%.4f"|format(classificazione.ai_cost_eur) }} €</span>
+    </div>
+  </div>
+  {% if classificazione.key_facts %}
+    <h3 class="card-subhead">Fatti chiave estratti</h3>
+    <div class="grid">
+      {% for k, v in classificazione.key_facts.items() %}
+        {% if v %}
+          <div class="field">
+            <span class="field-label">{{ k|replace("_", " ")|title }}</span>
+            <span class="field-value">{{ v }}</span>
+          </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>Corpo del messaggio</h2>
+  <pre style="white-space:pre-wrap; font-family: 'SF Mono', Menlo, Consolas, monospace; font-size:0.88rem; color:var(--lys-grey-900); margin:0; max-height:500px; overflow:auto;">{{ mail.body_text }}</pre>
+  <p class="meta" style="margin-top:12px;">
+    Mostro il primo estratto del corpo (max ~8000 caratteri).
+    Per il messaggio completo + allegati apri il file .eml con un client email.
+  </p>
+</section>
+{% endblock %}

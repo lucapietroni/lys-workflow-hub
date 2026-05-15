@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Risposte assicurazioni · LYS Workflow Hub{% endblock %}
+
+{% block content %}
+<header class="pratica-header">
+  <div>
+    <span class="badge">Posta in entrata</span>
+    <h1>Risposte assicurazioni</h1>
+    <p class="meta">
+      Mail PEC e email ordinarie ricevute, classificate automaticamente dall'AI
+      e collegate alle pratiche WinCar quando possibile.
+    </p>
+  </div>
+</header>
+
+<section class="card">
+  <form method="get" action="/risposte" style="display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap;">
+    <div class="form-field" style="margin:0;">
+      <label for="f_cat">Categoria</label>
+      <select id="f_cat" name="categoria">
+        <option value="">— tutte —</option>
+        {% for c in categorie %}
+          <option value="{{ c }}" {% if categoria == c %}selected{% endif %}>
+            {{ categorie_labels[c] }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-field checkbox-field" style="margin:0;">
+      <label>
+        <input type="checkbox" name="only_action" value="1" {% if only_action %}checked{% endif %} />
+        Solo da gestire
+      </label>
+    </div>
+    <button type="submit" class="btn">Filtra</button>
+    <span class="meta" style="margin-left:auto; align-self:center;">
+      {{ totale }} risultat{% if totale == 1 %}o{% else %}i{% endif %}
+    </span>
+  </form>
+</section>
+
+<section class="card">
+  {% if not records %}
+    <p class="meta" style="margin:0;">
+      Nessuna risposta nelle ultime 300 mail processate.
+      Le risposte vengono scaricate automaticamente quando il task di polling
+      viene eseguito (di norma 2 volte al giorno).
+    </p>
+  {% else %}
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Ricevuta</th>
+          <th>Categoria</th>
+          <th>Pratica</th>
+          <th>Mittente / Oggetto</th>
+          <th>Sommario</th>
+          <th class="col-actions"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in records %}
+        <tr {% if r.action_required %}style="background: #FFF8E5;"{% endif %}>
+          <td>{{ r.mail.ricevuto_at.strftime("%d/%m/%Y %H:%M") }}</td>
+          <td>
+            {% if r.classificazione %}
+              {{ r.categoria_label }}
+              {% if r.action_required %}
+                <span class="badge" style="background:#F1B61E; color:#fff; margin-left:4px;">!</span>
+              {% endif %}
+              <br><small class="hint">confidence {{ "%.0f"|format((r.classificazione.confidence * 100)) }}%</small>
+            {% else %}
+              <em class="meta">non classificata</em>
+            {% endif %}
+          </td>
+          <td>
+            {% if r.pratica_numero %}
+              <a href="/pratiche/{{ r.pratica_numero }}">{{ r.pratica_numero }}</a>
+            {% else %}
+              <span class="meta">—</span>
+            {% endif %}
+          </td>
+          <td>
+            <strong>{{ r.mail.sender }}</strong><br>
+            <small class="meta">{{ r.mail.subject }}</small>
+          </td>
+          <td>
+            {% if r.classificazione and r.classificazione.summary %}
+              {{ r.classificazione.summary }}
+            {% else %}
+              <span class="meta">—</span>
+            {% endif %}
+          </td>
+          <td class="col-actions">
+            <a class="btn btn-sm" href="/risposte/{{ r.mail.id }}">Dettaglio</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</section>
+{% endblock %}

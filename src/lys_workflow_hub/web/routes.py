@@ -21,6 +21,7 @@ from fastapi.templating import Jinja2Templates
 
 from lys_workflow_hub import __version__
 from lys_workflow_hub.config import Settings, get_settings
+from lys_workflow_hub.core.mail_in_repository import MailRepository
 from lys_workflow_hub.core.wincar_repository import WinCarRepository
 from lys_workflow_hub.workflows.cessione_credito import (
     PdfConversionError,
@@ -120,6 +121,13 @@ def pratica_detail(
     except Exception as exc:  # noqa: BLE001
         logger.warning("Impossibile leggere scansioni archiviate per %s: %s", numero, exc)
         context["scansioni"] = []
+    # M3: risposte assicurative da gestire per questa pratica.
+    try:
+        mail_repo = MailRepository(db_path=settings.app_db_path)
+        context["risposte_da_gestire"] = mail_repo.list_action_required_per_pratica(numero)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Impossibile leggere risposte M3 per %s: %s", numero, exc)
+        context["risposte_da_gestire"] = []
     return templates.TemplateResponse(request, "pratica_detail.html", context)
 
 

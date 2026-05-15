@@ -311,6 +311,61 @@ Se preferisci vederla davvero come servizio Windows (visibile in `services.msc`)
 
 ---
 
+## 5.5 Task Scheduler per il polling delle risposte (M3)
+
+Oltre al task che avvia l'app web, M3 ha un **secondo task** che gira
+2 volte al giorno per scaricare le risposte delle compagnie, classificarle
+e mandarti le notifiche.
+
+### Script di lancio
+
+In `C:\LYSApp\lys-workflow-hub\` crea il file `run_polling.bat`:
+
+```bat
+@echo off
+cd /d C:\LYSApp\lys-workflow-hub
+.venv\Scripts\pythonw.exe scripts\run_polling.py
+```
+
+### Task Scheduler
+
+**Utilità di pianificazione** → **Crea attività…**
+
+- **Generale**: nome `LYS Polling Risposte`, ✅ "Esegui solo se l'utente
+  ha effettuato l'accesso", ✅ "Esegui con privilegi più elevati".
+- **Trigger**: due trigger giornalieri, "Ogni giorno alle 09:00" e
+  "Ogni giorno alle 17:00". (Aggiusta gli orari a piacere — l'importante
+  è che il PC sia acceso a quegli orari.)
+- **Azioni**: avvia `C:\LYSApp\lys-workflow-hub\run_polling.bat`,
+  "Inizia in" = `C:\LYSApp\lys-workflow-hub`.
+- **Condizioni**: togli la spunta a "Avvia attività solo se il computer
+  è alimentato da rete elettrica" (così funziona anche su laptop).
+- **Impostazioni**: ✅ "Consenti esecuzione su richiesta" (per testarlo
+  a mano), ✅ "Se l'attività non riesce, riavvia ogni: 10 minuti, fino a
+  3 volte".
+
+### Verifica
+
+Una volta creato, click destro → **Esegui** sul task. Dopo qualche secondo
+controlla `C:\LYSApp\logs\polling.log` per vedere il dettaglio del ciclo:
+
+```powershell
+Get-Content C:\LYSApp\logs\polling.log -Tail 40
+```
+
+Dovresti vedere righe tipo:
+
+```
+2026-05-15 09:00:01 [INFO] polling: === Inizio ciclo polling ===
+2026-05-15 09:00:02 [INFO] polling: PEC fetch: scaricati=3 duplicati=0 errori=0
+2026-05-15 09:00:05 [INFO] polling: Mail 42: match=header_in_reply_to pratica=789 conf=1.00
+2026-05-15 09:00:08 [INFO] polling: Mail 42: categoria=nomina_perito conf=0.95 cost=0.0012 EUR
+2026-05-15 09:00:10 [INFO] polling: Notifiche: push=2 email=True errors=0
+2026-05-15 09:00:10 [INFO] polling: === Fine ciclo polling ===
+```
+
+---
+
 ## 6. Firewall LAN
 
 Per permettere ai tablet aziendali di raggiungere `http://<ip-pc>:8000`,

@@ -21,6 +21,21 @@
   </div>
 {% endif %}
 
+{% if risposte_da_gestire %}
+  <div class="alert alert-warn">
+    <strong>{{ risposte_da_gestire|length }} risposta{% if risposte_da_gestire|length != 1 %}e{% endif %} da gestire</strong>
+    da parte della compagnia per questa pratica:
+    <ul style="margin: 6px 0 0; padding-left: 20px;">
+      {% for r in risposte_da_gestire %}
+        <li>
+          <strong>{{ r.categoria_label }}</strong> · {{ r.summary }}
+          (<a href="/risposte/{{ r.mail_in_id }}">apri</a>)
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+{% endif %}
+
 <header class="pratica-header">
   <div>
     <span class="badge">Pratica</span>

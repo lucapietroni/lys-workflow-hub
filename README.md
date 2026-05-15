@@ -15,7 +15,28 @@ ordinaria, classifica le risposte con un modello AI e produce alert mirati.
 | **M1** | Fondazione + Workflow A (Cessione del credito) | completata |
 | **M2** | Workflow B (Richiesta risarcimento vandalismo) — bozza PEC + anagrafica compagnie | completata |
 | **M2bis** | Invio effettivo via SMTP della PEC (InfoCert SSL 465) + audit | completata |
-| **M3** | Sottosistema posta in entrata + AI + Workflow C (lettura risposte) | pianificato |
+| **M3** | Sottosistema posta in entrata + AI + Workflow C (lettura risposte) | completata |
+
+### Cosa fa M3 oggi
+
+- **Fetch IMAP** incrementale (per UID) dalle caselle PEC (InfoCert Legalmail)
+  e ordinaria (Tophost). Le mail vengono archiviate come `.eml` grezzi in
+  `C:\LYSApp\Mail_in\<anno>\<casella>\`.
+- **Matching automatico** della risposta alla PEC inviata di partenza:
+  prima header `In-Reply-To`/`References` (confidence 1.0), poi euristica
+  su oggetto+body cercando targa/pratica/polizza (confidence 0.6–0.9).
+- **Classificatore AI** (Anthropic Claude Haiku 4.5) in 5 categorie:
+  presa in carico, nomina perito, richiesta documenti, liquidazione, altro.
+  Estrae anche key facts (numero sinistro, importo, perito, scadenza).
+  Output JSON strutturato + tracking costo per chiamata.
+- **Notifiche**: push istantaneo via ntfy.sh per ogni risposta "da gestire"
+  + email riassuntiva di fine ciclo all'indirizzo configurato.
+- **Script polling** schedulabile (Task Scheduler) che esegue
+  fetch → match → classify → notify in un singolo ciclo. Lock file
+  per evitare esecuzioni sovrapposte.
+- **UI**: pagina `/risposte` con lista filtrabile + dettaglio con
+  classificazione, key facts, link alla pratica e alla PEC originale.
+  Banner sulla pagina pratica con le risposte "action_required" pendenti.
 
 ### Cosa fa M2-bis oggi
 

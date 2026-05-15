@@ -85,16 +85,30 @@ class Settings(BaseSettings):
     # Se vuoto, viene usata la ragione sociale della carrozzeria.
     carrozzeria_pec_alias: str = Field(default="")
 
-    # --- AI ---
+    # --- AI (M3) ---
+    # Se True, il classificatore AI NON viene chiamato e la risposta viene
+    # marcata come categoria="altro" con confidence 0. Utile per testare il
+    # flusso end-to-end senza consumare budget Anthropic.
+    ai_disabled: bool = Field(default=False)
     anthropic_api_key: str = Field(default="")
-    anthropic_model: str = Field(default="claude-sonnet-4-5")
+    anthropic_model: str = Field(default="claude-haiku-4-5-20251001")
     ai_budget_monthly_eur: float = Field(default=20.0)
     ai_budget_alert_eur: float = Field(default=15.0)
+    # Cartella centrale dove archiviare le .eml ricevute, partizionata per anno.
+    app_archivio_mail_in: Path = Field(default=Path(r"C:\LYSApp\Mail_in"))
 
-    # --- Notifiche ---
+    # --- Notifiche (M3) ---
+    # Topic ntfy.sh segreto: l'app pubblica push su https://<server>/<topic>;
+    # tu lo aggiungi all'app ntfy sul telefono per riceverli. Senza topic le
+    # notifiche push sono disattivate (l'email riassuntiva resta attiva).
     ntfy_topic: str = Field(default="")
     ntfy_server: str = Field(default="https://ntfy.sh")
+    # Email a cui inviare il riepilogo a fine ciclo polling (può essere la tua
+    # email ordinaria, non serve PEC). Vuoto = niente email riassuntiva.
     alert_email: str = Field(default="")
+    # Se True, niente push e niente email riassuntiva (modalità "silenziosa"
+    # per il rodaggio o per il dev). Utile soprattutto in pytest.
+    notify_disabled: bool = Field(default=False)
 
 
 @lru_cache(maxsize=1)
