@@ -123,6 +123,20 @@ class PollingLock:
 # --------------------------------------------------------------------------- #
 
 
+def _parse_since(value: str):
+    """Converte 'YYYY-MM-DD' (o vuoto) in date | None per il fetcher."""
+    from datetime import date as _date
+    if not (value or "").strip():
+        return None
+    try:
+        return _date.fromisoformat(value.strip())
+    except ValueError:
+        logging.getLogger("polling").warning(
+            "MAIL_FETCH_SINCE non valido (%r), ignorato.", value
+        )
+        return None
+
+
 def _fetch_caselle(
     *,
     mail_repo: MailRepository,
@@ -134,6 +148,10 @@ def _fetch_caselle(
     nuovi_id: list[int] = []
     log = logging.getLogger("polling")
 
+    since_date = _parse_since(settings.mail_fetch_since)
+    if since_date is not None:
+        log.info("Filtro IMAP SINCE attivo: %s", since_date.isoformat())
+
     # PEC
     if settings.pec_user and settings.pec_password:
         fetcher_pec = ImapFetcher(
@@ -143,7 +161,10 @@ def _fetch_caselle(
             password=settings.pec_password,
         )
         result = fetcher_pec.fetch_into(
-            mail_repo, casella=CASELLA_PEC, archivio_root=archivio_root,
+            mail_repo,
+            casella=CASELLA_PEC,
+            archivio_root=archivio_root,
+            since_date=since_date,
         )
         log.info(
             "PEC fetch: scaricati=%d duplicati=%d errori=%d",
@@ -162,7 +183,10 @@ def _fetch_caselle(
             password=settings.email_password,
         )
         result = fetcher_email.fetch_into(
-            mail_repo, casella=CASELLA_EMAIL, archivio_root=archivio_root,
+            mail_repo,
+            casella=CASELLA_EMAIL,
+            archivio_root=archivio_root,
+            since_date=since_date,
         )
         log.info(
             "Email fetch: scaricati=%d duplicati=%d errori=%d",

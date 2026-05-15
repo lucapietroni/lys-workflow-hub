@@ -59,6 +59,13 @@ class Settings(BaseSettings):
     email_password: str = Field(default="")
 
     mail_poll_interval_min: int = Field(default=5)
+    # Filtro data per il fetcher IMAP. Se valorizzato (formato YYYY-MM-DD),
+    # il fetcher scarica SOLO le email ricevute dal server in quella data
+    # in poi. Indispensabile al primo deploy per evitare di processare
+    # l'intero archivio storico di una casella PEC.
+    # Esempio: "2026-05-15" = solo email dal 15 maggio 2026 in poi.
+    # Vuoto = nessun filtro (scarica tutto secondo la logica UID).
+    mail_fetch_since: str = Field(default="")
 
     # --- Posta in uscita (M2) ---
     smtp_host: str = Field(default="")

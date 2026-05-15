@@ -32,6 +32,12 @@
         Solo da gestire
       </label>
     </div>
+    <div class="form-field checkbox-field" style="margin:0;">
+      <label title="Mostra anche le mail non collegate a una PEC inviata (newsletter, ricevute di sistema, ecc.). Per default sono nascoste.">
+        <input type="checkbox" name="show_all" value="1" {% if show_all %}checked{% endif %} />
+        Mostra anche non collegate
+      </label>
+    </div>
     <button type="submit" class="btn">Filtra</button>
     <span class="meta" style="margin-left:auto; align-self:center;">
       {{ totale }} risultat{% if totale == 1 %}o{% else %}i{% endif %}

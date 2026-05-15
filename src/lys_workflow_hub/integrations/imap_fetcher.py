@@ -27,7 +27,7 @@ import logging
 import re
 import ssl
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from email.message import EmailMessage
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -214,6 +214,7 @@ class ImapFetcher:
         casella: str,
         archivio_root: Path,
         max_messages: int = 200,
+        since_date: date | None = None,
     ) -> FetchResult:
         """Scarica le mail con UID > max_uid già visto e le salva nel repository.
 
@@ -244,8 +245,20 @@ class ImapFetcher:
             )
 
         try:
-            # UID-based search: tutti gli UID superiori a quello già visto.
-            criterion = f"UID {last_uid + 1}:*" if last_uid else "ALL"
+            # Costruzione criterion SEARCH:
+            # - se `last_uid > 0`: filtro UID-based (incremental fetch).
+            # - se `since_date` valorizzato: aggiungo `SINCE DD-Mon-YYYY` per
+            #   ignorare i messaggi più vecchi di quella data (utile al primo
+            #   run per evitare di scaricare l'intero storico).
+            since_clause = ""
+            if since_date is not None:
+                # IMAP vuole il mese in inglese a 3 lettere (Jan, Feb, …).
+                since_clause = f' SINCE "{since_date.strftime("%d-%b-%Y")}"'
+            if last_uid:
+                criterion = f"UID {last_uid + 1}:*{since_clause}".strip()
+            else:
+                criterion = f"{since_clause.lstrip()}" or "ALL"
+            logger.info("IMAP %s: SEARCH criterion=%s", casella, criterion)
             typ, data = conn.uid("SEARCH", None, criterion)
             if typ != "OK":
                 logger.error("IMAP %s: SEARCH fallita: %s %s", casella, typ, data)

@@ -54,9 +54,19 @@ def risposte_list(
     request: Request,
     categoria: str | None = None,
     only_action: bool = False,
+    show_all: bool = False,
     mail_repo: MailRepository = Depends(get_mail_repo),
 ) -> HTMLResponse:
-    records = mail_repo.list_con_classificazione(limit=300)
+    """Lista risposte.
+
+    Di default mostra solo le mail collegate a una PEC inviata
+    (`solo_matched=True`): è il caso d'uso operativo, evita di vedere
+    newsletter e ricevute di sistema. Con `?show_all=1` la query restituisce
+    invece TUTTE le mail in archivio (utile per debug).
+    """
+    records = mail_repo.list_con_classificazione(
+        limit=300, solo_matched=(not show_all),
+    )
     if categoria and categoria in CATEGORIE:
         records = [r for r in records if r.categoria == categoria]
     if only_action:
@@ -69,6 +79,7 @@ def risposte_list(
             "records": records,
             "categoria": categoria,
             "only_action": only_action,
+            "show_all": show_all,
             "categorie": CATEGORIE,
             "categorie_labels": CATEGORIA_LABELS,
             "totale": len(records),

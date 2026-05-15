@@ -437,12 +437,28 @@ class MailRepository:
     # -- viste combinate -----------------------------------------------------
 
     def list_con_classificazione(
-        self, limit: int = 200
+        self,
+        limit: int = 200,
+        *,
+        solo_matched: bool = True,
     ) -> list[MailConClassificazione]:
+        """Lista cronologica delle mail con eventuale classificazione.
+
+        - `solo_matched=True` (default): mostra solo le mail collegate a una
+          PEC inviata della carrozzeria (`pec_inviata_id IS NOT NULL`).
+          Filtra automaticamente il rumore: newsletter, ricevute PEC di
+          sistema, spam che ha superato i filtri della casella.
+        - `solo_matched=False`: mostra tutte le mail in archivio.
+        """
+        if solo_matched:
+            where = "WHERE mc.pec_inviata_id IS NOT NULL"
+        else:
+            where = ""
         with self._connect() as conn:
             rows = conn.execute(
                 "SELECT mi.id AS m_id, mc.id AS c_id FROM mail_in mi "
                 "LEFT JOIN mail_classificate mc ON mc.mail_in_id = mi.id "
+                f"{where} "
                 "ORDER BY mi.ricevuto_at DESC, mi.id DESC LIMIT ?",
                 (int(limit),),
             ).fetchall()
