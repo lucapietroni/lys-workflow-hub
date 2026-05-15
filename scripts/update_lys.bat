@@ -44,8 +44,13 @@ if not exist "%OLD%" (
 )
 
 REM ---- Calcola timestamp per il backup ----
-for /f "tokens=2 delims==" %%a in ('"wmic os get localdatetime /value"') do set "DT=%%a"
-set "TS=!DT:~0,8!-!DT:~8,4!"
+REM wmic non e' piu' disponibile in Windows 11/Server 2022. Usiamo PowerShell,
+REM che produce sempre yyyyMMdd-HHmmss indipendentemente dal formato regionale.
+for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "Get-Date -Format 'yyyyMMdd-HHmmss'"`) do set "TS=%%i"
+if not defined TS (
+    echo ATTENZIONE: impossibile generare il timestamp via PowerShell. Uso fallback.
+    set "TS=manuale"
+)
 set "BACKUP=C:\LYSApp\lys-workflow-hub-backup-!TS!"
 
 REM ---- Ferma il task ----
