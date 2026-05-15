@@ -453,7 +453,12 @@ def _build_parametri_invio(
         compagnia_nome=data.polizza_compagnia_nome or (compagnia.nome if compagnia else ""),
         sender_email=sender_email,
         sender_display=sender_display,
-        reply_to=settings.carrozzeria_email or "",
+        # NIENTE Reply-To di default: vogliamo che la compagnia risponda alla
+        # nostra stessa PEC (il `From:`), così la risposta ha valore legale e
+        # finisce nella casella che il polling M3 monitora. Mettere qui la
+        # mail ordinaria farebbe sì che "Rispondi" del client PEC compili la
+        # casella sbagliata.
+        reply_to="",
         recipient_email=data.compagnia_pec,
         subject=bozza["subject"],
         body=bozza["body"],
