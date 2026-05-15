@@ -72,6 +72,14 @@ class Settings(BaseSettings):
     smtp_port: int = Field(default=587)
     smtp_user: str = Field(default="")
     smtp_password: str = Field(default="")
+    # From: address separato dall'utente di autenticazione. Utile se il provider
+    # usa un alias o se la casella e' su un dominio diverso da quello di auth.
+    # Vuoto = usa smtp_user come From.
+    smtp_from: str = Field(default="")
+    # Modalita' di cifratura SMTP: "starttls" (default, porta 587), "ssl"
+    # (porta 465) o "none" (sconsigliato). Se vuoto, viene scelto in base
+    # alla porta: 465 -> ssl, altrimenti starttls.
+    smtp_tls: str = Field(default="")
 
     pec_smtp_host: str = Field(default="sendm.cert.legalmail.it")
     pec_smtp_port: int = Field(default=465)

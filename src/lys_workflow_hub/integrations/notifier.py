@@ -101,9 +101,17 @@ def _send_summary_email(
     recipient: str,
     subject: str,
     body_text: str,
+    smtp_tls: str = "",
     timeout_seconds: int = 30,
 ) -> tuple[bool, str]:
-    """Invia un'email semplice via SMTP (STARTTLS su 587 o SSL su 465)."""
+    """Invia un'email semplice via SMTP.
+
+    `smtp_tls`:
+      - "ssl"      -> SMTPS implicito (tipicamente porta 465).
+      - "starttls" -> connessione cleartext + STARTTLS (tipicamente porta 587).
+      - "none"     -> nessuna cifratura (sconsigliato).
+      - ""         -> auto: 465 -> ssl, altrimenti starttls.
+    """
     if not (smtp_host and smtp_user and smtp_password and sender and recipient):
         return False, "SMTP non configurato"
 
@@ -115,16 +123,27 @@ def _send_summary_email(
     msg["Message-ID"] = make_msgid(domain="lysauto.local")
     msg.set_content(body_text or "", subtype="plain", charset="utf-8")
 
+    mode = (smtp_tls or "").strip().lower()
+    if not mode:
+        mode = "ssl" if int(smtp_port) == 465 else "starttls"
+
     context = ssl.create_default_context()
     try:
-        if int(smtp_port) == 465:
+        if mode == "ssl":
             with smtplib.SMTP_SSL(
                 host=smtp_host, port=smtp_port,
                 context=context, timeout=timeout_seconds,
             ) as smtp:
                 smtp.login(smtp_user, smtp_password)
                 smtp.send_message(msg)
-        else:
+        elif mode == "none":
+            with smtplib.SMTP(
+                host=smtp_host, port=smtp_port, timeout=timeout_seconds,
+            ) as smtp:
+                smtp.ehlo()
+                smtp.login(smtp_user, smtp_password)
+                smtp.send_message(msg)
+        else:  # starttls (default)
             with smtplib.SMTP(
                 host=smtp_host, port=smtp_port, timeout=timeout_seconds,
             ) as smtp:
@@ -226,6 +245,7 @@ def notify_batch(
     smtp_password: str,
     smtp_sender: str,
     alert_email: str,
+    smtp_tls: str = "",
     base_url: str = "",
     disabled: bool = False,
 ) -> NotifyResult:
@@ -282,6 +302,7 @@ def notify_batch(
             recipient=alert_email,
             subject=subject,
             body_text=body,
+            smtp_tls=smtp_tls,
         )
         email_sent = ok
         if not ok:

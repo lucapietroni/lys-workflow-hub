@@ -368,7 +368,12 @@ def run_once() -> int:
                 smtp_port=settings.smtp_port,
                 smtp_user=settings.smtp_user,
                 smtp_password=settings.smtp_password,
-                smtp_sender=settings.smtp_user or settings.alert_email,
+                smtp_sender=(
+                    settings.smtp_from
+                    or settings.smtp_user
+                    or settings.alert_email
+                ),
+                smtp_tls=settings.smtp_tls,
                 alert_email=settings.alert_email,
                 base_url=base_url,
                 disabled=bool(settings.notify_disabled),
