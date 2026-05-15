@@ -201,7 +201,6 @@ def _fetch_caselle(
 
 
 _PEC_RECEIPT_SUBJ_PREFIXES = (
-    "POSTA CERTIFICATA:",
     "ACCETTAZIONE:",
     "CONSEGNA:",
     "AVVENUTA CONSEGNA:",
@@ -211,6 +210,10 @@ _PEC_RECEIPT_SUBJ_PREFIXES = (
     "ERRORE CONSEGNA:",
     "PRESA IN CARICO:",
 )
+# NB: "POSTA CERTIFICATA:" da solo NON è una ricevuta. È il prefisso che il
+# provider mette sull'oggetto di QUALSIASI messaggio PEC reale in arrivo
+# (incapsulato come postacert.eml). Le ricevute tecniche hanno prefissi
+# diversi (ACCETTAZIONE, CONSEGNA, ...).
 
 
 def _is_pec_receipt(mail: MailIn) -> bool:
@@ -218,13 +221,15 @@ def _is_pec_receipt(mail: MailIn) -> bool:
 
     Sono inutili da classificare via AI (è solo conferma di consegna o
     accettazione del messaggio, non una risposta dal cessionario) e fanno solo
-    spendere budget Anthropic. Le riconosciamo dal mittente di sistema o
-    dall'oggetto canonico.
+    spendere budget Anthropic.
+
+    Importante: NON basta vedere `posta-certificata@` nel mittente per
+    decidere — anche le PEC REALI in arrivo hanno quel mittente tecnico,
+    perché il provider del destinatario incapsula sempre i messaggi PEC.
+    Le ricevute si riconoscono inequivocabilmente solo dai PREFISSI
+    canonici dell'oggetto (ACCETTAZIONE, CONSEGNA, ...).
     """
-    sender = (mail.sender or "").lower()
     subj_upper = (mail.subject or "").upper()
-    if "posta-certificata@" in sender:
-        return True
     return subj_upper.startswith(_PEC_RECEIPT_SUBJ_PREFIXES)
 
 
