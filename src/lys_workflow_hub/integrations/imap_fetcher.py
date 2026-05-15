@@ -85,18 +85,52 @@ def _parse_received_date(msg: EmailMessage) -> datetime:
         return datetime.now()
 
 
-def _extract_body_text(msg: EmailMessage, limit: int = 8000) -> str:
-    """Restituisce il body in plain text. Se l'email è solo HTML, fa un
-    decapamento minimale dei tag.
+def _find_postacert(msg: EmailMessage) -> EmailMessage | None:
+    """Cerca un allegato `postacert.eml` (PEC InfoCert standard) e lo restituisce
+    come `EmailMessage` parsed. Restituisce None se non presente.
 
-    Per le PEC InfoCert il payload principale del Message-ID destinatario
-    è dentro `postacert.eml` attached: quel corpo non lo decifriamo qui,
-    leggiamo solo il body diretto del messaggio.
+    Le PEC InfoCert/Legalmail incapsulano il messaggio originale come allegato
+    `message/rfc822` con filename `postacert.eml`; il body del messaggio
+    contenitore è solo un wrapper tecnico ("Messaggio di posta certificata...
+    Il giorno X il messaggio Y è stato inviato da Z"). Per la classificazione
+    AI è inutile, va letto il payload reale.
     """
+    if not msg.is_multipart():
+        return None
+    for part in msg.walk():
+        if part.get_content_type() != "message/rfc822":
+            continue
+        filename = (part.get_filename() or "").lower()
+        if filename == "postacert.eml" or "postacert" in filename:
+            # `message/rfc822` parts: il contenuto è già un EmailMessage.
+            try:
+                inner = part.get_payload(0)
+                if isinstance(inner, EmailMessage):
+                    return inner
+                if isinstance(inner, list) and inner and isinstance(inner[0], EmailMessage):
+                    return inner[0]
+            except (IndexError, AttributeError, KeyError):
+                pass
+    return None
+
+
+def _extract_body_text(msg: EmailMessage, limit: int = 8000) -> str:
+    """Restituisce il body in plain text del messaggio (o del postacert
+    incapsulato, se è una PEC InfoCert).
+
+    Strategia:
+      1. Se la PEC contiene un allegato `postacert.eml`, leggiamo il body di
+         QUELLO (è il messaggio vero della compagnia). Questo evita di dare
+         in pasto all'AI il wrapper tecnico InfoCert.
+      2. Altrimenti leggiamo il body del messaggio root.
+      3. Se è solo HTML, decapiamo i tag in modo minimale.
+    """
+    target = _find_postacert(msg) or msg
+
     candidate_text = ""
     candidate_html = ""
     try:
-        body = msg.get_body(preferencelist=("plain", "html"))
+        body = target.get_body(preferencelist=("plain", "html"))
         if body is not None:
             charset = body.get_content_charset() or "utf-8"
             payload = body.get_content()
@@ -108,7 +142,7 @@ def _extract_body_text(msg: EmailMessage, limit: int = 8000) -> str:
                 candidate_text = payload
     except (KeyError, AttributeError):
         # Email non strutturata in modo standard, prova a iterare le parti.
-        for part in msg.walk():
+        for part in target.walk():
             if part.is_multipart():
                 continue
             ctype = part.get_content_type()

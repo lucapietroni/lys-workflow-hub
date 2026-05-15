@@ -40,6 +40,7 @@ from lys_workflow_hub.config import get_settings  # noqa: E402
 from lys_workflow_hub.core.mail_in_repository import (  # noqa: E402
     CASELLA_EMAIL,
     CASELLA_PEC,
+    CAT_ALTRO,
     MailIn,
     MailRepository,
 )
@@ -199,6 +200,34 @@ def _fetch_caselle(
     return nuovi_id
 
 
+_PEC_RECEIPT_SUBJ_PREFIXES = (
+    "POSTA CERTIFICATA:",
+    "ACCETTAZIONE:",
+    "CONSEGNA:",
+    "AVVENUTA CONSEGNA:",
+    "MANCATA CONSEGNA:",
+    "NON ACCETTAZIONE:",
+    "ANOMALIA MESSAGGIO:",
+    "ERRORE CONSEGNA:",
+    "PRESA IN CARICO:",
+)
+
+
+def _is_pec_receipt(mail: MailIn) -> bool:
+    """Riconosce le ricevute di sistema generate da InfoCert / gestori PEC.
+
+    Sono inutili da classificare via AI (è solo conferma di consegna o
+    accettazione del messaggio, non una risposta dal cessionario) e fanno solo
+    spendere budget Anthropic. Le riconosciamo dal mittente di sistema o
+    dall'oggetto canonico.
+    """
+    sender = (mail.sender or "").lower()
+    subj_upper = (mail.subject or "").upper()
+    if "posta-certificata@" in sender:
+        return True
+    return subj_upper.startswith(_PEC_RECEIPT_SUBJ_PREFIXES)
+
+
 def _classifica_e_logga(
     mail_id: int,
     *,
@@ -211,6 +240,27 @@ def _classifica_e_logga(
     if mail is None:
         log.warning("mail_id %s non trovata", mail_id)
         return None
+
+    # Short-circuit: ricevute PEC di sistema → classifica come "altro" gratis,
+    # senza chiamare matcher né AI. Restano in DB per audit, ma non spendono
+    # budget e non vengono mostrate in /risposte (perché pec_inviata_id=None).
+    if _is_pec_receipt(mail):
+        log.info("Mail %s: ricevuta PEC di sistema, skip AI/matcher.", mail.id)
+        classif = mail_repo.save_classification(
+            mail_in_id=mail.id,
+            pec_inviata_id=None,
+            pratica_numero=None,
+            categoria=CAT_ALTRO,
+            confidence=1.0,
+            summary="Ricevuta PEC di sistema (consegna/accettazione/anomalia).",
+            action_required=False,
+            key_facts={},
+            ai_model="(skip)",
+            ai_cost_eur=0.0,
+            match_method="none",
+            match_confidence=0.0,
+        )
+        return (mail, classif)
 
     # 1) Matching
     match = match_mail(mail, pec_repo)
