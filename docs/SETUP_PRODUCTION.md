@@ -215,31 +215,39 @@ Task Scheduler** perché Word COM (richiesto per generare i PDF) funziona
 correttamente in sessione utente e ha problemi se l'app gira come servizio
 LocalSystem.
 
-### 5.1 Crea uno script di avvio
+### 5.1 Script di avvio
 
-In `C:\LYSApp\lys-workflow-hub\` crea un file `start_lys.bat` con questo
-contenuto (PowerShell come admin, oppure click destro → Nuovo file di testo,
-rinomina in `.bat`):
+Lo script `start_lys.bat` è **già incluso nel repository**, nella radice di
+`lys-workflow-hub\`. Dopo lo step §2 (download/estrazione ZIP) lo trovi
+in `C:\LYSApp\lys-workflow-hub\start_lys.bat`. Non devi crearlo a mano.
+
+Contenuto attuale (a solo titolo informativo, non modificarlo a meno che
+non sia strettamente necessario):
 
 ```bat
 @echo off
 cd /d C:\LYSApp\lys-workflow-hub
-.venv\Scripts\pythonw.exe -m lys_workflow_hub.main
+set PYTHONPATH=%CD%\src
+start "" .venv\Scripts\pythonw.exe -m lys_workflow_hub.main
+exit
 ```
 
-> 💡 Usiamo **`pythonw.exe`** (versione GUI di Python) invece di `python.exe`
-> così la finestra cmd non resta visibile durante l'esecuzione in background.
-> I log finiscono comunque in `C:\LYSApp\logs\lys-hub.log` (vedi §9 Logs).
->
-> Se vuoi tenere visibile la finestra (utile in fase di rodaggio per vedere
-> cosa fa l'app), usa `python.exe` al posto di `pythonw.exe`: i log andranno
-> sia su console sia su file.
+Note tecniche su come è fatto:
 
-> Se stai aggiornando da una versione precedente del progetto, **modifica il
-> tuo `start_lys.bat` esistente** sostituendo la riga `python -m lys_workflow_hub.main`
-> con `.venv\Scripts\pythonw.exe -m lys_workflow_hub.main` e rimuovi la riga
-> `call .venv\Scripts\activate.bat` (non serve più, `pythonw.exe` del venv
-> attiva già da solo il proprio ambiente).
+- **`pythonw.exe`** (versione GUI di Python) invece di `python.exe`: niente
+  finestra cmd visibile durante l'esecuzione in background. I log finiscono
+  comunque nel file `C:\LYSApp\logs\lys-hub.log` (vedi §9 Logs).
+- **`start ""`** lancia il processo Python in modo asincrono, in modo che
+  il `.bat` possa terminare con `exit` immediatamente senza tenere la cmd
+  attaccata al server.
+- **`set PYTHONPATH=%CD%\src`** è una cintura di sicurezza: anche se in
+  futuro qualcuno dimenticasse di rifare `pip install -e .` dopo un
+  aggiornamento, Python troverebbe comunque i moduli sotto `src/`.
+
+> 💡 Se vuoi temporaneamente tenere visibile la console (per esempio per
+> diagnosticare un problema), puoi creare a fianco un `start_lys_debug.bat`
+> con `python.exe` (non `pythonw.exe`) e senza `start ""` né `exit` —
+> i log andranno su console + su file. Vedi §9 per dettagli.
 
 ### 5.2 Crea il Task Scheduler
 
@@ -319,13 +327,28 @@ e mandarti le notifiche.
 
 ### Script di lancio
 
-In `C:\LYSApp\lys-workflow-hub\` crea il file `run_polling.bat`:
+Lo script `run_polling.bat` è **già incluso nel repository**, nella radice
+di `lys-workflow-hub\`. Lo trovi in `C:\LYSApp\lys-workflow-hub\run_polling.bat`.
+Non devi crearlo a mano.
+
+Contenuto (a solo titolo informativo):
 
 ```bat
 @echo off
 cd /d C:\LYSApp\lys-workflow-hub
+set PYTHONPATH=%CD%\src
 .venv\Scripts\pythonw.exe scripts\run_polling.py
 ```
+
+Note tecniche:
+
+- A differenza di `start_lys.bat`, **non usa `start ""` né `exit`**. Il `.bat`
+  resta in attesa che `pythonw.exe` termini il ciclo (di norma 30 sec – 2 min),
+  così Task Scheduler può vedere il return code e segnalarti eventuali
+  esecuzioni andate male.
+- Niente finestra cmd visibile (`pythonw.exe`). I log dettagliati di ogni
+  ciclo (fetch, match, classify, notify, costo AI) finiscono in
+  `C:\LYSApp\logs\polling.log` con rotazione 5 MB × 5 file.
 
 ### Task Scheduler
 
