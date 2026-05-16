@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% block title %}Bozza #{{ d.id }} · LYS Workflow Hub{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb">
+  <a href="/bozze">← Torna all'elenco bozze</a>
+  {% if mail %}
+    · <a href="/risposte/{{ mail.id }}">vai alla risposta originale #{{ mail.id }}</a>
+  {% endif %}
+</nav>
+
+<header class="pratica-header">
+  <div>
+    <span class="badge badge-{{ d.status }}">{{ STATUS_LABELS.get(d.status, d.status) }}</span>
+    <h1>Bozza #{{ d.id }}</h1>
+    <p class="meta">
+      Categoria: <strong>{{ categoria_label }}</strong>
+      {% if d.pratica_numero %}
+        · Pratica <a href="/pratiche/{{ d.pratica_numero }}">{{ d.pratica_numero }}</a>
+      {% endif %}
+      · Creata il {{ d.created_at.strftime("%d/%m/%Y alle %H:%M") }}
+      {% if d.ai_model %}
+        · AI: <code>{{ d.ai_model }}</code>{% if d.ai_cost_eur %} ({{ "%.4f"|format(d.ai_cost_eur) }} €){% endif %}
+      {% endif %}
+    </p>
+  </div>
+</header>
+
+{% if d.status == STATUS_SENT %}
+  <div class="alert alert-success">
+    <strong>Bozza gia' inviata</strong> il
+    {% if d.sent_at %}{{ d.sent_at.strftime("%d/%m/%Y alle %H:%M") }}{% endif %}.
+    File .eml archiviato in <code>{{ d.sent_eml_path }}</code>. La bozza non e' piu' modificabile.
+  </div>
+{% elif d.status == STATUS_CANCELLED %}
+  <div class="alert alert-warn">
+    <strong>Bozza annullata.</strong>
+    {% if d.cancel_reason %}Motivo: {{ d.cancel_reason }}{% endif %}
+  </div>
+{% endif %}
+
+{% if classif and mail %}
+<section class="card">
+  <h2>Messaggio originale</h2>
+  <div class="form-grid">
+    <div class="field">
+      <span class="field-label">Da</span>
+      <span class="field-value"><code>{{ mail.sender }}</code></span>
+    </div>
+    <div class="field">
+      <span class="field-label">Oggetto originale</span>
+      <span class="field-value">{{ mail.subject }}</span>
+    </div>
+    <div class="field">
+      <span class="field-label">Ricevuto</span>
+      <span class="field-value">{{ mail.ricevuto_at.strftime("%d/%m/%Y %H:%M") }}</span>
+    </div>
+    {% if classif.summary %}
+    <div class="field">
+      <span class="field-label">Riassunto M3</span>
+      <span class="field-value">{{ classif.summary }}</span>
+    </div>
+    {% endif %}
+  </div>
+</section>
+{% endif %}
+
+<form method="post" action="/bozze/{{ d.id }}/salva" class="cessione-form">
+  <section class="card">
+    <h2>Destinatario e oggetto</h2>
+    <div class="form-grid">
+      <div class="form-field">
+        <label for="f_to_address">Destinatario PEC <span class="req">*</span></label>
+        <input id="f_to_address" name="to_address" type="email"
+               value="{{ d.to_address }}"
+               {% if not d.is_editable %}readonly{% endif %} required />
+        <small class="hint">Indirizzo PEC della compagnia. Pre-compilato dal mittente del messaggio originale.</small>
+      </div>
+      <div class="form-field">
+        <label for="f_subject">Oggetto</label>
+        <input id="f_subject" name="subject" type="text"
+               value="{{ d.subject }}"
+               {% if not d.is_editable %}readonly{% endif %} />
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Corpo del messaggio</h2>
+    <p class="meta" style="margin-top:-6px;">
+      Includere intestazione, riferimenti e firma e' gia' nello scaffold:
+      modifica solo il <em>contenuto centrale</em> se vuoi correggere il
+      testo dell'AI prima di inviare.
+    </p>
+    <textarea id="f_body" name="body" rows="22"
+              {% if not d.is_editable %}readonly{% endif %}
+              style="width:100%; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9rem;">{{ d.body_html }}</textarea>
+  </section>
+
+  <section class="card">
+    <h2>Allegati ({{ d.attachments_included|length }}/{{ d.attachments|length }} selezionati)</h2>
+    {% if not d.attachments %}
+      <p class="meta">
+        Nessun allegato trovato nella cartella pratica.
+        {% if d.pratica_numero %}
+          Cartella attesa:
+          <code>C:\WinCar\Archivi\Pratiche\{{ d.pratica_numero }}\Pubblici\</code>
+        {% endif %}
+      </p>
+    {% else %}
+      <ul class="allegati-list">
+        {% for a in d.attachments %}
+          <li class="allegato-row">
+            <label>
+              <input type="checkbox" name="allegati_inclusi" value="{{ a.path }}"
+                {% if a.included %}checked{% endif %}
+                {% if not d.is_editable %}disabled{% endif %} />
+              <span class="allegato-name">{{ a.label }}</span>
+              <span class="allegato-meta"><code>{{ a.path }}</code></span>
+            </label>
+          </li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  </section>
+
+  {% if d.is_editable %}
+    <section class="card">
+      <h2>Azioni</h2>
+      <div class="form-actions" style="border:none; padding-top:8px; margin-top:0;">
+        <button type="submit" class="btn"
+                formaction="/bozze/{{ d.id }}/salva">
+          Salva modifiche
+        </button>
+        <button type="submit" class="btn"
+                formaction="/bozze/{{ d.id }}/salva"
+                name="mark_ready" value="1">
+          Salva e marca come pronta
+        </button>
+        <button type="submit" class="btn btn-primary"
+                formaction="/bozze/{{ d.id }}/invia"
+                onclick="return confirm('Inviare la bozza via PEC?{% if dry_run %} (modalita DRY_RUN: nessun invio reale){% endif %}');">
+          {% if dry_run %}Invia (DRY RUN){% else %}Invia via PEC →{% endif %}
+        </button>
+        <button type="submit" class="btn"
+                formaction="/bozze/{{ d.id }}/annulla"
+                onclick="return confirm('Annullare la bozza? Non sara' piu' inviabile, ma resta in archivio.');"
+                formnovalidate>
+          Annulla bozza
+        </button>
+      </div>
+      {% if dry_run %}
+        <p class="meta">
+          Modalita' PEC_DRY_RUN attiva (.env): l'app NON apre connessioni SMTP.
+          Il file .eml viene comunque generato e archiviato.
+        </p>
+      {% endif %}
+    </section>
+  {% endif %}
+</form>
+{% endblock %}

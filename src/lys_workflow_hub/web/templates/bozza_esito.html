@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Esito invio bozza #{{ d.id }} · LYS Workflow Hub{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb">
+  <a href="/bozze">← Torna all'elenco bozze</a>
+</nav>
+
+<header class="pratica-header">
+  <div>
+    <span class="badge">M4 · invio</span>
+    <h1>Esito invio bozza #{{ d.id }}</h1>
+  </div>
+</header>
+
+{% if esito.ok and esito.dry_run %}
+  <div class="alert alert-success">
+    <strong>Bozza inviata in modalita' DRY-RUN.</strong>
+    Nessuna connessione SMTP aperta, ma il file .eml e' stato comunque
+    archiviato e la bozza e' passata in stato SENT (per coerenza con il
+    workflow reale). Per inviare davvero, imposta <code>PEC_DRY_RUN=false</code>
+    nel file <code>.env</code> e riavvia l'app.
+  </div>
+{% elif esito.ok %}
+  <div class="alert alert-success">
+    <strong>Bozza inviata correttamente via PEC.</strong>
+    Destinatario: <code>{{ d.to_address }}</code>.
+  </div>
+{% else %}
+  <div class="alert alert-warn">
+    <strong>Invio fallito.</strong>
+    {% if esito.error %}<br>Errore: <code>{{ esito.error }}</code>{% endif %}
+    <br>La bozza e' rimasta in stato <em>{{ d.status }}</em> e puoi riprovare
+    dall'<a href="/bozze/{{ d.id }}">editor</a>.
+  </div>
+{% endif %}
+
+<section class="card">
+  <h2>Dettaglio</h2>
+  <div class="form-grid">
+    <div class="field">
+      <span class="field-label">Stato bozza</span>
+      <span class="field-value"><strong>{{ d.status }}</strong></span>
+    </div>
+    <div class="field">
+      <span class="field-label">Pratica</span>
+      <span class="field-value">
+        {% if d.pratica_numero %}
+          <a href="/pratiche/{{ d.pratica_numero }}">{{ d.pratica_numero }}</a>
+        {% else %}
+          <span class="meta">—</span>
+        {% endif %}
+      </span>
+    </div>
+    <div class="field">
+      <span class="field-label">Destinatario PEC</span>
+      <span class="field-value"><code>{{ d.to_address }}</code></span>
+    </div>
+    {% if esito.message_id %}
+      <div class="field">
+        <span class="field-label">Message-ID</span>
+        <span class="field-value"><code>{{ esito.message_id }}</code></span>
+      </div>
+    {% endif %}
+    {% if esito.eml_path %}
+      <div class="field">
+        <span class="field-label">File .eml</span>
+        <span class="field-value"><code>{{ esito.eml_path }}</code></span>
+      </div>
+    {% endif %}
+    {% if d.sent_at %}
+      <div class="field">
+        <span class="field-label">Inviata il</span>
+        <span class="field-value">{{ d.sent_at.strftime("%d/%m/%Y %H:%M") }}</span>
+      </div>
+    {% endif %}
+  </div>
+</section>
+
+<section class="card">
+  <h2>Allegati spediti</h2>
+  {% if not d.attachments_included %}
+    <p class="meta">Nessun allegato selezionato.</p>
+  {% else %}
+    <ul class="allegati-list">
+      {% for a in d.attachments_included %}
+        <li class="allegato-row"><code>{{ a.path }}</code></li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Cosa fare ora</h2>
+  <ul style="margin:8px 0; padding-left:22px;">
+    <li>Le bozze inviate sono consultabili da <a href="/bozze?status=sent">elenco SENT</a>.</li>
+    <li>Quando la compagnia rispondera', M3 catturera' il messaggio in automatico al prossimo polling e (se la policy lo prevede) generera' una nuova bozza in <a href="/bozze">M4</a>.</li>
+    <li>Per le pratiche con piu' scambi, ogni risposta della compagnia genera una sua bozza dedicata.</li>
+  </ul>
+</section>
+{% endblock %}

@@ -37,17 +37,27 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from lys_workflow_hub.config import get_settings  # noqa: E402
+from lys_workflow_hub.core.compagnie_repository import CompagnieRepository  # noqa: E402
+from lys_workflow_hub.core.draft_repository import DraftRepository  # noqa: E402
 from lys_workflow_hub.core.mail_in_repository import (  # noqa: E402
     CASELLA_EMAIL,
     CASELLA_PEC,
     CAT_ALTRO,
+    MailClassificata,
     MailIn,
     MailRepository,
 )
 from lys_workflow_hub.core.pec_log_repository import PecLogRepository  # noqa: E402
+from lys_workflow_hub.core.wincar_repository import WinCarRepository  # noqa: E402
 from lys_workflow_hub.integrations.ai_classifier import classify  # noqa: E402
 from lys_workflow_hub.integrations.imap_fetcher import ImapFetcher  # noqa: E402
 from lys_workflow_hub.integrations.notifier import notify_batch  # noqa: E402
+from lys_workflow_hub.workflows.risposte.context_builder import (  # noqa: E402
+    build_scaffold_context,
+)
+from lys_workflow_hub.workflows.risposte.draft_service import (  # noqa: E402
+    crea_bozza_se_serve,
+)
 from lys_workflow_hub.workflows.risposte.matcher import match_mail  # noqa: E402
 
 
@@ -306,6 +316,66 @@ def _classifica_e_logga(
     return (mail, classif)
 
 
+def _genera_bozza_m4(
+    mail: MailIn,
+    classif: MailClassificata,
+    *,
+    mail_repo: MailRepository,
+    draft_repo: DraftRepository,
+    wincar_repo: WinCarRepository | None,
+    compagnie_repo: CompagnieRepository,
+    settings,
+) -> None:
+    """Hook M4: dopo che M3 ha classificato la mail, M4 valuta se serve
+    una bozza di risposta e nel caso la crea.
+
+    Non solleva mai: M4 e' un "additional outcome" del polling, non deve
+    bloccare il ciclo. Errori vengono solo loggati.
+
+    La policy (auto / opt_in / nessuna) e' applicata internamente da
+    `crea_bozza_se_serve`. Qui passiamo sempre i parametri completi
+    perche' la generazione vera scatta solo se la policy lo prevede.
+    """
+    log = logging.getLogger("polling")
+    try:
+        ctx_meta = build_scaffold_context(
+            pratica_numero=classif.pratica_numero,
+            subject_originale=mail.subject,
+            wincar_repo=wincar_repo,
+            compagnie_repo=compagnie_repo,
+            settings=settings,
+        )
+        draft = crea_bozza_se_serve(
+            classif,
+            draft_repo=draft_repo,
+            mail_repo=mail_repo,
+            scaffold_ctx=ctx_meta.context,
+            archivio_root=settings.wincar_archivio,
+            api_key=settings.anthropic_api_key,
+            model=settings.anthropic_model,
+            ai_disabled=bool(settings.ai_disabled),
+            to_address=mail.sender or "",
+        )
+        if draft is None:
+            log.info(
+                "M4 mail %s categoria %s: nessuna bozza (policy)",
+                mail.id, classif.categoria,
+            )
+        else:
+            log.info(
+                "M4 mail %s -> bozza %s creata (pratica=%s, allegati=%d/%d, "
+                "ai_cost=%.4f EUR)",
+                mail.id, draft.id, draft.pratica_numero,
+                len(draft.attachments_included), len(draft.attachments),
+                draft.ai_cost_eur,
+            )
+    except Exception as exc:  # noqa: BLE001
+        log.exception(
+            "M4 hook fallito per mail %s (non blocca il polling): %s",
+            mail.id, exc,
+        )
+
+
 def run_once() -> int:
     """Esegue un ciclo singolo. Restituisce un exit code (0=OK, 2=lock attivo,
     1=errore generico)."""
@@ -322,6 +392,17 @@ def run_once() -> int:
 
             mail_repo = MailRepository(db_path=settings.app_db_path)
             pec_repo = PecLogRepository(db_path=settings.app_db_path)
+            # M4 repos: draft + anagrafica + wincar (per ScaffoldContext).
+            draft_repo = DraftRepository(db_path=settings.app_db_path)
+            compagnie_repo = CompagnieRepository(db_path=settings.app_db_path)
+            try:
+                wincar_repo: WinCarRepository | None = WinCarRepository.from_settings(settings)
+            except Exception as exc:  # noqa: BLE001
+                log.warning(
+                    "WinCarRepository non inizializzabile (M4 partira' senza dati pratica): %s",
+                    exc,
+                )
+                wincar_repo = None
 
             # 1) Fetch IMAP
             nuovi_id = _fetch_caselle(
@@ -350,6 +431,16 @@ def run_once() -> int:
                     )
                     if res:
                         classificati.append(res)
+                        # Hook M4: idempotente e tollerante ai fallimenti.
+                        mail_obj, classif_obj = res
+                        _genera_bozza_m4(
+                            mail_obj, classif_obj,
+                            mail_repo=mail_repo,
+                            draft_repo=draft_repo,
+                            wincar_repo=wincar_repo,
+                            compagnie_repo=compagnie_repo,
+                            settings=settings,
+                        )
                 except Exception as exc:  # noqa: BLE001
                     log.exception("Errore classificando mail %s: %s", mail_id, exc)
 

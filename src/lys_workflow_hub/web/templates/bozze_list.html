@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}Bozze risposta · LYS Workflow Hub{% endblock %}
+
+{% block content %}
+<header class="pratica-header">
+  <div>
+    <span class="badge">M4</span>
+    <h1>Bozze risposta</h1>
+    <p class="meta">
+      Risposte alle compagnie pre-compilate dall'AI, in attesa di revisione e invio.
+    </p>
+  </div>
+</header>
+
+<section class="card">
+  <h2>Stato</h2>
+  <div class="form-grid">
+    <div class="field">
+      <span class="field-label">Da rivedere</span>
+      <span class="field-value">
+        <a href="/bozze?status={{ STATUS_PENDING }}">{{ counts[STATUS_PENDING] }}</a>
+      </span>
+    </div>
+    <div class="field">
+      <span class="field-label">Pronte</span>
+      <span class="field-value">
+        <a href="/bozze?status={{ STATUS_READY }}">{{ counts[STATUS_READY] }}</a>
+      </span>
+    </div>
+    <div class="field">
+      <span class="field-label">Inviate</span>
+      <span class="field-value">
+        <a href="/bozze?status={{ STATUS_SENT }}">{{ counts[STATUS_SENT] }}</a>
+      </span>
+    </div>
+    <div class="field">
+      <span class="field-label">Annullate</span>
+      <span class="field-value">
+        <a href="/bozze?status={{ STATUS_CANCELLED }}">{{ counts[STATUS_CANCELLED] }}</a>
+      </span>
+    </div>
+  </div>
+  <p class="meta" style="margin-top:8px;">
+    Filtro attivo: <strong>{{ filtro }}</strong> ({{ totale }} bozze)
+    {% if filtro != "azionabili" %}· <a href="/bozze">torna a quelle azionabili</a>{% endif %}
+  </p>
+</section>
+
+{% if not rows %}
+  <section class="card">
+    <p class="meta">
+      Nessuna bozza in questo filtro. Le bozze vengono generate
+      automaticamente quando arriva una risposta della categoria
+      <code>richiesta_documenti</code> o <code>liquidazione</code>; per
+      le altre categorie puoi generarle a mano dalla pagina di dettaglio
+      della risposta.
+    </p>
+  </section>
+{% else %}
+  <section class="card">
+    <h2>Elenco</h2>
+    <table class="lys-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Pratica</th>
+          <th>Categoria</th>
+          <th>Destinatario</th>
+          <th>Stato</th>
+          <th>Allegati</th>
+          <th>Creata</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td>{{ r.draft.id }}</td>
+          <td>
+            {% if r.draft.pratica_numero %}
+              <a href="/pratiche/{{ r.draft.pratica_numero }}">{{ r.draft.pratica_numero }}</a>
+            {% else %}
+              <span class="meta">—</span>
+            {% endif %}
+          </td>
+          <td>{{ r.categoria_label }}</td>
+          <td><code>{{ r.draft.to_address or "—" }}</code></td>
+          <td>
+            <span class="badge badge-{{ r.draft.status }}">
+              {{ STATUS_LABELS.get(r.draft.status, r.draft.status) }}
+            </span>
+          </td>
+          <td>{{ r.draft.attachments_included|length }}/{{ r.draft.attachments|length }}</td>
+          <td><small class="meta">{{ r.draft.created_at.strftime("%d/%m/%Y %H:%M") }}</small></td>
+          <td>
+            <a class="btn btn-small" href="/bozze/{{ r.draft.id }}">Apri</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+{% endif %}
+{% endblock %}

@@ -1,4 +1,4 @@
-"""Workflow C — Lettura risposte assicurazioni (M3) + bozze di risposta (M4).
+"""Workflow C - Lettura risposte assicurazioni (M3) + bozze di risposta (M4).
 
 Espone le funzioni principali del workflow per essere importate dai router web
 e dallo script di polling.
@@ -20,6 +20,10 @@ from lys_workflow_hub.workflows.risposte.categorie_policy import (
     consente_opt_in,
     deve_generare_auto,
     policy_per,
+)
+from lys_workflow_hub.workflows.risposte.context_builder import (
+    ContextWithMeta,
+    build_scaffold_context,
 )
 from lys_workflow_hub.workflows.risposte.draft_service import (
     EsitoSpedizione,
@@ -48,10 +52,10 @@ from lys_workflow_hub.workflows.risposte.sender import (
 
 
 __all__ = [
-    # M3 — matcher
+    # M3 - matcher
     "MatchResult",
     "match_mail",
-    # M4 — policy categorie
+    # M4 - policy categorie
     "BOZZA_AUTO",
     "BOZZA_OPT_IN",
     "BOZZA_NESSUNA",
@@ -59,23 +63,26 @@ __all__ = [
     "policy_per",
     "deve_generare_auto",
     "consente_opt_in",
-    # M4 — attachments
+    # M4 - context builder
+    "ContextWithMeta",
+    "build_scaffold_context",
+    # M4 - attachments
     "SuggestionResult",
     "suggerisci",
     "conta_inclusi",
-    # M4 — scaffold
+    # M4 - scaffold
     "ScaffoldContext",
     "build_subject",
     "build_body",
     "anonimizza_testo_originale",
-    # M4 — body generator
+    # M4 - body generator
     "BodyGenerationResult",
     "genera_body",
-    # M4 — sender
+    # M4 - sender
     "ParametriSpedizione",
     "EsitoSpedizione",
     "spedisci",
-    # M4 — draft service (orchestrazione)
+    # M4 - draft service (orchestrazione)
     "GenerationResult",
     "SendResult",
     "genera_bozza",

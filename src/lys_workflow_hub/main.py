@@ -50,6 +50,7 @@ from lys_workflow_hub.core.schema_check import (
 from lys_workflow_hub.core.wincar_repository import WinCarRepository
 from lys_workflow_hub.web.api import router as api_router
 from lys_workflow_hub.web.routes import router as pages_router
+from lys_workflow_hub.web.routes_bozze import router as bozze_router
 from lys_workflow_hub.web.routes_compagnie import router as compagnie_router
 from lys_workflow_hub.web.routes_pec_log import router as pec_log_router
 from lys_workflow_hub.web.routes_risposte import router as risposte_router
@@ -171,6 +172,7 @@ app.include_router(compagnie_router)
 app.include_router(vandalismo_router)
 app.include_router(pec_log_router)
 app.include_router(risposte_router)
+app.include_router(bozze_router)
 app.include_router(api_router)
 
 

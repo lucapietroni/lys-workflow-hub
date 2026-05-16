@@ -19,6 +19,11 @@
   </div>
   <div class="pratica-actions">
     <a class="btn" href="/risposte/{{ mail.id }}/scarica">Scarica .eml</a>
+    {% if classificazione %}
+      <form method="post" action="/risposte/{{ mail.id }}/genera-bozza" style="display:inline;">
+        <button type="submit" class="btn btn-primary">Genera bozza →</button>
+      </form>
+    {% endif %}
   </div>
 </header>
 
