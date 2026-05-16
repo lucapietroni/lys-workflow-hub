@@ -108,14 +108,28 @@
         {% endif %}
       </p>
     {% else %}
+      <p class="meta" style="margin-top:-6px;">
+        Click sul nome o sull'anteprima per aprire il file in una nuova
+        scheda prima di confermare la selezione.
+      </p>
       <ul class="allegati-list">
         {% for a in d.attachments %}
-          <li class="allegato-row">
+          {% set is_img = a.path.lower().endswith(('.jpg','.jpeg','.png','.gif','.webp','.bmp','.tif','.tiff')) %}
+          {% set preview_url = "/bozze/" ~ d.id ~ "/allegato?path=" ~ (a.path | urlencode) %}
+          <li class="allegato-row {% if is_img %}foto-row{% endif %}">
             <label>
               <input type="checkbox" name="allegati_inclusi" value="{{ a.path }}"
                 {% if a.included %}checked{% endif %}
                 {% if not d.is_editable %}disabled{% endif %} />
-              <span class="allegato-name">{{ a.label }}</span>
+              {% if is_img %}
+                <a href="{{ preview_url }}" target="_blank" rel="noopener" class="foto-thumb"
+                   title="Apri {{ a.label }} a piena risoluzione">
+                  <img src="{{ preview_url }}" alt="{{ a.label }}" loading="lazy" />
+                </a>
+              {% endif %}
+              <a href="{{ preview_url }}" target="_blank" rel="noopener" class="allegato-name">
+                {{ a.label }}
+              </a>
               <span class="allegato-meta"><code>{{ a.path }}</code></span>
             </label>
           </li>

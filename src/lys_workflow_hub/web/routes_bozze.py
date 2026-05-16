@@ -18,8 +18,8 @@ import logging
 from pathlib import Path
 from typing import Iterable
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from lys_workflow_hub import __version__
@@ -158,6 +158,70 @@ def bozze_list(
             "STATUS_CANCELLED": STATUS_CANCELLED,
             "totale": len(drafts),
         },
+    )
+
+
+# --------------------------------------------------------------------------- #
+#  Preview / download di un allegato della bozza
+# --------------------------------------------------------------------------- #
+
+
+# Estensioni che il browser puo' renderizzare inline (no Content-Disposition).
+_INLINE_EXT = {
+    ".pdf": "application/pdf",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".bmp": "image/bmp",
+    ".tif": "image/tiff",
+    ".tiff": "image/tiff",
+    ".txt": "text/plain; charset=utf-8",
+}
+
+
+def _mime_for(path: Path) -> str:
+    return _INLINE_EXT.get(path.suffix.lower(), "application/octet-stream")
+
+
+@router.get("/bozze/{draft_id}/allegato")
+def bozza_allegato_preview(
+    draft_id: int,
+    path: str = Query(..., description="Path assoluto del file (deve corrispondere a un allegato della bozza)"),
+    draft_repo: DraftRepository = Depends(get_draft_repo),
+) -> FileResponse:
+    """Serve uno degli allegati della bozza per anteprima nel browser.
+
+    Sicurezza: il path richiesto deve corrispondere ESATTAMENTE a uno degli
+    `attachments[].path` della bozza. Niente path traversal, niente file
+    al di fuori della lista gia' associata alla bozza.
+    """
+    d = _load_draft_or_404(draft_id, draft_repo)
+    valid_paths = {a.path for a in d.attachments}
+    if path not in valid_paths:
+        raise HTTPException(
+            403,
+            "Allegato non autorizzato per questa bozza.",
+        )
+    file_path = Path(path)
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(
+            410,
+            f"File non piu' disponibile sul filesystem: {path}",
+        )
+    media_type = _mime_for(file_path)
+    # Per i tipi inline (pdf, immagini), niente Content-Disposition: il
+    # browser apre nella tab. Per gli altri, download diretto.
+    is_inline = file_path.suffix.lower() in _INLINE_EXT
+    headers = {}
+    if is_inline:
+        headers["Content-Disposition"] = f'inline; filename="{file_path.name}"'
+    return FileResponse(
+        path=file_path,
+        filename=file_path.name,
+        media_type=media_type,
+        headers=headers,
     )
 
 

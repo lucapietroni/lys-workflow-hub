@@ -49,6 +49,7 @@ polling (eccetto stato logicamente invalido in DB).
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -333,16 +334,59 @@ def crea_bozza_se_serve(
     return draft
 
 
+_RE_EMAIL = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
+_RE_PER_CONTO_DI = re.compile(
+    r"per\s+conto\s+di[:\s]+([A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,})",
+    re.IGNORECASE,
+)
+_GATEWAY_PEC_MARKERS = ("posta-certificata@", "postacert@")
+
+
+def _is_gateway_pec(email: str) -> bool:
+    """True se l'email e' un gateway PEC tecnico (Aruba/InfoCert) e non
+    un vero destinatario raggiungibile."""
+    low = (email or "").lower()
+    return any(marker in low for marker in _GATEWAY_PEC_MARKERS)
+
+
 def _destinatario_da_mittente(sender_raw: str) -> str:
-    """Estrae 'a@b.it' da una stringa tipo 'Mario Rossi <a@b.it>'."""
+    """Estrae il vero indirizzo PEC del mittente da una stringa header `From`.
+
+    Le PEC arrivano incapsulate dal provider: l'header `From` ha tipicamente
+    forma `'"Per conto di: vero@dominio.it" <posta-certificata@gateway.it>'`
+    dove `posta-certificata@` e' un mittente tecnico di sistema a cui *non*
+    si puo' rispondere — il vero destinatario per il nostro reply e' quello
+    nel `Per conto di:`.
+
+    Strategia in ordine di preferenza:
+      1. estrae l'email dopo "Per conto di:";
+      2. estrae l'email tra `<...>` se non e' un gateway tecnico;
+      3. cerca qualsiasi email nel testo che non sia un gateway tecnico;
+      4. fallback: ritorna il sender raw cosi' com'e' (l'utente correggera').
+    """
     if not sender_raw:
         return ""
     s = sender_raw.strip()
-    if "<" in s and ">" in s:
-        start = s.find("<")
-        end = s.find(">", start)
-        if end > start:
-            return s[start + 1:end].strip()
+
+    # 1) Per conto di: vero@indirizzo.it
+    m = _RE_PER_CONTO_DI.search(s)
+    if m:
+        return m.group(1).lower()
+
+    # 2) Email tra angolari, escludendo gateway PEC tecnici.
+    angolari = re.findall(r"<([^<>\s]+@[^<>\s]+)>", s)
+    for em in angolari:
+        if not _is_gateway_pec(em):
+            return em.lower()
+
+    # 3) Qualsiasi email nel testo, escludendo gateway PEC.
+    for em in _RE_EMAIL.findall(s):
+        if not _is_gateway_pec(em):
+            return em.lower()
+
+    # 4) Fallback: prima email trovata (anche se gateway) oppure stringa raw.
+    if angolari:
+        return angolari[0].lower()
     return s
 
 
