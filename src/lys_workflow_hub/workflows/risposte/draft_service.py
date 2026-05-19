@@ -311,8 +311,12 @@ def crea_bozza_se_serve(
         ai_disabled=ai_disabled,
     )
 
-    # to_address: pre-popola se non fornito.
-    destinatario = to_address.strip() or _destinatario_da_mittente(mail.sender)
+    # to_address: pre-popola dal parametro o dal sender della mail; in
+    # entrambi i casi passa attraverso il normalizzatore (idempotente su
+    # email gia' pulite, ma essenziale quando la sorgente e' un From: PEC
+    # incapsulato del tipo '"Per conto di: vero@x.it" <posta-certificata@y.it>'.
+    raw_to = to_address.strip() or (mail.sender or "")
+    destinatario = _destinatario_da_mittente(raw_to)
 
     draft = draft_repo.insert_draft(
         mail_class_id=int(classificazione.id),
