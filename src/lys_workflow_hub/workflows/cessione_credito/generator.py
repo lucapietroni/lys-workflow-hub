@@ -383,6 +383,10 @@ def generate(data: CessioneData, out: BinaryIO | None = None) -> bytes:
         "responsabili, in quanto superiore al valore commerciale ante-sinistro del "
         "mezzo;",
 
+        "il sottoscritto cedente si obbliga altresì a garantire l'obbligo di "
+        "disponibilità del veicolo per la stima peritale e valutazione dei danni "
+        "e/o riparazioni parziali e/o totali eventualmente effettuati;",
+
         "inoltre il sottoscritto cedente si obbliga a conferire il mandato di "
         f"gestione della pratica per il recupero dei danni (conseguenti al prefatto "
         f"sinistro) alla {CARROZZERIA_NOME} in forma irrevocabile.",
