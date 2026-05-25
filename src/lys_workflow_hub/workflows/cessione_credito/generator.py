@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from datetime import date
 from io import BytesIO
+from pathlib import Path
 from typing import BinaryIO
 
 from docx import Document
@@ -33,6 +34,10 @@ from lys_workflow_hub.workflows.cessione_credito.data import (
     CessioneData,
     LUOGO_SOTTOSCRIZIONE,
 )
+
+
+_ASSETS_DIR = Path(__file__).parent / "assets"
+_FIRMA_CESSIONARIO_PNG = _ASSETS_DIR / "firma_cessionario.png"
 
 
 # Palette
@@ -121,10 +126,28 @@ def _set_cell_shading(cell, hex_color: str) -> None:
     tc_pr.append(shd)
 
 
+def _add_top_border_to_cell(cell) -> None:
+    """Aggiunge bordo superiore alla cella, rimuove gli altri."""
+    tc_pr = cell._tc.get_or_add_tcPr()
+    tc_borders = OxmlElement("w:tcBorders")
+    top = OxmlElement("w:top")
+    top.set(qn("w:val"), "single")
+    top.set(qn("w:sz"), "6")
+    top.set(qn("w:space"), "0")
+    top.set(qn("w:color"), "000000")
+    tc_borders.append(top)
+    for side in ("left", "bottom", "right"):
+        b = OxmlElement(f"w:{side}")
+        b.set(qn("w:val"), "nil")
+        tc_borders.append(b)
+    tc_pr.append(tc_borders)
+
+
 def _add_signature_table(doc, *, with_date: str | None = None) -> None:
     """Tabella firme a due colonne: Cessionario | Cedente.
 
     Se `with_date` e' valorizzato, una riga sopra ospita "Roma, <data>".
+    La colonna Cessionario mostra il logo Lys Auto se il file PNG e' presente.
     """
     if with_date:
         p = doc.add_paragraph()
@@ -136,30 +159,37 @@ def _add_signature_table(doc, *, with_date: str | None = None) -> None:
     table.autofit = False
     for col in table.columns:
         col.width = Cm(8.0)
-    # Riga 1: etichette
-    labels = table.rows[0].cells
-    for cell, label in zip(labels, ["Firma Cessionario", "Firma Cedente"]):
+
+    # Riga 1: firme + etichette
+    row_cells = table.rows[0].cells
+    for idx, (cell, label) in enumerate(
+        zip(row_cells, ["Firma Cessionario", "Firma Cedente"])
+    ):
         cell.width = Cm(8.0)
-        cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-        para = cell.paragraphs[0]
-        _add_run(para, label, bold=True, color=COLOR_BLACK, size=10)
-        para.paragraph_format.space_before = Pt(36)  # spazio per la firma sopra
-        para.paragraph_format.space_after = Pt(0)
-        para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        # Linea sopra (top border della cella)
-        tc_pr = cell._tc.get_or_add_tcPr()
-        tc_borders = OxmlElement("w:tcBorders")
-        top = OxmlElement("w:top")
-        top.set(qn("w:val"), "single")
-        top.set(qn("w:sz"), "6")
-        top.set(qn("w:space"), "0")
-        top.set(qn("w:color"), "000000")
-        tc_borders.append(top)
-        for side in ("left", "bottom", "right"):
-            b = OxmlElement(f"w:{side}")
-            b.set(qn("w:val"), "nil")
-            tc_borders.append(b)
-        tc_pr.append(tc_borders)
+        cell.vertical_alignment = WD_ALIGN_VERTICAL.BOTTOM
+        _add_top_border_to_cell(cell)
+
+        use_firma = (idx == 0) and _FIRMA_CESSIONARIO_PNG.exists()
+
+        # Prima riga della cella: etichetta
+        label_para = cell.paragraphs[0]
+        label_para.paragraph_format.space_before = Pt(6)
+        label_para.paragraph_format.space_after = Pt(4)
+        label_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        _add_run(label_para, label, bold=True, color=COLOR_BLACK, size=10)
+
+        if use_firma:
+            # Seconda riga: immagine firma sotto l'etichetta
+            img_para = cell.add_paragraph()
+            img_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            img_para.paragraph_format.space_before = Pt(2)
+            img_para.paragraph_format.space_after = Pt(0)
+            run = img_para.add_run()
+            run.add_picture(str(_FIRMA_CESSIONARIO_PNG), width=Cm(4.5))
+        else:
+            # Spazio vuoto per firma manuale
+            label_para.paragraph_format.space_before = Pt(36)
+
     # Riga 2: vuota per spaziatura
     for cell in table.rows[1].cells:
         cell.text = ""
