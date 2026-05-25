@@ -7,7 +7,7 @@ vandalico, ecc.), monitora le risposte delle compagnie assicurative via PEC ed e
 ordinaria, classifica le risposte con un modello AI, produce bozze di replica e genera
 alert mirati.
 
-> Versione attuale: **0.4.0.dev1**
+> Versione attuale: **0.4.1**
 
 ## Stato del progetto
 
@@ -18,6 +18,7 @@ alert mirati.
 | **M2bis** | Invio effettivo via SMTP della PEC (InfoCert SSL 465) + audit | ✅ completata |
 | **M3** | Sottosistema posta in entrata + AI + Workflow C (lettura risposte) | ✅ completata |
 | **M4** | Cruscotto bozze di risposta + context builder + firma cessione | ✅ completata |
+| **M4.1** | Bug fix bozza risposta: subject annidato (POSTA CERTIFICATA) + compagnia mancante in PEC inviate | ✅ completata |
 
 ---
 
