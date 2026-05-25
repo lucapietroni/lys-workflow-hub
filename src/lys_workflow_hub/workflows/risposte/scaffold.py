@@ -88,7 +88,7 @@ def _filter_empty(lines: Iterable[str]) -> list[str]:
 # --------------------------------------------------------------------------- #
 
 
-_RE_SUBJECT_PREFIX = ("re:", "r:", "fwd:", "fw:", "i:")
+_RE_SUBJECT_PREFIX = ("re:", "r:", "fwd:", "fw:", "i:", "posta certificata:")
 
 
 def _strip_reply_prefix(subj: str) -> str:
@@ -119,13 +119,20 @@ def build_subject(ctx: ScaffoldContext) -> str:
     else:
         out = "Riscontro alla Vs. comunicazione"
 
+    base_lower = base.lower()
     riferimenti: list[str] = []
     if ctx.pratica_numero is not None:
-        riferimenti.append(f"Ns. rif. pratica {ctx.pratica_numero}")
+        ref = f"Ns. rif. pratica {ctx.pratica_numero}"
+        if ref.lower() not in base_lower:
+            riferimenti.append(ref)
     if ctx.sinistro_numero:
-        riferimenti.append(f"Sinistro {ctx.sinistro_numero}")
+        ref = f"Sinistro {ctx.sinistro_numero}"
+        if ref.lower() not in base_lower:
+            riferimenti.append(ref)
     if ctx.veicolo_targa:
-        riferimenti.append(f"Targa {ctx.veicolo_targa}")
+        ref = f"Targa {ctx.veicolo_targa}"
+        if ref.lower() not in base_lower:
+            riferimenti.append(ref)
     if riferimenti:
         out = f"{out} - {' - '.join(riferimenti)}"
     return out

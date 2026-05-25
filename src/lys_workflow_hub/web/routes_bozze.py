@@ -357,6 +357,7 @@ async def bozza_invia(
     mail_repo: MailRepository = Depends(get_mail_repo),
     pec_log_repo: PecLogRepository = Depends(get_pec_log_repo),
     compagnie_repo: CompagnieRepository = Depends(get_compagnie_repo),
+    wincar_repo: WinCarRepository | None = Depends(get_wincar_repo),
     settings: Settings = Depends(get_settings),
 ) -> HTMLResponse:
     """Esegue l'invio PEC della bozza.
@@ -389,19 +390,24 @@ async def bozza_invia(
         )
 
     # 2) Lookup compagnia dall'anagrafica per metadati invio.
+    #    Usiamo build_scaffold_context (stessa logica della creazione bozza):
+    #    legge il nome compagnia dalla pratica WinCar poi lo risolve in
+    #    anagrafica. Piu' robusto del reverse-lookup per PEC perche' la
+    #    compagnia puo' rispondere da un indirizzo diverso da c.pec.
     compagnia_nome = ""
     compagnia_id: int | None = None
     classif = mail_repo.get_classification(d.mail_class_id)
     if classif and classif.pratica_numero:
-        # Best effort: usiamo l'indirizzo to_address per lookup inverso
-        # via lista compagnie. Non blocchiamo se non si trova.
         try:
-            tutte = compagnie_repo.list_all()
-            for c in tutte:
-                if c.pec and c.pec.lower() == (d.to_address or "").lower():
-                    compagnia_nome = c.nome
-                    compagnia_id = c.id
-                    break
+            ctx_meta = build_scaffold_context(
+                pratica_numero=classif.pratica_numero,
+                wincar_repo=wincar_repo,
+                compagnie_repo=compagnie_repo,
+                settings=settings,
+            )
+            compagnia_nome = ctx_meta.context.compagnia_nome
+            if ctx_meta.compagnia is not None:
+                compagnia_id = ctx_meta.compagnia.id
         except Exception as exc:  # noqa: BLE001
             logger.warning("Lookup compagnia per invio bozza %s fallito: %s", d.id, exc)
 
