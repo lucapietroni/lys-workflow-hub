@@ -121,3 +121,7 @@ logs/
 ~$*.docx
 *.tmp
 *.bak
+# File generati da test/debug locali
+test_*.docx
+test_page_*.png
+preview_page_*.png
