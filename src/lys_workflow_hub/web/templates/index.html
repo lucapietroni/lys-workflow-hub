@@ -1,9 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Cerca pratica · LYS Workflow Hub{% endblock %}
+{% block title %}Pratiche · LYS Workflow Hub{% endblock %}
 
 {% block content %}
 <section class="hero">
-  <h1>Cerca una pratica</h1>
+  <div class="hero-eyebrow">Carrozzeria LYS Auto</div>
+  <h1>Gestione pratiche sinistri</h1>
   <p class="subtitle">
     Digita il cognome del cliente, la targa, oppure il numero pratica WinCar.
     L'app capisce da sola che tipo di ricerca fare.
@@ -19,6 +20,19 @@
     />
     <button type="submit">Cerca</button>
   </form>
+
+  {% if kpi_bozze is defined or kpi_risposte_ar is defined %}
+  <div class="hero-stats">
+    <div class="hero-stat">
+      <span class="stat-n{% if kpi_risposte_ar %} stat-alert{% endif %}">{{ kpi_risposte_ar }}</span>
+      <span class="stat-l">Risposte da gestire</span>
+    </div>
+    <div class="hero-stat">
+      <span class="stat-n{% if kpi_bozze %} stat-alert{% endif %}">{{ kpi_bozze }}</span>
+      <span class="stat-l">Bozze in attesa</span>
+    </div>
+  </div>
+  {% endif %}
 </section>
 
 {% if query %}

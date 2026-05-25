@@ -486,6 +486,16 @@ class MailRepository:
             ).fetchall()
         return [self._row_to_class(r) for r in rows]
 
+    def count_action_required(self) -> int:
+        """Conta globalmente le mail con action_required=True collegate a una
+        pratica (usato per il KPI sulla home)."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) AS n FROM mail_classificate "
+                "WHERE action_required = 1 AND pec_inviata_id IS NOT NULL"
+            ).fetchone()
+        return int(row["n"]) if row else 0
+
     def ai_cost_mese_corrente(self) -> float:
         """Somma costi AI per i record classificati nel mese corrente."""
         prefisso = datetime.now().strftime("%Y-%m")

@@ -4,6 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{% block title %}LYS Workflow Hub{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="/static/style.css" />
   </head>
   <body>
@@ -12,7 +14,7 @@
         <span class="brand-mark">LYS</span>
         <span class="brand-name">Workflow Hub</span>
       </a>
-      <nav class="topnav">
+      <nav class="topnav" id="topnav">
         <a href="/">Pratiche</a>
         <a href="/compagnie">Compagnie</a>
         <a href="/pec-inviate">PEC inviate</a>
@@ -33,5 +35,18 @@
       <span class="dot">·</span>
       <span>Lettura WinCar in sola lettura</span>
     </footer>
+
+    <script>
+      // Marca il link attivo nella nav in base al path corrente
+      (function () {
+        var path = location.pathname.replace(/\/$/, '') || '/';
+        document.querySelectorAll('#topnav a').forEach(function (a) {
+          var href = a.getAttribute('href').replace(/\/$/, '') || '/';
+          if (href === '/' ? path === '/' : path.startsWith(href)) {
+            a.classList.add('active');
+          }
+        });
+      })();
+    </script>
   </body>
 </html>

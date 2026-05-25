@@ -21,6 +21,11 @@ from fastapi.templating import Jinja2Templates
 
 from lys_workflow_hub import __version__
 from lys_workflow_hub.config import Settings, get_settings
+from lys_workflow_hub.core.draft_repository import (
+    DraftRepository,
+    STATUS_PENDING,
+    STATUS_READY,
+)
 from lys_workflow_hub.core.mail_in_repository import MailRepository
 from lys_workflow_hub.core.wincar_repository import WinCarRepository
 from lys_workflow_hub.workflows.cessione_credito import (
@@ -69,6 +74,7 @@ def home(
     request: Request,
     q: str | None = None,
     repo: WinCarRepository = Depends(get_repository),
+    settings: Settings = Depends(get_app_settings),
 ) -> HTMLResponse:
     """Home: form di ricerca; se `q` e' valorizzato mostra anche i risultati.
 
@@ -79,6 +85,17 @@ def home(
     context["query"] = q or ""
     context["results"] = []
     context["search_kind"] = None
+
+    # KPI per la hero strip — silenzioso in caso di errore DB
+    try:
+        _draft_repo = DraftRepository(db_path=settings.app_db_path)
+        _mail_repo = MailRepository(db_path=settings.app_db_path)
+        _counts = _draft_repo.conta_per_status()
+        context["kpi_bozze"] = _counts.get(STATUS_PENDING, 0) + _counts.get(STATUS_READY, 0)
+        context["kpi_risposte_ar"] = _mail_repo.count_action_required()
+    except Exception:
+        context["kpi_bozze"] = 0
+        context["kpi_risposte_ar"] = 0
 
     if q and q.strip():
         q_clean = q.strip()
