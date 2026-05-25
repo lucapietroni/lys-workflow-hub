@@ -62,8 +62,11 @@ Deve elencare `Microsoft Access Driver (*.mdb, *.accdb)`.
 
 ### 1.3 Microsoft Word
 
-Serve solo per la conversione `.docx → PDF` via COM (libreria `docx2pdf`).
+Serve per la conversione `.docx → PDF` via COM (libreria `docx2pdf`).
 Se Office è già installato sul PC, è OK. Altrimenti procurarselo.
+
+> **Nota:** LibreOffice non è supportato. La conversione PDF usa `docx2pdf`
+> che richiede Word in sessione utente (vedi §9 in caso di problemi).
 
 > Niente Git sul PC carrozzeria: lo sviluppo gira sul PC dello sviluppatore,
 > sul PC carrozzeria ci arriva solo lo ZIP del codice.
@@ -166,8 +169,9 @@ APP_PORT=8000
 APP_ARCHIVIO_CESSIONI=C:\LYSApp\Cessioni_firmate
 ```
 
-> Le voci `PEC_*`, `EMAIL_*`, `SMTP_*`, `ANTHROPIC_API_KEY`, `NTFY_*` si
-> compileranno solo in M3 (lettura risposte assicurazione). Per ora ignorale.
+> Le voci `PEC_*`, `EMAIL_*`, `SMTP_*`, `ANTHROPIC_API_KEY`, `NTFY_*` sono
+> necessarie per il polling delle risposte (M3/M4). Compilale tutte prima
+> di avviare il task di polling (§5.5).
 
 Salva e chiudi il blocco note.
 

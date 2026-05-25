@@ -4,18 +4,38 @@ Piattaforma di automazione documentale per la **Carrozzeria LYS Auto srl**, inte
 con il gestionale **WinCar**. Legge le pratiche dal database di WinCar in sola lettura,
 genera documenti precompilati (cessione del credito, richiesta risarcimento per atto
 vandalico, ecc.), monitora le risposte delle compagnie assicurative via PEC ed email
-ordinaria, classifica le risposte con un modello AI e produce alert mirati.
+ordinaria, classifica le risposte con un modello AI, produce bozze di replica e genera
+alert mirati.
 
-> Versione attuale: **0.2.0 — Workflow A (cessione) + Workflow B (vandalismo, bozza PEC)**
+> Versione attuale: **0.4.0.dev1**
 
 ## Stato del progetto
 
 | Milestone | Contenuto | Stato |
 |----|----|----|
-| **M1** | Fondazione + Workflow A (Cessione del credito) | completata |
-| **M2** | Workflow B (Richiesta risarcimento vandalismo) — bozza PEC + anagrafica compagnie | completata |
-| **M2bis** | Invio effettivo via SMTP della PEC (InfoCert SSL 465) + audit | completata |
-| **M3** | Sottosistema posta in entrata + AI + Workflow C (lettura risposte) | completata |
+| **M1** | Fondazione + Workflow A (Cessione del credito) | ✅ completata |
+| **M2** | Workflow B (Richiesta risarcimento vandalismo) — bozza PEC + anagrafica compagnie | ✅ completata |
+| **M2bis** | Invio effettivo via SMTP della PEC (InfoCert SSL 465) + audit | ✅ completata |
+| **M3** | Sottosistema posta in entrata + AI + Workflow C (lettura risposte) | ✅ completata |
+| **M4** | Cruscotto bozze di risposta + context builder + firma cessione | ✅ completata |
+
+---
+
+### Cosa fa M4 oggi
+
+- **Cruscotto bozze** `/bozze`: lista filtrabile delle bozze di risposta alle compagnie
+  (in attesa, pronte, inviate, annullate) con badge per stato e pratica.
+- **Editor bozza**: pagina di modifica corpo PEC + selezione allegati + destinatario,
+  con anteprima allegati cliccabile prima dell'invio.
+- **Generazione automatica** della bozza nel ciclo di polling: quando arriva una
+  risposta classificata come "action required", il sistema costruisce in automatico
+  il testo di replica contestualizzato (context builder).
+- **Invio PEC** direttamente dall'editor (via SMTP InfoCert, dry-run da `.env`).
+- **Firma pre-apposta** sul documento Cessione del Credito: l'immagine della firma
+  Lys Auto viene inserita automaticamente sotto il campo "Firma Cessionario" nel PDF
+  generato, così il documento è pronto senza intervento manuale.
+- **Opt-in manuale**: dalla pagina risposta è possibile forzare la generazione di una
+  bozza per qualsiasi mail, anche se non action-required.
 
 ### Cosa fa M3 oggi
 
@@ -70,18 +90,8 @@ ordinaria, classifica le risposte con un modello AI e produce alert mirati.
   testuale completo (assicurato, polizza, veicolo, evento, denuncia,
   cessione, elenco numerato allegati, richiesta di nomina perito, contatti
   carrozzeria). L'operatore seleziona via checkbox quali allegati elencare.
-- Pulsanti: **Copia corpo PEC** (negli appunti) e **Scarica bozza .txt**
-  (file di testo con destinatario, oggetto e percorsi assoluti degli
-  allegati da agganciare nel client PEC).
 
-### Cosa NON fa ancora M2/M2-bis
-
-- La lettura delle PEC in arrivo e la classificazione AI delle risposte
-  delle compagnie (presa in carico, nomina perito, richiesta documenti,
-  liquidazione): rimandato a M3.
-
-Vedi `docs/Analisi_LYS_Workflow_Hub_v2.docx` per il documento di analisi completo
-e `docs/Decisioni_finalizzate_v2.docx` per il riepilogo delle decisioni di progetto.
+---
 
 ## Architettura in due righe
 
@@ -94,7 +104,7 @@ e `docs/Decisioni_finalizzate_v2.docx` per il riepilogo delle decisioni di proge
         |  Workflow registry          |
         |   - cessione_credito        |
         |   - risarcimento_vandalismo |
-        |   - (futuri)                |
+        |   - risposte (M3/M4)        |
         +-----------------------------+
                      |
    +-----+ +-----+ +-----+ +-----+ +-----+
@@ -106,8 +116,8 @@ e `docs/Decisioni_finalizzate_v2.docx` per il riepilogo delle decisioni di proge
 ```
 
 - **WC** = connettore WinCar (read-only)
-- **Doc** = motore documenti (python-docx + LibreOffice)
-- **Mail** = lettore posta (IMAP/TLS)
+- **Doc** = motore documenti (python-docx + Word COM per PDF)
+- **Mail** = lettore/mittente posta (IMAP + SMTP/PEC)
 - **AI** = classificatore di risposte assicurative (Claude API)
 - **Notif** = dispatcher notifiche (email + push smartphone)
 
@@ -117,14 +127,14 @@ e `docs/Decisioni_finalizzate_v2.docx` per il riepilogo delle decisioni di proge
 - **Python:** 3.11 o superiore (64-bit).
 - **Driver Microsoft Access Database Engine 2016 Redistributable** (64-bit) — gratuito,
   scaricabile dal sito Microsoft.
-- **LibreOffice** (per la conversione `.docx` → PDF in modalità headless).
+- **Microsoft Word** (per la conversione `.docx` → PDF via `docx2pdf` + COM).
 - **WinCar** installato sullo stesso PC dove gira l'app (per accesso diretto ai `.mdb`).
 
 ## Installazione
 
 ```bash
 # 1. Clone
-git clone https://github.com/<your-username>/lys-workflow-hub.git
+git clone https://github.com/lysauto/lys-workflow-hub.git
 cd lys-workflow-hub
 
 # 2. Virtualenv
@@ -133,6 +143,7 @@ python -m venv .venv
 
 # 3. Dipendenze
 pip install -r requirements.txt
+pip install -e .
 
 # 4. Configurazione locale (mai committata)
 copy .env.example .env
@@ -151,38 +162,53 @@ python -m lys_workflow_hub.main
 
 ```
 lys-workflow-hub/
-├── README.md                       Questo file
-├── .gitignore                      Esclude dati reali e credenziali
+├── README.md
+├── .gitignore
 ├── .env.example                    Template di configurazione (sicuro)
-├── requirements.txt                Dipendenze Python
-├── pyproject.toml                  Metadati del pacchetto
-├── docs/                           Documenti di analisi e decisioni
-│   ├── Analisi_App_Cessione_del_Credito.docx     (v1, storico)
-│   ├── Analisi_LYS_Workflow_Hub_v2.docx           (v2, attuale)
-│   └── Decisioni_finalizzate_v2.docx              (registro decisioni)
-├── scripts/                        Utility one-shot (dump schema, ecc.)
-│   └── dump_schema_wincar.py
+├── requirements.txt                Dipendenze Python (runtime + dev)
+├── pyproject.toml                  Metadati pacchetto + dipendenze core
+├── start_lys.bat                   Script avvio produzione (pythonw)
+├── run_polling.bat                 Script polling mail (Task Scheduler)
+├── docs/
+│   ├── Analisi_LYS_Workflow_Hub_v2.docx
+│   ├── Decisioni_finalizzate_v2.docx
+│   └── SETUP_PRODUCTION.md         Guida installazione PC carrozzeria
+├── scripts/
+│   ├── dump_schema_wincar.py
+│   └── run_polling.py              Ciclo fetch→match→classify→notify
 ├── src/
-│   └── lys_workflow_hub/           Pacchetto principale
-│       ├── __init__.py
+│   └── lys_workflow_hub/
 │       ├── main.py                 Entry point FastAPI
-│       ├── config.py               Caricamento .env, costanti
+│       ├── config.py               Caricamento .env
 │       ├── core/
-│       │   ├── wincar_repository.py    Lettura .mdb in sola lettura
-│       │   └── schema_check.py         Verifica schema al boot
+│       │   ├── wincar_repository.py
+│       │   ├── schema_check.py
+│       │   ├── compagnie_repository.py
+│       │   ├── mail_in_repository.py   Mail in arrivo (M3)
+│       │   ├── pec_log_repository.py   Audit invii PEC
+│       │   └── draft_repository.py     Bozze di risposta (M4)
 │       ├── workflows/
-│       │   ├── cessione_credito/       Workflow A
-│       │   └── risarcimento_vandalismo/ Workflow B (M2)
-│       │       ├── data.py             modello RichiestaVandalismoData
-│       │       ├── allegati.py         scanner cartelle Foto/ e Allegati/
-│       │       └── pec_generator.py    builder oggetto + corpo PEC
-│       ├── integrations/           Lettore posta, AI, notifiche
-│       └── web/                    Route FastAPI + template Jinja2
-│           ├── routes.py               pagine pratica + workflow cessione (M1)
-│           ├── routes_vandalismo.py    pagine workflow vandalismo (M2)
-│           └── routes_compagnie.py     CRUD anagrafica compagnie (M2)
-├── tests/                          Test unitari
-└── data/                           DB SQLite locale, eml_archive (gitignored)
+│       │   ├── cessione_credito/       Workflow A — genera .docx/.pdf
+│       │   │   └── assets/             Firma pre-apposta (PNG)
+│       │   ├── risarcimento_vandalismo/ Workflow B — PEC vandalismo
+│       │   └── risposte/               Workflow C — lettura + risposta
+│       │       ├── matcher.py
+│       │       ├── context_builder.py  Costruisce bozza risposta (M4)
+│       │       └── body_generator.py   AI classification (M3)
+│       ├── integrations/
+│       │   ├── imap_fetcher.py
+│       │   ├── pec_mailer.py
+│       │   ├── ai_classifier.py
+│       │   └── notifier.py
+│       └── web/
+│           ├── routes.py               Pratica + Workflow A
+│           ├── routes_vandalismo.py    Workflow B
+│           ├── routes_compagnie.py     CRUD compagnie
+│           ├── routes_pec_log.py       Cronologia PEC
+│           ├── routes_risposte.py      Lista/dettaglio risposte (M3)
+│           └── routes_bozze.py         Cruscotto bozze (M4)
+├── tests/
+└── data/                           DB SQLite locale (gitignored)
 ```
 
 ## Sicurezza dei dati clienti
@@ -196,6 +222,7 @@ configurato per escludere automaticamente:
 - File `.env` con credenziali.
 - Cartella `data/` interna all'app (può contenere log con dati personali).
 - Documenti generati (cessioni firmate, lettere, ecc.).
+- File di test locali (`test_*.docx`, `test_page_*.png`).
 
 **Prima di ogni `git push` verifica con `git status` che nessun file con dati reali
 sia in stage.**
