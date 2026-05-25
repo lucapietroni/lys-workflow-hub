@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Statistiche · LYS Workflow Hub{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb">
+  <a href="/">← Home</a>
+</nav>
+
+<header style="margin-bottom: 24px;">
+  <h1>Statistiche</h1>
+  <p class="meta">Riepilogo attività per compagnia assicurativa.</p>
+</header>
+
+{# KPI globali #}
+<div class="hero-stats" style="margin-bottom: 32px;">
+  <div class="hero-stat">
+    <span class="stat-n">{{ globale.pec_inviate_totali }}</span>
+    <span class="stat-l">PEC inviate (totale)</span>
+  </div>
+  <div class="hero-stat">
+    <span class="stat-n">{{ globale.risposte_totali }}</span>
+    <span class="stat-l">Risposte ricevute</span>
+  </div>
+  <div class="hero-stat">
+    <span class="stat-n">{{ "%.2f"|format(globale.ai_cost_mese) }} €</span>
+    <span class="stat-l">Costo AI questo mese</span>
+  </div>
+  <div class="hero-stat">
+    <span class="stat-n">{{ "%.2f"|format(globale.ai_cost_totale) }} €</span>
+    <span class="stat-l">Costo AI totale</span>
+  </div>
+  <div class="hero-stat">
+    <span class="stat-n">{{ globale.pratiche_con_stato }}</span>
+    <span class="stat-l">Pratiche con stato</span>
+  </div>
+</div>
+
+{# Tabella per compagnia #}
+{% if stats %}
+<section class="card" style="padding: 0; overflow: hidden;">
+  <table class="results-table" style="margin: 0; border-radius: 0;">
+    <thead>
+      <tr>
+        <th>Compagnia</th>
+        <th class="num">PEC inv.</th>
+        <th class="num">Risposte</th>
+        <th class="num">% risp.</th>
+        <th class="num">Gg medi</th>
+        <th class="num">Presa in carico</th>
+        <th class="num">Perito</th>
+        <th class="num">Docs richiesti</th>
+        <th class="num">Liquidazione</th>
+        <th class="num">Costo AI (€)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in stats %}
+      <tr>
+        <td><strong>{{ s.compagnia_nome }}</strong></td>
+        <td class="num">{{ s.pec_inviate }}</td>
+        <td class="num">{{ s.risposte_ricevute }}</td>
+        <td class="num">
+          {% if s.pec_inviate > 0 %}
+            {{ "%.0f"|format(s.risposte_ricevute / s.pec_inviate * 100) }}%
+          {% else %}—{% endif %}
+        </td>
+        <td class="num">
+          {{ "%.1f"|format(s.avg_giorni_risposta) if s.avg_giorni_risposta is not none else "—" }}
+        </td>
+        <td class="num">{{ s.n_presa_in_carico if s.n_presa_in_carico else "—" }}</td>
+        <td class="num">{{ s.n_nomina_perito if s.n_nomina_perito else "—" }}</td>
+        <td class="num">{{ s.n_richiesta_documenti if s.n_richiesta_documenti else "—" }}</td>
+        <td class="num">{{ s.n_liquidazione if s.n_liquidazione else "—" }}</td>
+        <td class="num">{{ "%.4f"|format(s.ai_cost_tot) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% else %}
+<div class="empty">
+  Nessun dato disponibile. Le statistiche si popolano dopo il primo invio PEC
+  e il primo ciclo di polling.
+</div>
+{% endif %}
+{% endblock %}

@@ -52,6 +52,7 @@ from lys_workflow_hub.web.api import router as api_router
 from lys_workflow_hub.web.routes import router as pages_router
 from lys_workflow_hub.web.routes_bozze import router as bozze_router
 from lys_workflow_hub.web.routes_compagnie import router as compagnie_router
+from lys_workflow_hub.web.routes_impostazioni import router as impostazioni_router
 from lys_workflow_hub.web.routes_pec_log import router as pec_log_router
 from lys_workflow_hub.web.routes_risposte import router as risposte_router
 from lys_workflow_hub.web.routes_vandalismo import router as vandalismo_router
@@ -173,6 +174,7 @@ app.include_router(vandalismo_router)
 app.include_router(pec_log_router)
 app.include_router(risposte_router)
 app.include_router(bozze_router)
+app.include_router(impostazioni_router)
 app.include_router(api_router)
 
 

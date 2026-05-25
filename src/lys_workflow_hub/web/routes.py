@@ -27,6 +27,11 @@ from lys_workflow_hub.core.draft_repository import (
     STATUS_READY,
 )
 from lys_workflow_hub.core.mail_in_repository import MailRepository
+from lys_workflow_hub.core.pratica_stato_repository import (
+    PraticaStatoRepository,
+    STATI,
+    STATO_LABELS,
+)
 from lys_workflow_hub.core.wincar_repository import WinCarRepository
 from lys_workflow_hub.workflows.cessione_credito import (
     PdfConversionError,
@@ -90,12 +95,17 @@ def home(
     try:
         _draft_repo = DraftRepository(db_path=settings.app_db_path)
         _mail_repo = MailRepository(db_path=settings.app_db_path)
+        _stato_repo = PraticaStatoRepository(db_path=settings.app_db_path)
         _counts = _draft_repo.conta_per_status()
         context["kpi_bozze"] = _counts.get(STATUS_PENDING, 0) + _counts.get(STATUS_READY, 0)
         context["kpi_risposte_ar"] = _mail_repo.count_action_required()
+        context["kpi_sla_breach"] = _stato_repo.count_sla_breach(
+            sla_giorni=settings.sla_giorni_alert
+        ) if settings.sla_giorni_alert > 0 else 0
     except Exception:
         context["kpi_bozze"] = 0
         context["kpi_risposte_ar"] = 0
+        context["kpi_sla_breach"] = 0
 
     if q and q.strip():
         q_clean = q.strip()
@@ -145,6 +155,32 @@ def pratica_detail(
     except Exception as exc:  # noqa: BLE001
         logger.warning("Impossibile leggere risposte M3 per %s: %s", numero, exc)
         context["risposte_da_gestire"] = []
+    # M5: stato pratica + SLA alert.
+    try:
+        stato_repo = PraticaStatoRepository(db_path=settings.app_db_path)
+        context["pratica_stato"] = stato_repo.get_stato(numero)
+        context["pratica_stato_storia"] = stato_repo.storia(numero, limit=5)
+        context["stati_disponibili"] = STATI
+        context["stato_labels"] = STATO_LABELS
+        # SLA alert: questa pratica ha PEC senza risposta oltre soglia?
+        if settings.sla_giorni_alert > 0:
+            sla_alerts = stato_repo.lista_sla_alerts(
+                sla_giorni=settings.sla_giorni_alert
+            )
+            context["sla_breach_questa"] = [
+                a for a in sla_alerts if a.pratica_numero == numero
+            ]
+        else:
+            context["sla_breach_questa"] = []
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Impossibile caricare stato/SLA pratica %s: %s", numero, exc)
+        context["pratica_stato"] = None
+        context["pratica_stato_storia"] = []
+        context["stati_disponibili"] = STATI
+        context["stato_labels"] = STATO_LABELS
+        context["sla_breach_questa"] = []
+    # Parametro URL per conferma cambio stato
+    context["stato_aggiornato"] = bool(request.query_params.get("stato_aggiornato"))
     return templates.TemplateResponse(request, "pratica_detail.html", context)
 
 

@@ -48,6 +48,9 @@ from lys_workflow_hub.core.mail_in_repository import (  # noqa: E402
     MailRepository,
 )
 from lys_workflow_hub.core.pec_log_repository import PecLogRepository  # noqa: E402
+from lys_workflow_hub.core.pratica_stato_repository import (  # noqa: E402
+    PraticaStatoRepository,
+)
 from lys_workflow_hub.core.wincar_repository import WinCarRepository  # noqa: E402
 from lys_workflow_hub.integrations.ai_classifier import classify  # noqa: E402
 from lys_workflow_hub.integrations.imap_fetcher import ImapFetcher  # noqa: E402
@@ -338,6 +341,51 @@ def _classifica_e_logga(
     return (mail, classif)
 
 
+def _sla_notify(
+    alert,
+    *,
+    stato_repo: "PraticaStatoRepository",
+    ntfy_server: str,
+    ntfy_topic: str,
+    disabled: bool,
+    base_url: str,
+) -> None:
+    """Invia push SLA per una PEC senza risposta oltre soglia e logga il reminder."""
+    log = logging.getLogger("polling")
+    try:
+        if not disabled and ntfy_topic:
+            import urllib.request
+            url = f"{ntfy_server.rstrip('/')}/{ntfy_topic}"
+            titolo = f"SLA scaduto: pratica {alert.pratica_numero}"
+            corpo = (
+                f"Nessuna risposta da {alert.compagnia_nome} "
+                f"dopo {alert.giorni_attesa} giorni.\n"
+                f"PEC inviata il {alert.data_invio.strftime('%d/%m/%Y')}.\n"
+                f"{base_url}/pratiche/{alert.pratica_numero}"
+            )
+            req = urllib.request.Request(
+                url,
+                data=corpo.encode("utf-8"),
+                headers={
+                    "Title": titolo.encode("utf-8"),
+                    "Priority": "default",
+                    "Tags": "warning,hourglass",
+                },
+                method="POST",
+            )
+            urllib.request.urlopen(req, timeout=10)
+            log.info(
+                "Push SLA inviato per pratica %s (pec_id=%s)",
+                alert.pratica_numero, alert.pec_inviata_id,
+            )
+        stato_repo.log_sla_reminder(alert.pec_inviata_id, tipo="push")
+    except Exception as exc:  # noqa: BLE001
+        log.warning(
+            "Push SLA fallito per pratica %s: %s",
+            alert.pratica_numero, exc,
+        )
+
+
 def _genera_bozza_m4(
     mail: MailIn,
     classif: MailClassificata,
@@ -463,6 +511,21 @@ def run_once() -> int:
                             compagnie_repo=compagnie_repo,
                             settings=settings,
                         )
+                        # Hook M5: auto-transizione stato pratica.
+                        if classif_obj.pratica_numero is not None:
+                            try:
+                                stato_repo = PraticaStatoRepository(
+                                    db_path=settings.app_db_path
+                                )
+                                stato_repo.auto_transition(
+                                    classif_obj.pratica_numero,
+                                    classif_obj.categoria,
+                                )
+                            except Exception as _exc:  # noqa: BLE001
+                                log.warning(
+                                    "M5 auto_transition fallita per pratica %s: %s",
+                                    classif_obj.pratica_numero, _exc,
+                                )
                 except Exception as exc:  # noqa: BLE001
                     log.exception("Errore classificando mail %s: %s", mail_id, exc)
 
@@ -508,6 +571,33 @@ def run_once() -> int:
                     "Soglia di allerta AI raggiunta (%.2f >= %.2f EUR)",
                     cost_mese, settings.ai_budget_alert_eur,
                 )
+
+            # Check SLA (M5): PEC senza risposta oltre soglia.
+            if settings.sla_giorni_alert > 0:
+                try:
+                    stato_repo = PraticaStatoRepository(
+                        db_path=settings.app_db_path
+                    )
+                    sla_alerts = stato_repo.lista_sla_alerts(
+                        sla_giorni=settings.sla_giorni_alert
+                    )
+                    pending_sla = [a for a in sla_alerts if not a.already_reminded]
+                    log.info(
+                        "SLA check: %d alert totali, %d nuovi da notificare",
+                        len(sla_alerts), len(pending_sla),
+                    )
+                    base_url = f"http://{settings.app_host}:{settings.app_port}"
+                    for alert in pending_sla:
+                        _sla_notify(
+                            alert,
+                            stato_repo=stato_repo,
+                            ntfy_server=settings.ntfy_server,
+                            ntfy_topic=settings.ntfy_topic,
+                            disabled=bool(settings.notify_disabled),
+                            base_url=base_url,
+                        )
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("SLA check fallito (non blocca): %s", exc)
 
             log.info("=== Fine ciclo polling ===")
             return 0

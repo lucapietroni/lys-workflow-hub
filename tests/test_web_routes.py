@@ -98,7 +98,7 @@ def test_home_no_query_renders_hints(client_with_mock_repo):
     client, repo = client_with_mock_repo
     response = client.get("/")
     assert response.status_code == 200
-    assert "Cerca una pratica" in response.text
+    assert "Gestione pratiche sinistri" in response.text
     assert "Suggerimenti rapidi" in response.text
     repo.search_pratiche.assert_not_called()
 

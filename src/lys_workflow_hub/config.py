@@ -109,6 +109,11 @@ class Settings(BaseSettings):
     anthropic_model: str = Field(default="claude-haiku-4-5-20251001")
     ai_budget_monthly_eur: float = Field(default=20.0)
     ai_budget_alert_eur: float = Field(default=15.0)
+
+    # --- SLA pratiche (M5) ---
+    # Numero di giorni senza risposta dopo i quali scatta l'alert SLA.
+    # Impostare a 0 per disabilitare il check SLA nel polling.
+    sla_giorni_alert: int = Field(default=15)
     # Cartella centrale dove archiviare le .eml ricevute, partizionata per anno.
     app_archivio_mail_in: Path = Field(default=Path(r"C:\LYSApp\Mail_in"))
 

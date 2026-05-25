@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}Impostazioni · LYS Workflow Hub{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb">
+  <a href="/">← Home</a>
+</nav>
+
+<header style="margin-bottom: 24px;">
+  <h1>Impostazioni</h1>
+  <p class="meta">Configura il comportamento automatico del sistema per ogni tipo di risposta assicurativa.</p>
+</header>
+
+{% if saved %}
+  <div class="alert alert-success" style="margin-bottom: 20px;">
+    <strong>Impostazioni salvate.</strong>
+  </div>
+{% endif %}
+
+<section class="card">
+  <h2>Policy generazione bozze di risposta</h2>
+  <p class="meta" style="margin: -4px 0 16px;">
+    Determina se, al ricevimento di una risposta classificata dall'AI, il sistema
+    deve creare automaticamente una bozza di risposta o attendere un'azione manuale.
+  </p>
+
+  <form method="post" action="/impostazioni">
+    <table class="results-table">
+      <thead>
+        <tr>
+          <th>Categoria risposta</th>
+          <th>Policy bozza</th>
+          <th>Descrizione</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% set cat_labels = {
+          "presa_in_carico":     "Presa in carico",
+          "nomina_perito":       "Nomina perito",
+          "richiesta_documenti": "Richiesta documenti",
+          "liquidazione":        "Liquidazione / pagamento",
+          "altro":               "Altro"
+        } %}
+        {% set cat_descs = {
+          "presa_in_carico":     "La compagnia conferma di aver aperto il sinistro.",
+          "nomina_perito":       "La compagnia ha nominato un perito per la valutazione.",
+          "richiesta_documenti": "La compagnia richiede documenti aggiuntivi.",
+          "liquidazione":        "La compagnia propone o conferma un importo di liquidazione.",
+          "altro":               "Mail classificata come altro / non identificata."
+        } %}
+        {% for categoria, policy_corrente in policies.items() %}
+        <tr>
+          <td><strong>{{ cat_labels.get(categoria, categoria) }}</strong></td>
+          <td>
+            <select name="policy_{{ categoria }}" class="select-inline">
+              {% for opt in policy_options %}
+              <option value="{{ opt }}"{% if opt == policy_corrente %} selected{% endif %}>
+                {{ policy_labels.get(opt, opt) }}
+              </option>
+              {% endfor %}
+            </select>
+          </td>
+          <td class="meta">{{ cat_descs.get(categoria, "") }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="form-actions" style="margin-top: 16px;">
+      <button type="submit" class="btn btn-primary">Salva impostazioni</button>
+      <a class="btn" href="/">Annulla</a>
+    </div>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Legenda policy</h2>
+  <dl style="display: grid; gap: 8px;">
+    <div>
+      <dt style="font-weight: 600;">Bozza automatica</dt>
+      <dd class="meta" style="margin: 0 0 0 0;">
+        Appena la mail viene classificata, il sistema crea automaticamente una bozza
+        di risposta in stato "In attesa". L'operatore deve solo rivedere e inviare.
+      </dd>
+    </div>
+    <div>
+      <dt style="font-weight: 600;">Solo su richiesta</dt>
+      <dd class="meta" style="margin: 0;">
+        Nessuna bozza creata automaticamente. Dal cruscotto /bozze o dalla pagina
+        risposta l'operatore può richiedere la generazione manualmente.
+      </dd>
+    </div>
+    <div>
+      <dt style="font-weight: 600;">Nessuna bozza</dt>
+      <dd class="meta" style="margin: 0;">
+        Categoria informativa: rispondere non porta valore. Il bottone "Genera bozza"
+        resta disponibile come opt-in manuale, ma non è suggerito.
+      </dd>
+    </div>
+  </dl>
+</section>
+{% endblock %}

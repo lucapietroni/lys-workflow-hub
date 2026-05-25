@@ -21,6 +21,23 @@
   </div>
 {% endif %}
 
+{% if stato_aggiornato %}
+  <div class="alert alert-success">
+    <strong>Stato aggiornato.</strong>
+  </div>
+{% endif %}
+
+{% if sla_breach_questa %}
+  <div class="alert alert-warn">
+    <strong>⚠ SLA scaduto.</strong>
+    {% for a in sla_breach_questa %}
+      PEC inviata a <strong>{{ a.compagnia_nome }}</strong> il
+      {{ a.data_invio.strftime("%d/%m/%Y") }}
+      — nessuna risposta dopo <strong>{{ a.giorni_attesa }} giorni</strong>.
+    {% endfor %}
+  </div>
+{% endif %}
+
 {% if risposte_da_gestire %}
   <div class="alert alert-warn">
     <strong>{{ risposte_da_gestire|length }} risposta{% if risposte_da_gestire|length != 1 %}e{% endif %} da gestire</strong>
@@ -160,6 +177,55 @@
       <button type="submit" class="btn btn-primary">Archivia in WinCar</button>
     </div>
   </form>
+</section>
+
+<section class="card">
+  <h2>Stato pratica</h2>
+
+  {% set stato_corrente = pratica_stato.stato if pratica_stato else "aperta" %}
+  {% set stato_label = stato_labels.get(stato_corrente, stato_corrente) %}
+
+  <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px;">
+    <span class="badge badge-stato badge-{{ stato_corrente }}">{{ stato_label }}</span>
+    {% if pratica_stato %}
+      <span class="meta">
+        Aggiornato il {{ pratica_stato.changed_at.strftime("%d/%m/%Y %H:%M") }}
+        da {{ pratica_stato.changed_by }}
+        {% if pratica_stato.note %} — {{ pratica_stato.note }}{% endif %}
+      </span>
+    {% else %}
+      <span class="meta">Nessuno stato registrato — predefinito: Aperta</span>
+    {% endif %}
+  </div>
+
+  <form method="post" action="/pratiche/{{ pratica.numero }}/stato" class="form-inline-stato">
+    <select name="stato" class="select-inline">
+      {% for s in stati_disponibili %}
+      <option value="{{ s }}"{% if s == stato_corrente %} selected{% endif %}>
+        {{ stato_labels.get(s, s) }}
+      </option>
+      {% endfor %}
+    </select>
+    <input type="text" name="note" placeholder="Note (opzionale)" style="flex:1; padding:6px 10px;" />
+    <button type="submit" class="btn">Aggiorna stato</button>
+  </form>
+
+  {% if pratica_stato_storia and pratica_stato_storia|length > 1 %}
+  <details style="margin-top:12px;">
+    <summary class="meta" style="cursor:pointer;">Storico ultimi cambi</summary>
+    <ul class="files-list" style="margin-top:8px;">
+      {% for s in pratica_stato_storia %}
+      <li>
+        <span class="file-name">{{ stato_labels.get(s.stato, s.stato) }}</span>
+        <span class="file-meta">
+          {{ s.changed_at.strftime("%d/%m/%Y %H:%M") }} · {{ s.changed_by }}
+          {% if s.note %} · {{ s.note }}{% endif %}
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
 </section>
 
 <aside class="hint">

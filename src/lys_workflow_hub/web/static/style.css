@@ -279,6 +279,36 @@ code {
 }
 .badge-warn { background: var(--lys-gold-light); color: var(--lys-gold-dark); }
 
+/* Badge stato pratica (M5) */
+.badge-stato { font-size: 0.8rem; padding: 4px 12px; }
+.badge-aperta          { background: #dbeafe; color: #1e40af; }
+.badge-in_gestione     { background: #fef9c3; color: #854d0e; }
+.badge-perito_nominato { background: #ffedd5; color: #9a3412; }
+.badge-in_liquidazione { background: #f3e8ff; color: #6b21a8; }
+.badge-chiusa          { background: #f1f5f9; color: #475569; }
+.badge-blue   { background: #dbeafe; color: #1e40af; }
+.badge-yellow { background: #fef9c3; color: #854d0e; }
+.badge-orange { background: #ffedd5; color: #9a3412; }
+.badge-purple { background: #f3e8ff; color: #6b21a8; }
+.badge-gray   { background: #f1f5f9; color: #475569; }
+
+/* Form inline stato pratica (M5) */
+.form-inline-stato {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.select-inline {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: white;
+  font-size: 0.9rem;
+  color: var(--text);
+  cursor: pointer;
+}
+
 /* Pulse dot per badge action_required */
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; transform: scale(1); }

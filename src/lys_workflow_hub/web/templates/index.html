@@ -31,6 +31,10 @@
       <span class="stat-n{% if kpi_bozze %} stat-alert{% endif %}">{{ kpi_bozze }}</span>
       <span class="stat-l">Bozze in attesa</span>
     </div>
+    <div class="hero-stat">
+      <span class="stat-n{% if kpi_sla_breach %} stat-alert{% endif %}">{{ kpi_sla_breach }}</span>
+      <span class="stat-l">SLA scaduti</span>
+    </div>
   </div>
   {% endif %}
 </section>
