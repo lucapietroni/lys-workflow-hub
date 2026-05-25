@@ -284,6 +284,28 @@ def _classifica_e_logga(
         mail.id, match.method, match.pratica_numero, match.confidence,
     )
 
+    # Short-circuit: nessuna pratica abbinata → non ha senso classificare
+    # con AI (non è una risposta assicurativa che ci riguarda). Salviamo
+    # come "altro" a costo zero; l'email di riepilogo filtrerà comunque
+    # queste voci.
+    if match.pratica_numero is None:
+        log.info("Mail %s: no match pratica, skip AI → altro", mail.id)
+        classif = mail_repo.save_classification(
+            mail_in_id=mail.id,
+            pec_inviata_id=None,
+            pratica_numero=None,
+            categoria=CAT_ALTRO,
+            confidence=0.0,
+            summary="Nessuna pratica corrispondente trovata.",
+            action_required=False,
+            key_facts={},
+            ai_model="(skip-no-match)",
+            ai_cost_eur=0.0,
+            match_method=match.method,
+            match_confidence=match.confidence,
+        )
+        return (mail, classif)
+
     # 2) AI classify
     result = classify(
         subject=mail.subject,

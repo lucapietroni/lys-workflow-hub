@@ -288,11 +288,17 @@ def notify_batch(
     else:
         logger.info("ntfy_topic vuoto: skip notifiche push")
 
-    # 2) Email riassuntiva
+    # 2) Email riassuntiva — esclude ALTRO senza pratica (spam, ricevute di
+    #    sistema, pubblicità, notifiche Legalmail): non utili per l'operatore
+    #    e non riguardano pratiche della carrozzeria.
+    da_mostrare = [
+        (m, c) for m, c in nuove
+        if not (c.categoria == "altro" and c.pratica_numero is None)
+    ]
     email_sent = False
-    if alert_email and smtp_host:
-        subject = f"[LYS Hub] {len(nuove)} nuove risposte assicurazioni"
-        body = _format_summary_body(nuove)
+    if alert_email and smtp_host and da_mostrare:
+        subject = f"[LYS Hub] {len(da_mostrare)} nuove risposte assicurazioni"
+        body = _format_summary_body(da_mostrare)
         ok, err = _send_summary_email(
             smtp_host=smtp_host,
             smtp_port=smtp_port,
