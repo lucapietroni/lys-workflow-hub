@@ -155,43 +155,48 @@ def _add_signature_table(doc, *, with_date: str | None = None) -> None:
         p.paragraph_format.space_after = Pt(6)
         _add_run(p, with_date, italic=True)
 
-    table = doc.add_table(rows=2, cols=2)
+    # 3 righe: [0] etichette allineate, [1] firma/spazio, [2] spaziatura
+    table = doc.add_table(rows=3, cols=2)
     table.autofit = False
     for col in table.columns:
         col.width = Cm(8.0)
 
-    # Riga 1: firme + etichette
-    row_cells = table.rows[0].cells
-    for idx, (cell, label) in enumerate(
-        zip(row_cells, ["Firma Cessionario", "Firma Cedente"])
-    ):
+    # Riga 0: etichette — stessa struttura per entrambe le colonne
+    for cell, label in zip(table.rows[0].cells, ["Firma Cessionario", "Firma Cedente"]):
         cell.width = Cm(8.0)
-        cell.vertical_alignment = WD_ALIGN_VERTICAL.BOTTOM
         _add_top_border_to_cell(cell)
-
-        use_firma = (idx == 0) and _FIRMA_CESSIONARIO_PNG.exists()
-
-        # Prima riga della cella: etichetta
         label_para = cell.paragraphs[0]
         label_para.paragraph_format.space_before = Pt(6)
         label_para.paragraph_format.space_after = Pt(4)
         label_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
         _add_run(label_para, label, bold=True, color=COLOR_BLACK, size=10)
 
-        if use_firma:
-            # Seconda riga: immagine firma sotto l'etichetta
-            img_para = cell.add_paragraph()
-            img_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            img_para.paragraph_format.space_before = Pt(2)
-            img_para.paragraph_format.space_after = Pt(0)
-            run = img_para.add_run()
-            run.add_picture(str(_FIRMA_CESSIONARIO_PNG), width=Cm(4.5))
-        else:
-            # Spazio vuoto per firma manuale
-            label_para.paragraph_format.space_before = Pt(36)
+    # Riga 1: immagine firma (cessionario) | spazio per firma manuale (cedente)
+    sig_cells = table.rows[1].cells
+    # Imposta altezza minima riga per lo spazio firma cedente (~2.5 cm)
+    tr_pr = table.rows[1]._tr.get_or_add_trPr()
+    tr_height = OxmlElement("w:trHeight")
+    tr_height.set(qn("w:val"), "1440")   # 1440 twips = 1 inch ≈ 2.54 cm
+    tr_height.set(qn("w:hRule"), "atLeast")
+    tr_pr.append(tr_height)
 
-    # Riga 2: vuota per spaziatura
-    for cell in table.rows[1].cells:
+    cessionario_cell = sig_cells[0]
+    cessionario_cell.width = Cm(8.0)
+    cessionario_cell.vertical_alignment = WD_ALIGN_VERTICAL.TOP
+    if _FIRMA_CESSIONARIO_PNG.exists():
+        img_para = cessionario_cell.paragraphs[0]
+        img_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        img_para.paragraph_format.space_before = Pt(2)
+        img_para.paragraph_format.space_after = Pt(0)
+        img_para.add_run().add_picture(str(_FIRMA_CESSIONARIO_PNG), width=Cm(4.5))
+    else:
+        cessionario_cell.paragraphs[0].text = ""
+
+    sig_cells[1].width = Cm(8.0)
+    sig_cells[1].paragraphs[0].text = ""
+
+    # Riga 2: spaziatura
+    for cell in table.rows[2].cells:
         cell.text = ""
 
 
