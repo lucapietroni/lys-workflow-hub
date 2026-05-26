@@ -53,6 +53,17 @@ alert mirati.
   (PEC inviate, risposte, % risposta, giorni medi, breakdown per categoria,
   costo AI). Dati calcolati live da query SQL su `lys_hub.db`.
 
+### Cosa fa M5.2 oggi
+
+- **Pagina `/impostazioni`**: editor visuale della policy di generazione bozze
+  per ogni categoria AI. Ogni categoria può essere impostata a:
+  *Bozza automatica*, *Solo su richiesta*, *Nessuna bozza*.
+- **Policy persistita in SQLite** (`categoria_policy`): la modifica da UI
+  è attiva al prossimo ciclo polling senza riavviare l'app. Fallback ai
+  default hardcoded se la tabella non è disponibile.
+- **Wire completo**: `crea_bozza_se_serve()` accetta `policy_override` dal DB;
+  il polling carica il dict una volta per ciclo e lo propaga a tutta la pipeline.
+
 ### Cosa fa M5.3 oggi
 
 - **Estrazione testo da PDF allegati**: molte compagnie assicurative inviano la
@@ -73,17 +84,6 @@ alert mirati.
   il polling.
 - **Configurabile** via `.env`: `PDF_EXTRACT_ENABLED=true` e
   `PDF_EXTRACT_MIN_BODY_LEN=200`.
-
-### Cosa fa M5.2 oggi
-
-- **Pagina `/impostazioni`**: editor visuale della policy di generazione bozze
-  per ogni categoria AI. Ogni categoria può essere impostata a:
-  *Bozza automatica*, *Solo su richiesta*, *Nessuna bozza*.
-- **Policy persistita in SQLite** (`categoria_policy`): la modifica da UI
-  è attiva al prossimo ciclo polling senza riavviare l'app. Fallback ai
-  default hardcoded se la tabella non è disponibile.
-- **Wire completo**: `crea_bozza_se_serve()` accetta `policy_override` dal DB;
-  il polling carica il dict una volta per ciclo e lo propaga a tutta la pipeline.
 
 ### Cosa fa M4 oggi
 
