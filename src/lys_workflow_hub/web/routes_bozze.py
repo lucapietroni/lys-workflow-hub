@@ -245,18 +245,17 @@ def bozza_allegato_preview(
             f"File non piu' disponibile sul filesystem: {path}",
         )
     media_type = _mime_for(file_path)
-    # Per i tipi inline (pdf, immagini), niente Content-Disposition: il
-    # browser apre nella tab. Per gli altri, download diretto.
-    is_inline = file_path.suffix.lower() in _INLINE_EXT
-    headers = {}
-    if is_inline:
-        headers["Content-Disposition"] = f'inline; filename="{file_path.name}"'
-    return FileResponse(
-        path=file_path,
-        filename=file_path.name,
-        media_type=media_type,
-        headers=headers,
-    )
+    # Per i tipi inline (pdf, immagini): niente filename= (evita che Starlette
+    # aggiunga Content-Disposition: attachment sul dict plain Python per
+    # case-sensitivity), header con chiave lowercase e valore inline.
+    # Per gli altri tipi: attachment con filename= (comportamento default).
+    if file_path.suffix.lower() in _INLINE_EXT:
+        return FileResponse(
+            path=file_path,
+            media_type=media_type,
+            headers={"content-disposition": f'inline; filename="{file_path.name}"'},
+        )
+    return FileResponse(path=file_path, filename=file_path.name, media_type=media_type)
 
 
 # --------------------------------------------------------------------------- #

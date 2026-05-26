@@ -391,8 +391,12 @@ def vandalismo_serve_allegato(
     except (OSError, ValueError) as exc:
         raise HTTPException(403, "Percorso non consentito.") from exc
 
-    # PDF e immagini: inline (il browser apre nella tab).
-    # Altri tipi: download (attachment, comportamento default).
+    # PDF e immagini: inline (il browser apre nella tab, non scarica).
+    # Per i tipi inline NON passare filename= a FileResponse: Starlette
+    # chiamerebbe setdefault("content-disposition", "attachment; ...") sul
+    # dict Python (case-sensitive) producendo due header duplicati e Chrome
+    # userebbe "attachment". Usiamo chiave lowercase e niente filename=.
+    # Per altri tipi: attachment con filename= (comportamento default).
     _INLINE_EXTS = {
         ".pdf": "application/pdf",
         ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
@@ -402,11 +406,13 @@ def vandalismo_serve_allegato(
         ".txt": "text/plain; charset=utf-8",
     }
     ext = resolved.suffix.lower()
-    media_type = _INLINE_EXTS.get(ext, "application/octet-stream")
-    headers: dict[str, str] = {}
     if ext in _INLINE_EXTS:
-        headers["Content-Disposition"] = f'inline; filename="{nome}"'
-    return FileResponse(path=resolved, filename=nome, media_type=media_type, headers=headers)
+        return FileResponse(
+            path=resolved,
+            media_type=_INLINE_EXTS[ext],
+            headers={"content-disposition": f'inline; filename="{nome}"'},
+        )
+    return FileResponse(path=resolved, filename=nome)
 
 
 # --------------------------------------------------------------------------- #
