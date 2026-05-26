@@ -7,7 +7,7 @@ vandalico, ecc.), monitora le risposte delle compagnie assicurative via PEC ed e
 ordinaria, classifica le risposte con un modello AI, produce bozze di replica e genera
 alert mirati.
 
-> Versione attuale: **0.6.0**
+> Versione attuale: **0.7.0**
 
 ## Stato del progetto
 
@@ -24,6 +24,66 @@ alert mirati.
 | **M5.2** | Policy editor bozze da UI — senza riavvio app | ✅ completata |
 | **M5.3** | Estrazione testo da allegati PDF nelle risposte assicurative | ✅ completata |
 | **M6.1** | Escalation SLA automatica — sollecito / formale / diffida | ✅ completata |
+| **M7** | Fix qualità classificazione AI + robustezza cruscotto risposte + UX allegati | ✅ completata |
+
+---
+
+### Cosa fa M7 oggi
+
+#### Classificazione AI — fix diniego/polizza non trovata
+
+- **Bug risolto**: le risposte di compagnia che comunicano "il veicolo non
+  risulta assicurato con noi" o "polizza non trovata" venivano classificate
+  come `liquidazione` (85% confidence) perché la definizione della categoria
+  includeva "il diniego di copertura". Conseguenza: lo stato pratica veniva
+  automaticamente portato a *In liquidazione*, il che era errato.
+- **Fix al prompt AI** (`ai_classifier.py`): `liquidazione` ora richiede
+  esplicitamente un importo concreto o una conferma di pagamento. La categoria
+  `altro` include ora esempi espliciti di diniego con nota
+  **"I dinieghi NON sono liquidazioni"**.
+- **Soglia confidence 0.70** per le auto-transizioni di stato pratica
+  (`run_polling.py`): transizioni con confidence < 0.70 vengono skippate con
+  log esplicito. Defense-in-depth: blocca transizioni errate anche in caso di
+  classificazioni ambigue future.
+
+#### Estrazione PDF allegati PEC — fix robustezza (M5.3 follow-up)
+
+- **Bug risolto**: `augment_body_with_pdf` riceveva il messaggio PEC esterno
+  (wrapper InfoCert) invece del messaggio interno `postacert.eml`. Il PDF
+  allegato dalla compagnia era nell'inner message e non veniva mai trovato.
+  Fix: `_find_postacert(msg)` viene chiamato una sola volta in `fetch_into`
+  e l'`inner_msg` viene passato sia a `_has_attachments` sia a
+  `augment_body_with_pdf`.
+- **Rimossa logica condizionale errata**: la vecchia implementazione estraeva
+  il PDF solo se `len(body_text) < min_body_len` (200 caratteri). Una risposta
+  con testo quotato della PEC originale — anche senza contenuto utile — faceva
+  saltare l'estrazione. Ora il PDF viene estratto e appeso al corpo
+  **sempre**, indipendentemente dalla lunghezza del body.
+- **Endpoint `reextract_body`** pubblico in `imap_fetcher.py`: permette
+  al route "Riclassifica" di rileggere il `.eml` dal filesystem e riestrarne
+  il corpo con la logica corrente (fix PDF incluso).
+
+#### Cruscotto risposte — nuove azioni
+
+- **Pulsante "🔄 Riclassifica"** nella pagina risposta: re-legge il file
+  `.eml` dal filesystem (applica tutti i fix PDF), aggiorna `body_text` in DB,
+  cancella la classificazione esistente e la rigenera con AI. Utile per
+  correggere classificazioni salvate prima dei fix.
+- **Pulsante "🗑 Elimina"** con conferma inline: rimuove la mail dal
+  cruscotto senza cancellare il file `.eml` su filesystem.
+- **Soft delete** (`ignorata = 1`): le mail eliminate non vengono mai
+  ri-scaricate al ciclo di polling successivo perché l'UID rimane in DB e
+  `max_uid()` non scende mai. Nessun tombstone separato necessario.
+- **Flash banner** dopo riclassificazione riuscita (`?riclassificata=1`).
+
+#### UX allegati — anteprima PDF pagina vandalismo
+
+- Il pulsante 📄 sugli allegati PDF nella pagina di creazione richiesta
+  vandalismo apre ora il file in **nuova scheda del browser** (identico al
+  comportamento già presente in `bozza_edit.html`). Rimosso il precedente
+  modal `<dialog>` + `<embed>` che causava una finestra vuota sovrapposta.
+  `stopPropagation` mantenuto per evitare il toggle involontario del
+  checkbox allegato nella `<label>` parent.
 
 ---
 
@@ -97,20 +157,21 @@ alert mirati.
   risposta reale (presa in carico, nomina perito, liquidazione) come PDF allegato
   invece di scriverla nel corpo dell'email. Il body rimane un pro-forma generico
   tipo "Si veda l'allegato" o addirittura vuoto.
-- **Logica**: durante il fetch IMAP, se `len(body_text) < PDF_EXTRACT_MIN_BODY_LEN`
-  (default 200 caratteri), il fetcher estrae il testo dai PDF allegati tramite
-  `pypdf` (puro Python, niente Ghostscript) e lo appende al corpo. Massimo 3 PDF
-  per mail, 4000 caratteri per PDF, totale troncato a 8000 caratteri.
-- **No-op per email già ricche**: se il corpo è già abbastanza lungo, il PDF non
-  viene nemmeno aperto — nessun costo extra per le email normali.
+- **Logica**: durante il fetch IMAP il fetcher estrae il testo da **tutti** i PDF
+  allegati (anche se il corpo è già lungo — la compagnia può scrivere qualsiasi
+  cosa nel body e allegare la risposta reale) tramite `pypdf` (puro Python, niente
+  Ghostscript) e lo appende al corpo. Massimo 3 PDF per mail, 4000 caratteri per
+  PDF, totale troncato a 8000 caratteri.
+- **Struttura PEC InfoCert**: il fetcher cerca prima il messaggio interno
+  `postacert.eml` (wrapper InfoCert) per individuare gli allegati reali; se non
+  presente usa il messaggio diretto.
 - **Prefisso contestuale**: il testo estratto è prefissato da
   `[ALLEGATO PDF: <nome>]` così il classificatore AI sa che il contenuto viene
   da un allegato.
 - **Degradazione silenziosa**: se `pypdf` non è installato o il PDF è corrotto/
   protetto/solo-immagini, la funzione restituisce stringa vuota senza bloccare
   il polling.
-- **Configurabile** via `.env`: `PDF_EXTRACT_ENABLED=true` e
-  `PDF_EXTRACT_MIN_BODY_LEN=200`.
+- **Configurabile** via `.env`: `PDF_EXTRACT_ENABLED=true`.
 
 ### Cosa fa M4 oggi
 
