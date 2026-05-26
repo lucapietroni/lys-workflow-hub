@@ -38,6 +38,7 @@ from lys_workflow_hub.core.mail_in_repository import (
     MailIn,
     MailRepository,
 )
+from lys_workflow_hub.integrations.pdf_extractor import augment_body_with_pdf
 
 
 logger = logging.getLogger(__name__)
@@ -249,6 +250,8 @@ class ImapFetcher:
         archivio_root: Path,
         max_messages: int = 200,
         since_date: date | None = None,
+        pdf_extract_enabled: bool = True,
+        pdf_extract_min_body_len: int = 200,
     ) -> FetchResult:
         """Scarica le mail con UID > max_uid già visto e le salva nel repository.
 
@@ -328,6 +331,14 @@ class ImapFetcher:
                     received = _parse_received_date(msg)
                     body_text = _extract_body_text(msg)
                     has_att = _has_attachments(msg)
+                    # M5.3: arricchisce body_text con testo da allegati PDF
+                    # se il corpo della mail è corto/vuoto.
+                    if pdf_extract_enabled and has_att:
+                        body_text = augment_body_with_pdf(
+                            body_text,
+                            msg,
+                            min_body_len=pdf_extract_min_body_len,
+                        )
 
                     eml_path = _archive_eml(
                         Path(archivio_root),

@@ -182,6 +182,8 @@ def _fetch_caselle(
             casella=CASELLA_PEC,
             archivio_root=archivio_root,
             since_date=since_date,
+            pdf_extract_enabled=bool(settings.pdf_extract_enabled),
+            pdf_extract_min_body_len=int(settings.pdf_extract_min_body_len),
         )
         log.info(
             "PEC fetch: scaricati=%d duplicati=%d errori=%d",
@@ -204,6 +206,8 @@ def _fetch_caselle(
             casella=CASELLA_EMAIL,
             archivio_root=archivio_root,
             since_date=since_date,
+            pdf_extract_enabled=bool(settings.pdf_extract_enabled),
+            pdf_extract_min_body_len=int(settings.pdf_extract_min_body_len),
         )
         log.info(
             "Email fetch: scaricati=%d duplicati=%d errori=%d",

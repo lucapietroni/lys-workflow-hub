@@ -172,6 +172,15 @@ APP_ARCHIVIO_CESSIONI=C:\LYSApp\Cessioni_firmate
 > Le voci `PEC_*`, `EMAIL_*`, `SMTP_*`, `ANTHROPIC_API_KEY`, `NTFY_*` sono
 > necessarie per il polling delle risposte (M3/M4). Compilale tutte prima
 > di avviare il task di polling (§5.5).
+>
+> **M5 — impostazioni opzionali** aggiunte in `.env`:
+> - `SLA_GIORNI_ALERT=15` — giorni senza risposta prima dell'alert push SLA
+>   (0 = disabilita il check SLA).
+> - `PDF_EXTRACT_ENABLED=true` — abilita l'estrazione testo da allegati PDF
+>   nelle risposte delle compagnie (M5.3). Richiede `pypdf` installato
+>   (già in `requirements.txt`).
+> - `PDF_EXTRACT_MIN_BODY_LEN=200` — soglia in caratteri: l'estrazione PDF
+>   scatta solo se il corpo della mail è più corto di questo valore.
 
 Salva e chiudi il blocco note.
 
@@ -388,6 +397,7 @@ Dovresti vedere righe tipo:
 2026-05-15 09:00:05 [INFO] polling: Mail 42: match=header_in_reply_to pratica=789 conf=1.00
 2026-05-15 09:00:08 [INFO] polling: Mail 42: categoria=nomina_perito conf=0.95 cost=0.0012 EUR
 2026-05-15 09:00:10 [INFO] polling: Notifiche: push=2 email=True errors=0
+2026-05-15 09:00:10 [INFO] polling: SLA check: 1 alert totali, 1 nuovi da notificare
 2026-05-15 09:00:10 [INFO] polling: === Fine ciclo polling ===
 ```
 

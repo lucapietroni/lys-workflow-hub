@@ -27,6 +27,9 @@ python-codicefiscale>=0.9
 imapclient>=3.0
 mail-parser>=3.15
 
+# PDF extraction (M5.3)
+pypdf>=4.0
+
 # AI (M3)
 anthropic>=0.34
 

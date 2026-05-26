@@ -114,6 +114,13 @@ class Settings(BaseSettings):
     # Numero di giorni senza risposta dopo i quali scatta l'alert SLA.
     # Impostare a 0 per disabilitare il check SLA nel polling.
     sla_giorni_alert: int = Field(default=15)
+
+    # --- PDF extraction (M5.3) ---
+    # Estrae il testo dagli allegati PDF delle risposte assicurative quando
+    # il corpo della mail è troppo corto per essere classificato dall'AI.
+    pdf_extract_enabled: bool = Field(default=True)
+    # Soglia in caratteri: l'estrazione scatta solo se body_text < questo valore.
+    pdf_extract_min_body_len: int = Field(default=200)
     # Cartella centrale dove archiviare le .eml ricevute, partizionata per anno.
     app_archivio_mail_in: Path = Field(default=Path(r"C:\LYSApp\Mail_in"))
 
