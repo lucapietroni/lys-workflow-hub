@@ -7,7 +7,7 @@ vandalico, ecc.), monitora le risposte delle compagnie assicurative via PEC ed e
 ordinaria, classifica le risposte con un modello AI, produce bozze di replica e genera
 alert mirati.
 
-> Versione attuale: **0.5.0**
+> Versione attuale: **0.6.0**
 
 ## Stato del progetto
 
@@ -23,8 +23,35 @@ alert mirati.
 | **M5.1** | Dashboard KPI espansa + pagina statistiche per compagnia | ✅ completata |
 | **M5.2** | Policy editor bozze da UI — senza riavvio app | ✅ completata |
 | **M5.3** | Estrazione testo da allegati PDF nelle risposte assicurative | ✅ completata |
+| **M6.1** | Escalation SLA automatica — sollecito / formale / diffida | ✅ completata |
 
 ---
+
+### Cosa fa M6.1 oggi
+
+- **Escalation SLA a tre livelli**: quando una PEC inviata supera le soglie
+  configurate senza ricevere risposta, il sistema genera automaticamente una
+  bozza PEC pre-compilata di escalation:
+  - **Livello 1 — Sollecito** (`SLA_GIORNI_ALERT`, default 15 gg): tono
+    cortese, ricorda la comunicazione originale.
+  - **Livello 2 — Sollecito formale** (`SLA_FORMALE_GIORNI`, default 30 gg):
+    tono più urgente, fissa un termine di 15 giorni prima di procedere.
+  - **Livello 3 — Diffida formale** (`SLA_DIFFIDA_GIORNI`, default 45 gg):
+    atto di messa in mora, cita gli artt. 148 ss. Codice delle Assicurazioni.
+- **Bozze in `/bozze`**: ogni sollecito appare nella sezione "Solleciti SLA"
+  con badge colorato (giallo/arancione/rosso per livello). L'operatore apre
+  l'editor, rivede/modifica il testo, e invia con un click.
+- **Idempotenza**: la coppia `(pec_id, livello)` è UNIQUE in DB — il ciclo
+  di polling non crea duplicati anche se eseguito più volte con lo stesso
+  stato.
+- **Tracking livelli**: `pec_sla_reminder.livello` registra quale livello è
+  già stato inviato; il ciclo controlla solo i livelli non ancora gestiti.
+- **Override per compagnia** (opzionale): le colonne
+  `sla_sollecito_giorni`, `sla_formale_giorni`, `sla_diffida_giorni` in
+  `compagnie_assicurative` permettono soglie personalizzate per compagnie
+  storicamente lente.
+- **Push ntfy** con livello nel titolo ("SLA — Diffida formale: pratica 1234")
+  così lo smartphone mostra subito la gravità senza aprire l'app.
 
 ### Cosa fa M5 oggi
 
@@ -253,7 +280,8 @@ lys-workflow-hub/
 │       │   ├── pec_log_repository.py       Audit invii PEC
 │       │   ├── draft_repository.py         Bozze di risposta (M4)
 │       │   ├── pratica_stato_repository.py Stato pratica + SLA (M5)
-│       │   └── categoria_policy_repository.py Policy bozze in DB (M5.2)
+│       │   ├── categoria_policy_repository.py Policy bozze in DB (M5.2)
+│       │   └── sollecito_repository.py     Solleciti SLA (M6.1)
 │       ├── workflows/
 │       │   ├── cessione_credito/       Workflow A — genera .docx/.pdf
 │       │   │   └── assets/             Firma pre-apposta (PNG)
@@ -262,6 +290,7 @@ lys-workflow-hub/
 │       │       ├── matcher.py
 │       │       ├── context_builder.py  Costruisce bozza risposta (M4)
 │       │       ├── categorie_policy.py Policy statiche (fallback M5.2)
+│       │       ├── sollecito_generator.py  Testi escalation SLA (M6.1)
 │       │       └── body_generator.py   AI classification (M3)
 │       ├── integrations/
 │       │   ├── imap_fetcher.py
