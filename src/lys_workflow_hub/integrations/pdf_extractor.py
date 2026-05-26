@@ -188,36 +188,40 @@ def augment_body_with_pdf(
     Ritorna il body_text eventualmente arricchito, troncato a 8000 caratteri
     totali (limite attuale di `mail_in.body_text`).
     """
-    # Bypass min_body_len se il body contiene esplicito riferimento all'allegato
-    # (es. "in allegato"). Nelle risposte PEC il testo quotato dell'originale
-    # può gonfiare body_text >> min_body_len anche quando il mittente ha scritto
-    # solo "in allegato". Senza questo override il PDF verrebbe saltato.
     body_hints_allegato = bool(_ALLEGATO_HINT_RE.search(body_text or ""))
-    if len(body_text) >= min_body_len and not body_hints_allegato:
+
+    if body_hints_allegato:
+        # Il body dice esplicitamente "in allegato": il contenuto classificabile
+        # è il PDF, non il body. Il body (soprattutto nei reply PEC) può contenere
+        # il testo quotato della nostra PEC originale senza alcun marcatore di
+        # citazione — passarlo all'AI inquinerebbe la classificazione.
+        # Strategia: usa SOLO il testo PDF; fallback a body stripped se il PDF
+        # non ha testo selezionabile (es. scansione immagine).
+        pdf_text = extract_pdf_attachments_text(msg, max_chars_per_pdf=max_chars_per_pdf)
+        if pdf_text:
+            logger.info(
+                "PDF augmentation (allegato-hint): body scartato (%d char), "
+                "uso solo PDF (%d char)",
+                len(body_text), len(pdf_text),
+            )
+            return pdf_text[:8000]
+        # PDF senza testo (scansione): prova almeno a togliere il quoted.
+        stripped = _strip_quoted_reply(body_text)
+        logger.info(
+            "PDF augmentation (allegato-hint): PDF vuoto, body stripped %d→%d char",
+            len(body_text), len(stripped),
+        )
+        return (stripped or body_text)[:8000]
+
+    # Caso standard (nessun hint allegato): aggiungi PDF se il body è corto.
+    if len(body_text) >= min_body_len:
         return body_text
 
     pdf_text = extract_pdf_attachments_text(msg, max_chars_per_pdf=max_chars_per_pdf)
     if not pdf_text:
         return body_text
 
-    # Quando il body cita esplicitamente l'allegato, strippa il testo quotato
-    # prima di combinare. In un reply PEC il quoted text è la nostra PEC originale
-    # inviata alla compagnia: darla all'AI inquina la classificazione (l'AI vede
-    # "richiesta risarcimento" invece della risposta della compagnia).
-    if body_hints_allegato:
-        meaningful_body = _strip_quoted_reply(body_text)
-        logger.info(
-            "PDF augmentation: testo quotato rimosso (%d→%d char), allegato PDF aggiunto",
-            len(body_text), len(meaningful_body),
-        )
-    else:
-        meaningful_body = body_text.strip()
-
-    if meaningful_body:
-        combined = f"{meaningful_body}\n\n{pdf_text}"
-    else:
-        combined = pdf_text
-
+    combined = f"{body_text.strip()}\n\n{pdf_text}" if body_text.strip() else pdf_text
     logger.info(
         "PDF augmentation: body_len=%d → %d (da allegato PDF)",
         len(body_text), len(combined),
