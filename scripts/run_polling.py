@@ -47,6 +47,9 @@ from lys_workflow_hub.core.mail_in_repository import (  # noqa: E402
     MailIn,
     MailRepository,
 )
+from lys_workflow_hub.core.categoria_policy_repository import (  # noqa: E402
+    CategoriaPolicyRepository,
+)
 from lys_workflow_hub.core.pec_log_repository import PecLogRepository  # noqa: E402
 from lys_workflow_hub.core.pratica_stato_repository import (  # noqa: E402
     PraticaStatoRepository,
@@ -395,6 +398,7 @@ def _genera_bozza_m4(
     wincar_repo: WinCarRepository | None,
     compagnie_repo: CompagnieRepository,
     settings,
+    policy_override: dict[str, str] | None = None,
 ) -> None:
     """Hook M4: dopo che M3 ha classificato la mail, M4 valuta se serve
     una bozza di risposta e nel caso la crea.
@@ -402,9 +406,9 @@ def _genera_bozza_m4(
     Non solleva mai: M4 e' un "additional outcome" del polling, non deve
     bloccare il ciclo. Errori vengono solo loggati.
 
-    La policy (auto / opt_in / nessuna) e' applicata internamente da
-    `crea_bozza_se_serve`. Qui passiamo sempre i parametri completi
-    perche' la generazione vera scatta solo se la policy lo prevede.
+    ``policy_override`` (M5.2): dizionario categoria->policy caricato da
+    ``CategoriaPolicyRepository`` una volta per ciclo. Se None, usa il
+    dizionario statico hardcoded in ``categorie_policy.py``.
     """
     log = logging.getLogger("polling")
     try:
@@ -425,6 +429,7 @@ def _genera_bozza_m4(
             model=settings.anthropic_model,
             ai_disabled=bool(settings.ai_disabled),
             to_address=mail.sender or "",
+            policy_override=policy_override,
         )
         if draft is None:
             log.info(
@@ -465,6 +470,16 @@ def run_once() -> int:
             # M4 repos: draft + anagrafica + wincar (per ScaffoldContext).
             draft_repo = DraftRepository(db_path=settings.app_db_path)
             compagnie_repo = CompagnieRepository(db_path=settings.app_db_path)
+            # M5.2: carica policy bozze da DB una volta per ciclo.
+            try:
+                _policy_repo = CategoriaPolicyRepository(db_path=settings.app_db_path)
+                _policies_db: dict[str, str] | None = _policy_repo.get_all()
+                log.info("Policy bozze caricate da DB: %s", _policies_db)
+            except Exception as exc:  # noqa: BLE001
+                log.warning(
+                    "CategoriaPolicyRepository non inizializzabile, uso policy statiche: %s", exc
+                )
+                _policies_db = None
             try:
                 wincar_repo: WinCarRepository | None = WinCarRepository.from_settings(settings)
             except Exception as exc:  # noqa: BLE001
@@ -510,6 +525,7 @@ def run_once() -> int:
                             wincar_repo=wincar_repo,
                             compagnie_repo=compagnie_repo,
                             settings=settings,
+                            policy_override=_policies_db,
                         )
                         # Hook M5: auto-transizione stato pratica.
                         if classif_obj.pratica_numero is not None:

@@ -78,7 +78,9 @@ from lys_workflow_hub.workflows.risposte.body_generator import (
     genera_body,
 )
 from lys_workflow_hub.workflows.risposte.categorie_policy import (
+    BOZZA_AUTO,
     BOZZA_NESSUNA,
+    BOZZA_OPT_IN,
     deve_generare_auto,
     policy_per,
 )
@@ -240,6 +242,7 @@ def crea_bozza_se_serve(
     ai_disabled: bool = False,
     to_address: str = "",
     forza: bool = False,
+    policy_override: dict[str, str] | None = None,
 ) -> Draft | None:
     """Hook chiamato da M3 al termine della classificazione.
 
@@ -263,6 +266,10 @@ def crea_bozza_se_serve(
       to_address:
         destinatario PEC pre-popolato. Se vuoto, usa il mittente della
         mail originale.
+      policy_override:
+        dizionario categoria -> policy caricato da `CategoriaPolicyRepository`
+        (M5.2). Se None, usa il dizionario statico in `categorie_policy.py`.
+        Permette di cambiare la policy dalla UI senza riavviare l'app.
 
     Ritorna:
       la `Draft` creata (o pre-esistente), o None se non serve bozza.
@@ -279,18 +286,22 @@ def crea_bozza_se_serve(
         )
         return esistente
 
-    # 2) Policy.
-    policy = policy_per(classificazione.categoria)
-    if policy == BOZZA_NESSUNA and not forza:
+    # 2) Policy — usa override da DB (M5.2) se disponibile, altrimenti statica.
+    if policy_override is not None:
+        _policy = policy_override.get(classificazione.categoria, BOZZA_OPT_IN)
+    else:
+        _policy = policy_per(classificazione.categoria)
+
+    if _policy == BOZZA_NESSUNA and not forza:
         logger.debug(
             "Categoria %s: policy=nessuna, salto creazione bozza",
             classificazione.categoria,
         )
         return None
-    if not deve_generare_auto(classificazione.categoria) and not forza:
+    if _policy != BOZZA_AUTO and not forza:
         logger.debug(
-            "Categoria %s: policy=opt_in, attesa azione operatore",
-            classificazione.categoria,
+            "Categoria %s: policy=%s, attesa azione operatore",
+            classificazione.categoria, _policy,
         )
         return None
 
