@@ -398,3 +398,41 @@ class ImapFetcher:
             errori=errori,
             nuovi_id=nuovi_id,
         )
+
+
+# --------------------------------------------------------------------------- #
+#  Funzione pubblica per re-estrazione (usata dalla route riclassifica)
+# --------------------------------------------------------------------------- #
+
+
+def reextract_body(
+    raw_eml_bytes: bytes,
+    *,
+    pdf_extract_enabled: bool = True,
+    pdf_extract_min_body_len: int = 200,
+) -> tuple[str, bool]:
+    """Re-estrae body_text e has_attachments da un .eml grezzo.
+
+    Applica la stessa pipeline di ``fetch_into``:
+      - legge il messaggio interno (postacert.eml) per body + PDF
+      - augment_body_with_pdf se il corpo è corto o cita l'allegato
+
+    Usato dalla route ``POST /risposte/{mail_id}/riclassifica`` per aggiornare
+    il body_text già in DB con i fix applicati (es. Bug M5.3).
+
+    Restituisce ``(body_text, has_attachments)``.
+    """
+    msg = email.message_from_bytes(raw_eml_bytes, policy=email.policy.default)
+    if not isinstance(msg, EmailMessage):
+        msg = EmailMessage()
+        msg.set_content("")
+    inner_msg = _find_postacert(msg) or msg
+    body_text = _extract_body_text(msg)
+    has_att = _has_attachments(inner_msg)
+    if pdf_extract_enabled and has_att:
+        body_text = augment_body_with_pdf(
+            body_text,
+            inner_msg,
+            min_body_len=pdf_extract_min_body_len,
+        )
+    return body_text, has_att

@@ -24,8 +24,31 @@
         <button type="submit" class="btn btn-primary">Genera bozza →</button>
       </form>
     {% endif %}
+    <form method="post" action="/risposte/{{ mail.id }}/riclassifica" style="display:inline;"
+          title="Re-legge il .eml dal filesystem (fix PDF M5.3) e riclassifica con AI. Comporta una chiamata all'API Anthropic.">
+      <button type="submit" class="btn">🔄 Riclassifica</button>
+    </form>
+    <details class="inline-confirm" style="display:inline-block; position:relative;">
+      <summary class="btn btn-danger-outline" style="list-style:none; cursor:pointer;">🗑 Elimina</summary>
+      <div class="inline-confirm-box">
+        <p>Elimina mail #{{ mail.id }} dal DB?<br>
+           <small class="meta">Il file .eml rimane su filesystem. La mail non verrà riscaricata se ha Message-ID.</small>
+        </p>
+        <form method="post" action="/risposte/{{ mail.id }}/elimina" style="display:flex; gap:8px; margin-top:8px;">
+          <button type="submit" class="btn btn-danger">Sì, elimina</button>
+          <button type="button" class="btn" onclick="this.closest('details').removeAttribute('open')">Annulla</button>
+        </form>
+      </div>
+    </details>
   </div>
 </header>
+
+{% if request.query_params.get('riclassificata') %}
+  <div class="alert alert-success">
+    <strong>Riclassificazione completata.</strong>
+    Body aggiornato dal .eml e nuova classificazione AI salvata.
+  </div>
+{% endif %}
 
 {% if classificazione and classificazione.action_required %}
   <div class="alert alert-warn">

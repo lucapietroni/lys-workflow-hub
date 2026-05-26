@@ -506,3 +506,44 @@ class MailRepository:
                 (f"{prefisso}%",),
             ).fetchone()
         return float(row["s"]) if row else 0.0
+
+    # -- operazioni manuali dal cruscotto ------------------------------------
+
+    def update_body_text(self, mail_id: int, body_text: str) -> None:
+        """Aggiorna body_text di una mail (usato dalla riclassificazione M3)."""
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE mail_in SET body_text = ? WHERE id = ?",
+                ((body_text or "")[:8000], int(mail_id)),
+            )
+
+    def delete_classification_for_mail(self, mail_in_id: int) -> bool:
+        """Cancella la classificazione esistente per una mail.
+
+        Rende la mail nuovamente "da classificare": il prossimo polling la
+        riprenderà (o la route riclassifica la ri-processa subito).
+        """
+        with self._connect() as conn:
+            cur = conn.execute(
+                "DELETE FROM mail_classificate WHERE mail_in_id = ?",
+                (int(mail_in_id),),
+            )
+            return cur.rowcount > 0
+
+    def delete_mail(self, mail_id: int) -> bool:
+        """Elimina mail_in + mail_classificate associata (cascade manuale).
+
+        La mail NON verrà riscaricata al prossimo polling se ha Message-ID
+        valorizzato (grazie all'UNIQUE INDEX su casella+message_id). Mail
+        senza Message-ID (raro) potrebbero essere riscaricate e riclassificate.
+        """
+        with self._connect() as conn:
+            conn.execute(
+                "DELETE FROM mail_classificate WHERE mail_in_id = ?",
+                (int(mail_id),),
+            )
+            cur = conn.execute(
+                "DELETE FROM mail_in WHERE id = ?",
+                (int(mail_id),),
+            )
+            return cur.rowcount > 0
