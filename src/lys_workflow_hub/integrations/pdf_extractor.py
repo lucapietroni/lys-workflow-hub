@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import io
 import logging
-import re
 from email.message import EmailMessage
 
 
@@ -31,61 +30,6 @@ _PDF_CHARS_LIMIT = 4000
 
 # Numero massimo di PDF allegati da processare per mail (per sicurezza).
 _MAX_PDF_ATTACHMENTS = 3
-
-# Parole chiave nel body che indicano "il contenuto reale è nell'allegato":
-# bypassa il controllo min_body_len anche se il body è lungo per via del
-# testo quotato del messaggio originale in risposta.
-# Pattern per individuare l'inizio del testo quotato in un reply email.
-# Quando il mittente ha scritto "in allegato" + incollato la sua risposta, il
-# corpo include l'originale quotato. Troncare prima del testo quotato evita di
-# dare all'AI il testo della PEC CHE ABBIAMO INVIATO NOI (confonde la categoria).
-_QUOTE_START_PATTERNS = [
-    re.compile(r"(?m)^>", re.MULTILINE),                     # >quoted line (con o senza spazio)
-    re.compile(r"(?m)^-{5,}", re.MULTILINE),                 # -----
-    re.compile(r"(?m)^_{5,}", re.MULTILINE),                 # _____
-    re.compile(r"(?m)^={5,}", re.MULTILINE),                 # =====
-    re.compile(r"Il giorno .{5,120}ha scritto:", re.IGNORECASE | re.DOTALL),
-    re.compile(r"On .{5,120}wrote:", re.IGNORECASE | re.DOTALL),
-    re.compile(r"(?m)^Da:\s.{1,120}@", re.MULTILINE | re.IGNORECASE),
-    re.compile(r"(?m)^From:\s.{1,120}@", re.MULTILINE | re.IGNORECASE),
-    re.compile(r"(?m)^--\s*$", re.MULTILINE),                # firma separator
-]
-
-
-def _strip_quoted_reply(text: str) -> str:
-    """Ritorna solo la parte NON quotata di un reply email.
-
-    Trova il primo marcatore di testo quotato (linee con >, separatori,
-    header "Da:" / "Il giorno X ha scritto:", ecc.) e tronca prima di esso.
-    Se non trova marcatori, restituisce il testo invariato.
-    """
-    if not text:
-        return text
-    first_pos = len(text)
-    for p in _QUOTE_START_PATTERNS:
-        m = p.search(text)
-        if m and m.start() < first_pos:
-            first_pos = m.start()
-    return text[:first_pos].strip()
-
-
-_ALLEGATO_HINT_RE = re.compile(
-    r"\b("
-    r"in\s+allegat[oi]"
-    r"|allego"
-    r"|si\s+veda\s+allegat[oi]"
-    r"|vedi\s+allegat[oi]"
-    r"|cfr\.?\s*allegat[oi]"
-    r"|trova\s+allegat[oi]"
-    r"|trover[àa]\s+allegat[oi]"
-    r"|in\s+attach\w*"
-    r"|see\s+attach\w*"
-    r"|see\s+enclos\w*"
-    r"|enclosed\s+please\s+find"
-    r"|please\s+find\s+attach\w*"
-    r")\b",
-    re.IGNORECASE,
-)
 
 
 def extract_text_from_pdf_bytes(
@@ -173,55 +117,27 @@ def extract_pdf_attachments_text(
 def augment_body_with_pdf(
     body_text: str,
     msg: EmailMessage,
-    min_body_len: int = 200,
+    min_body_len: int = 200,  # mantenuto per compatibilità API, non più usato
     max_chars_per_pdf: int = _PDF_CHARS_LIMIT,
 ) -> str:
-    """Arricchisce `body_text` con il testo degli allegati PDF se il corpo
-    è corto o assente.
+    """Arricchisce body_text con il testo degli allegati PDF del messaggio.
 
-    Logica:
-    - Se ``len(body_text) >= min_body_len``: il corpo è già abbastanza ricco,
-      non serve PDF (evita costi inutili e possibili confusioni).
-    - Altrimenti: estrae il testo dai PDF allegati e lo appende (o usa come
-      corpo principale se body_text è vuoto).
+    Estrae sempre il testo dai PDF allegati e lo appende al body, indipendentemente
+    dalla lunghezza del body. Le compagnie assicurative possono scrivere qualsiasi
+    cosa (o niente) nel corpo e allegare la risposta reale come PDF.
 
-    Ritorna il body_text eventualmente arricchito, troncato a 8000 caratteri
-    totali (limite attuale di `mail_in.body_text`).
+    Ritorna body_text invariato se non ci sono PDF con testo estraibile.
+    Troncato a 8000 caratteri totali.
     """
-    body_hints_allegato = bool(_ALLEGATO_HINT_RE.search(body_text or ""))
-
-    if body_hints_allegato:
-        # Il body dice esplicitamente "in allegato": il contenuto classificabile
-        # è il PDF, non il body. Il body (soprattutto nei reply PEC) può contenere
-        # il testo quotato della nostra PEC originale senza alcun marcatore di
-        # citazione — passarlo all'AI inquinerebbe la classificazione.
-        # Strategia: usa SOLO il testo PDF; fallback a body stripped se il PDF
-        # non ha testo selezionabile (es. scansione immagine).
-        pdf_text = extract_pdf_attachments_text(msg, max_chars_per_pdf=max_chars_per_pdf)
-        if pdf_text:
-            logger.info(
-                "PDF augmentation (allegato-hint): body scartato (%d char), "
-                "uso solo PDF (%d char)",
-                len(body_text), len(pdf_text),
-            )
-            return pdf_text[:8000]
-        # PDF senza testo (scansione): prova almeno a togliere il quoted.
-        stripped = _strip_quoted_reply(body_text)
-        logger.info(
-            "PDF augmentation (allegato-hint): PDF vuoto, body stripped %d→%d char",
-            len(body_text), len(stripped),
-        )
-        return (stripped or body_text)[:8000]
-
-    # Caso standard (nessun hint allegato): aggiungi PDF se il body è corto.
-    if len(body_text) >= min_body_len:
-        return body_text
-
     pdf_text = extract_pdf_attachments_text(msg, max_chars_per_pdf=max_chars_per_pdf)
     if not pdf_text:
         return body_text
 
-    combined = f"{body_text.strip()}\n\n{pdf_text}" if body_text.strip() else pdf_text
+    if body_text.strip():
+        combined = f"{body_text.strip()}\n\n{pdf_text}"
+    else:
+        combined = pdf_text
+
     logger.info(
         "PDF augmentation: body_len=%d → %d (da allegato PDF)",
         len(body_text), len(combined),
