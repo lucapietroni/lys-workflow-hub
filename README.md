@@ -7,7 +7,7 @@ vandalico, ecc.), monitora le risposte delle compagnie assicurative via PEC ed e
 ordinaria, classifica le risposte con un modello AI, produce bozze di replica e genera
 alert mirati.
 
-> Versione attuale: **0.7.0**
+> Versione attuale: **0.7.1**
 
 ## Stato del progetto
 
@@ -25,6 +25,20 @@ alert mirati.
 | **M5.3** | Estrazione testo da allegati PDF nelle risposte assicurative | ✅ completata |
 | **M6.1** | Escalation SLA automatica — sollecito / formale / diffida | ✅ completata |
 | **M7** | Fix qualità classificazione AI + robustezza cruscotto risposte + UX allegati | ✅ completata |
+| **M7.1** | Hotfix: PDF e immagini aperti inline nel browser (no download forzato) | ✅ completata |
+
+---
+
+### Cosa fa M7.1 oggi
+
+- **Hotfix `Content-Disposition: inline`**: PDF e immagini negli allegati
+  (pagina vandalismo e bozze) venivano scaricati invece di aprirsi nel browser.
+  Bug: passare simultaneamente `headers={"Content-Disposition": "inline; ..."}` e
+  `filename=` a Starlette `FileResponse` produce due header HTTP duplicati
+  (Python dict è case-sensitive: `"Content-Disposition"` ≠ `"content-disposition"`)
+  e Chrome usa quello `attachment`. Fix: per tipi inline non si passa `filename=`
+  e si usa chiave lowercase nel dict headers, così Starlette non aggiunge header
+  duplicati e Chrome apre nella scheda.
 
 ---
 
