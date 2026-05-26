@@ -25,6 +25,14 @@ from fastapi.templating import Jinja2Templates
 from lys_workflow_hub import __version__
 from lys_workflow_hub.config import Settings, get_settings
 from lys_workflow_hub.core.compagnie_repository import CompagnieRepository
+from lys_workflow_hub.core.sollecito_repository import (
+    SOL_CANCELLED,
+    SOL_LABELS,
+    SOL_PENDING,
+    SOL_SENT,
+    SOL_STATI,
+    SollecitoRepository,
+)
 from lys_workflow_hub.core.draft_repository import (
     CHANNEL_PEC,
     Draft,
@@ -53,6 +61,10 @@ from lys_workflow_hub.workflows.risposte.draft_service import (
     invia_bozza,
 )
 from lys_workflow_hub.workflows.risposte.sender import ParametriSpedizione
+from lys_workflow_hub.workflows.risposte.sollecito_generator import (
+    LIVELLO_BADGE_CLASS,
+    LIVELLO_LABELS,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -92,6 +104,12 @@ def get_pec_log_repo(
     return PecLogRepository(db_path=settings.app_db_path)
 
 
+def get_sollecito_repo(
+    settings: Settings = Depends(get_settings),
+) -> SollecitoRepository:
+    return SollecitoRepository(db_path=settings.app_db_path)
+
+
 def get_wincar_repo() -> WinCarRepository | None:
     """WinCar e' opzionale: se non raggiungibile, le bozze restano comunque
     consultabili (perdiamo solo l'arricchimento context al re-generate)."""
@@ -113,9 +131,9 @@ def bozze_list(
     status: str | None = None,
     draft_repo: DraftRepository = Depends(get_draft_repo),
     mail_repo: MailRepository = Depends(get_mail_repo),
+    sol_repo: SollecitoRepository = Depends(get_sollecito_repo),
 ) -> HTMLResponse:
-    """Lista bozze. Default: pending + ready (azionabili). Con
-    `?status=sent` o `?status=cancelled` mostra anche le archiviate."""
+    """Lista bozze + solleciti. Default: pending + ready (azionabili)."""
     if status and status in STATI:
         drafts = draft_repo.list_by_status(status, limit=300)
         filtro = status
@@ -142,6 +160,13 @@ def bozze_list(
 
     counts = draft_repo.conta_per_status()
 
+    # Solleciti (M6.1): sempre pending da inviare + archiviati se filtro esplicito.
+    if status and status in SOL_STATI:
+        solleciti = sol_repo.list_by_status(status, limit=200)
+    else:
+        solleciti = sol_repo.list_by_status(SOL_PENDING, limit=200)
+    sol_counts = sol_repo.conta_per_status()
+
     return templates.TemplateResponse(
         request,
         "bozze_list.html",
@@ -157,6 +182,15 @@ def bozze_list(
             "STATUS_SENT": STATUS_SENT,
             "STATUS_CANCELLED": STATUS_CANCELLED,
             "totale": len(drafts),
+            # Solleciti
+            "solleciti": solleciti,
+            "sol_counts": sol_counts,
+            "SOL_LABELS": SOL_LABELS,
+            "SOL_PENDING": SOL_PENDING,
+            "SOL_SENT": SOL_SENT,
+            "SOL_CANCELLED": SOL_CANCELLED,
+            "LIVELLO_LABELS": LIVELLO_LABELS,
+            "LIVELLO_BADGE_CLASS": LIVELLO_BADGE_CLASS,
         },
     )
 
@@ -473,6 +507,164 @@ async def bozza_annulla(
 # --------------------------------------------------------------------------- #
 #  Form action: genera-bozza opt-in da una mail M3
 # --------------------------------------------------------------------------- #
+
+
+# --------------------------------------------------------------------------- #
+#  Solleciti SLA (M6.1)
+# --------------------------------------------------------------------------- #
+
+
+def _load_sol_or_404(sol_id: int, sol_repo: SollecitoRepository):
+    s = sol_repo.get_sollecito(sol_id)
+    if s is None:
+        raise HTTPException(404, f"Sollecito id={sol_id} non trovato")
+    return s
+
+
+@router.get("/solleciti/{sol_id}", response_class=HTMLResponse)
+def sollecito_edit(
+    sol_id: int,
+    request: Request,
+    sol_repo: SollecitoRepository = Depends(get_sollecito_repo),
+    settings: Settings = Depends(get_settings),
+) -> HTMLResponse:
+    s = _load_sol_or_404(sol_id, sol_repo)
+    return templates.TemplateResponse(
+        request,
+        "sollecito_edit.html",
+        {
+            "version": __version__,
+            "s": s,
+            "livello_label": LIVELLO_LABELS.get(s.livello, str(s.livello)),
+            "livello_badge": LIVELLO_BADGE_CLASS.get(s.livello, "badge-gray"),
+            "SOL_LABELS": SOL_LABELS,
+            "SOL_PENDING": SOL_PENDING,
+            "SOL_SENT": SOL_SENT,
+            "SOL_CANCELLED": SOL_CANCELLED,
+            "dry_run": bool(settings.pec_dry_run),
+        },
+    )
+
+
+@router.post("/solleciti/{sol_id}/salva")
+async def sollecito_salva(
+    sol_id: int,
+    request: Request,
+    sol_repo: SollecitoRepository = Depends(get_sollecito_repo),
+) -> RedirectResponse:
+    s = _load_sol_or_404(sol_id, sol_repo)
+    if not s.is_editable:
+        raise HTTPException(409, f"Sollecito in stato {s.status}: non modificabile")
+    form = await request.form()
+    subject = (form.get("subject") or "").strip() or s.subject
+    body = (form.get("body") or "").strip() or s.body_html
+    to_address = (form.get("to_address") or "").strip() or s.to_address
+    sol_repo.update_body(sol_id, subject=subject, body_html=body, to_address=to_address)
+    return RedirectResponse(url=f"/solleciti/{sol_id}", status_code=303)
+
+
+@router.post("/solleciti/{sol_id}/invia", response_class=HTMLResponse)
+async def sollecito_invia(
+    sol_id: int,
+    request: Request,
+    sol_repo: SollecitoRepository = Depends(get_sollecito_repo),
+    pec_log_repo: PecLogRepository = Depends(get_pec_log_repo),
+    settings: Settings = Depends(get_settings),
+) -> HTMLResponse:
+    """Invia il sollecito via PEC (o dry-run). Riusa pec_mailer direttamente."""
+    from pathlib import Path as _Path
+    import re as _re
+    from lys_workflow_hub.integrations.pec_mailer import build_message, send_message
+
+    s = _load_sol_or_404(sol_id, sol_repo)
+    if s.status == SOL_CANCELLED:
+        raise HTTPException(409, "Sollecito annullato, non inviabile")
+    if s.status == SOL_SENT:
+        return RedirectResponse(url=f"/solleciti/{sol_id}", status_code=303)
+
+    # Salva eventuali modifiche dal form prima di inviare.
+    if s.is_editable:
+        form = await request.form()
+        subject = (form.get("subject") or "").strip() or s.subject
+        body = (form.get("body") or "").strip() or s.body_html
+        to_address = (form.get("to_address") or "").strip() or s.to_address
+        s = sol_repo.update_body(sol_id, subject=subject, body_html=body, to_address=to_address)
+
+    # Converti body_html → plain text (stessa logica di sender.py).
+    body_plain = _re.sub(r"(?i)<br\s*/?>", "\n", s.body_html)
+    body_plain = _re.sub(r"(?i)</p\s*>", "\n\n", body_plain)
+    body_plain = _re.sub(r"<[^>]+>", "", body_plain)
+    body_plain = body_plain.replace("&nbsp;", " ").replace("&amp;", "&").strip()
+
+    sender_email = (settings.pec_smtp_user or settings.carrozzeria_pec or "").strip()
+    sender_display = settings.carrozzeria_pec_alias or "Carrozzeria LYS Auto srl"
+
+    built = build_message(
+        sender_email=sender_email,
+        sender_display=sender_display,
+        recipient_email=s.to_address,
+        subject=s.subject,
+        body_text=body_plain,
+        attachments=[],
+    )
+
+    # Archivia .eml prima dell'invio.
+    from datetime import datetime as _dt
+    archivio = _Path(settings.app_archivio_pec) / "Solleciti"
+    anno_dir = archivio / str(_dt.now().year)
+    anno_dir.mkdir(parents=True, exist_ok=True)
+    ts = _dt.now().strftime("%Y%m%d-%H%M%S")
+    eml_path = anno_dir / f"{ts}_sollecito_{s.pratica_numero}_l{s.livello}.eml"
+    eml_path.write_bytes(built.eml_bytes)
+
+    result = send_message(
+        built,
+        smtp_host=settings.pec_smtp_host,
+        smtp_port=settings.pec_smtp_port,
+        smtp_user=settings.pec_smtp_user,
+        smtp_password=settings.pec_smtp_password,
+        sender_email=sender_email,
+        recipient_email=s.to_address,
+        dry_run=bool(settings.pec_dry_run),
+    )
+
+    if result.ok or result.dry_run:
+        sol_repo.mark_sent(sol_id, sent_eml_path=str(eml_path))
+        s = sol_repo.get_sollecito(sol_id)
+
+    return templates.TemplateResponse(
+        request,
+        "sollecito_edit.html",
+        {
+            "version": __version__,
+            "s": s,
+            "livello_label": LIVELLO_LABELS.get(s.livello, str(s.livello)),
+            "livello_badge": LIVELLO_BADGE_CLASS.get(s.livello, "badge-gray"),
+            "SOL_LABELS": SOL_LABELS,
+            "SOL_PENDING": SOL_PENDING,
+            "SOL_SENT": SOL_SENT,
+            "SOL_CANCELLED": SOL_CANCELLED,
+            "dry_run": bool(settings.pec_dry_run),
+            "esito_ok": result.ok or result.dry_run,
+            "esito_dry_run": result.dry_run,
+            "esito_error": result.error,
+        },
+    )
+
+
+@router.post("/solleciti/{sol_id}/annulla")
+async def sollecito_annulla(
+    sol_id: int,
+    request: Request,
+    sol_repo: SollecitoRepository = Depends(get_sollecito_repo),
+) -> RedirectResponse:
+    s = _load_sol_or_404(sol_id, sol_repo)
+    if s.status == SOL_SENT:
+        raise HTTPException(409, "Sollecito già inviato, non annullabile")
+    form = await request.form()
+    reason = (form.get("reason") or "").strip()
+    sol_repo.mark_cancelled(sol_id, reason=reason)
+    return RedirectResponse(url="/bozze", status_code=303)
 
 
 @router.post("/risposte/{mail_id}/genera-bozza")

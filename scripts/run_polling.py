@@ -54,6 +54,13 @@ from lys_workflow_hub.core.pec_log_repository import PecLogRepository  # noqa: E
 from lys_workflow_hub.core.pratica_stato_repository import (  # noqa: E402
     PraticaStatoRepository,
 )
+from lys_workflow_hub.core.sollecito_repository import (  # noqa: E402
+    SollecitoRepository,
+)
+from lys_workflow_hub.workflows.risposte.sollecito_generator import (  # noqa: E402
+    LIVELLO_LABELS,
+    genera_sollecito,
+)
 from lys_workflow_hub.core.wincar_repository import WinCarRepository  # noqa: E402
 from lys_workflow_hub.integrations.ai_classifier import classify  # noqa: E402
 from lys_workflow_hub.integrations.imap_fetcher import ImapFetcher  # noqa: E402
@@ -356,18 +363,27 @@ def _sla_notify(
     ntfy_topic: str,
     disabled: bool,
     base_url: str,
+    livello: int = 1,
 ) -> None:
-    """Invia push SLA per una PEC senza risposta oltre soglia e logga il reminder."""
+    """Invia push SLA per una PEC senza risposta e logga il reminder.
+
+    ``livello`` (M6.1): 1=sollecito, 2=formale, 3=diffida. Incluso nel
+    titolo della push e nel log.
+    """
     log = logging.getLogger("polling")
+    livello_tag = LIVELLO_LABELS.get(livello, f"Livello {livello}")
     try:
         if not disabled and ntfy_topic:
             import urllib.request
             url = f"{ntfy_server.rstrip('/')}/{ntfy_topic}"
-            titolo = f"SLA scaduto: pratica {alert.pratica_numero}"
+            titolo = (
+                f"SLA — {livello_tag}: pratica {alert.pratica_numero}"
+            )
             corpo = (
                 f"Nessuna risposta da {alert.compagnia_nome} "
                 f"dopo {alert.giorni_attesa} giorni.\n"
                 f"PEC inviata il {alert.data_invio.strftime('%d/%m/%Y')}.\n"
+                f"Bozza sollecito creata in /bozze.\n"
                 f"{base_url}/pratiche/{alert.pratica_numero}"
             )
             req = urllib.request.Request(
@@ -382,14 +398,16 @@ def _sla_notify(
             )
             urllib.request.urlopen(req, timeout=10)
             log.info(
-                "Push SLA inviato per pratica %s (pec_id=%s)",
-                alert.pratica_numero, alert.pec_inviata_id,
+                "Push SLA inviato: pratica=%s livello=%s (pec_id=%s)",
+                alert.pratica_numero, livello, alert.pec_inviata_id,
             )
-        stato_repo.log_sla_reminder(alert.pec_inviata_id, tipo="push")
+        stato_repo.log_sla_reminder(
+            alert.pec_inviata_id, tipo="sollecito", livello=livello
+        )
     except Exception as exc:  # noqa: BLE001
         log.warning(
-            "Push SLA fallito per pratica %s: %s",
-            alert.pratica_numero, exc,
+            "Push SLA fallito per pratica %s livello %s: %s",
+            alert.pratica_numero, livello, exc,
         )
 
 
@@ -592,32 +610,81 @@ def run_once() -> int:
                     cost_mese, settings.ai_budget_alert_eur,
                 )
 
-            # Check SLA (M5): PEC senza risposta oltre soglia.
+            # Check SLA + Escalation (M5/M6.1):
+            # Per ogni PEC senza risposta oltre soglia, determina il livello
+            # di escalation da gestire (sollecito, formale, diffida) e crea
+            # la bozza corrispondente in pec_solleciti.
             if settings.sla_giorni_alert > 0:
                 try:
                     stato_repo = PraticaStatoRepository(
                         db_path=settings.app_db_path
                     )
-                    sla_alerts = stato_repo.lista_sla_alerts(
-                        sla_giorni=settings.sla_giorni_alert
+                    sollecito_repo = SollecitoRepository(
+                        db_path=settings.app_db_path
                     )
-                    pending_sla = [a for a in sla_alerts if not a.already_reminded]
+                    # Soglie globali: livello->giorni (0 = disabilitato).
+                    soglie_globali: dict[int, int] = {
+                        1: int(settings.sla_giorni_alert),
+                        2: int(settings.sla_formale_giorni),
+                        3: int(settings.sla_diffida_giorni),
+                    }
+                    escalation_alerts = stato_repo.lista_sla_escalation(
+                        soglie=soglie_globali
+                    )
                     log.info(
-                        "SLA check: %d alert totali, %d nuovi da notificare",
-                        len(sla_alerts), len(pending_sla),
+                        "SLA escalation: %d combinazioni (pec, livello) da gestire",
+                        len(escalation_alerts),
                     )
                     base_url = f"http://{settings.app_host}:{settings.app_port}"
-                    for alert in pending_sla:
-                        _sla_notify(
-                            alert,
-                            stato_repo=stato_repo,
-                            ntfy_server=settings.ntfy_server,
-                            ntfy_topic=settings.ntfy_topic,
-                            disabled=bool(settings.notify_disabled),
-                            base_url=base_url,
-                        )
+                    for alert in escalation_alerts:
+                        try:
+                            livello = alert.livello_richiesto
+                            livello_label = LIVELLO_LABELS.get(livello, str(livello))
+                            subj, body = genera_sollecito(
+                                livello=livello,
+                                pratica_numero=alert.pratica_numero,
+                                compagnia_nome=alert.compagnia_nome,
+                                data_invio=alert.data_invio,
+                                giorni_attesa=alert.giorni_attesa,
+                                oggetto_originale=alert.oggetto_originale,
+                                carrozzeria_nome=(
+                                    settings.carrozzeria_pec_alias
+                                    or "Carrozzeria LYS Auto srl"
+                                ),
+                                carrozzeria_pec=settings.carrozzeria_pec,
+                                carrozzeria_telefono=settings.carrozzeria_telefono,
+                                carrozzeria_referente=settings.carrozzeria_referente,
+                            )
+                            sol = sollecito_repo.insert_sollecito(
+                                pec_inviata_id=alert.pec_inviata_id,
+                                pratica_numero=alert.pratica_numero,
+                                livello=livello,
+                                to_address=alert.destinatario_pec,
+                                subject=subj,
+                                body_html=body,
+                            )
+                            log.info(
+                                "Sollecito creato: id=%s pratica=%s livello=%s (%s)",
+                                sol.id, alert.pratica_numero,
+                                livello, livello_label,
+                            )
+                            # Push ntfy + log livello.
+                            _sla_notify(
+                                alert,
+                                stato_repo=stato_repo,
+                                ntfy_server=settings.ntfy_server,
+                                ntfy_topic=settings.ntfy_topic,
+                                disabled=bool(settings.notify_disabled),
+                                base_url=base_url,
+                                livello=livello,
+                            )
+                        except Exception as _exc:  # noqa: BLE001
+                            log.warning(
+                                "Escalation pratica %s livello %s fallita: %s",
+                                alert.pratica_numero, alert.livello_richiesto, _exc,
+                            )
                 except Exception as exc:  # noqa: BLE001
-                    log.warning("SLA check fallito (non blocca): %s", exc)
+                    log.warning("SLA escalation check fallito (non blocca): %s", exc)
 
             log.info("=== Fine ciclo polling ===")
             return 0

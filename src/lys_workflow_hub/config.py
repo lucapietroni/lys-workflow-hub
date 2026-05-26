@@ -110,10 +110,14 @@ class Settings(BaseSettings):
     ai_budget_monthly_eur: float = Field(default=20.0)
     ai_budget_alert_eur: float = Field(default=15.0)
 
-    # --- SLA pratiche (M5) ---
+    # --- SLA pratiche (M5/M6.1) ---
     # Numero di giorni senza risposta dopo i quali scatta l'alert SLA.
     # Impostare a 0 per disabilitare il check SLA nel polling.
     sla_giorni_alert: int = Field(default=15)
+    # Escalation automatica (M6.1): soglie per sollecito formale e diffida.
+    # 0 = livello disabilitato. I livelli inferiori devono avere soglia minore.
+    sla_formale_giorni: int = Field(default=30)
+    sla_diffida_giorni: int = Field(default=45)
 
     # --- PDF extraction (M5.3) ---
     # Estrae il testo dagli allegati PDF delle risposte assicurative quando

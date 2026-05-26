@@ -49,6 +49,10 @@ class Compagnia:
     note: str = ""
     created_at: datetime | None = field(default=None)
     updated_at: datetime | None = field(default=None)
+    # SLA personalizzati (M6.1): None = usa i default globali da config.
+    sla_sollecito_giorni: int | None = field(default=None)
+    sla_formale_giorni: int | None = field(default=None)
+    sla_diffida_giorni: int | None = field(default=None)
 
     # --- proprietà calcolate ---
 
@@ -98,19 +102,22 @@ def _normalizza_nome(nome: str) -> str:
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS compagnie_assicurative (
-    id               INTEGER PRIMARY KEY AUTOINCREMENT,
-    nome             TEXT NOT NULL,
-    pec              TEXT NOT NULL,
-    email            TEXT NOT NULL DEFAULT '',
-    indirizzo        TEXT NOT NULL DEFAULT '',
-    cap              TEXT NOT NULL DEFAULT '',
-    citta            TEXT NOT NULL DEFAULT '',
-    provincia        TEXT NOT NULL DEFAULT '',
-    ufficio_sinistri TEXT NOT NULL DEFAULT '',
-    note             TEXT NOT NULL DEFAULT '',
-    nome_norm        TEXT NOT NULL DEFAULT '',
-    created_at       TEXT NOT NULL,
-    updated_at       TEXT NOT NULL
+    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome                  TEXT NOT NULL,
+    pec                   TEXT NOT NULL,
+    email                 TEXT NOT NULL DEFAULT '',
+    indirizzo             TEXT NOT NULL DEFAULT '',
+    cap                   TEXT NOT NULL DEFAULT '',
+    citta                 TEXT NOT NULL DEFAULT '',
+    provincia             TEXT NOT NULL DEFAULT '',
+    ufficio_sinistri      TEXT NOT NULL DEFAULT '',
+    note                  TEXT NOT NULL DEFAULT '',
+    nome_norm             TEXT NOT NULL DEFAULT '',
+    created_at            TEXT NOT NULL,
+    updated_at            TEXT NOT NULL,
+    sla_sollecito_giorni  INTEGER,
+    sla_formale_giorni    INTEGER,
+    sla_diffida_giorni    INTEGER
 );
 
 CREATE INDEX IF NOT EXISTS idx_compagnie_nome_norm
@@ -145,6 +152,18 @@ class CompagnieRepository:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as conn:
             conn.executescript(_SCHEMA_SQL)
+            # Migrazione M6.1: aggiunge colonne SLA se non presenti.
+            for col_def in (
+                "sla_sollecito_giorni INTEGER",
+                "sla_formale_giorni   INTEGER",
+                "sla_diffida_giorni   INTEGER",
+            ):
+                try:
+                    conn.execute(
+                        f"ALTER TABLE compagnie_assicurative ADD COLUMN {col_def}"
+                    )
+                except sqlite3.OperationalError:
+                    pass  # già presente
 
     # -- connessione ---------------------------------------------------------
 
@@ -162,19 +181,23 @@ class CompagnieRepository:
 
     @staticmethod
     def _row_to_compagnia(row: sqlite3.Row) -> Compagnia:
+        d = dict(row)
         return Compagnia(
-            id=row["id"],
-            nome=row["nome"],
-            pec=row["pec"],
-            email=row["email"] or "",
-            indirizzo=row["indirizzo"] or "",
-            cap=row["cap"] or "",
-            citta=row["citta"] or "",
-            provincia=row["provincia"] or "",
-            ufficio_sinistri=row["ufficio_sinistri"] or "",
-            note=row["note"] or "",
-            created_at=_parse_dt(row["created_at"]),
-            updated_at=_parse_dt(row["updated_at"]),
+            id=d["id"],
+            nome=d["nome"],
+            pec=d["pec"],
+            email=d.get("email") or "",
+            indirizzo=d.get("indirizzo") or "",
+            cap=d.get("cap") or "",
+            citta=d.get("citta") or "",
+            provincia=d.get("provincia") or "",
+            ufficio_sinistri=d.get("ufficio_sinistri") or "",
+            note=d.get("note") or "",
+            created_at=_parse_dt(d.get("created_at")),
+            updated_at=_parse_dt(d.get("updated_at")),
+            sla_sollecito_giorni=d.get("sla_sollecito_giorni"),
+            sla_formale_giorni=d.get("sla_formale_giorni"),
+            sla_diffida_giorni=d.get("sla_diffida_giorni"),
         )
 
     # -- query ---------------------------------------------------------------
@@ -325,3 +348,23 @@ class CompagnieRepository:
                 (int(compagnia_id),),
             )
             return cur.rowcount > 0
+
+    def get_sla_soglie_by_nome(self, nome: str) -> dict[int, int] | None:
+        """Restituisce le soglie SLA personalizzate per la compagnia (M6.1).
+
+        Formato: ``{1: giorni_sollecito, 2: giorni_formale, 3: giorni_diffida}``.
+        Ritorna ``None`` se la compagnia non è trovata o non ha override.
+        Valori NULL nel DB (colonne non impostate) vengono omessi dal dict
+        così il chiamante può usare i default globali per quei livelli.
+        """
+        comp = self.lookup_by_name(nome)
+        if comp is None:
+            return None
+        result: dict[int, int] = {}
+        if comp.sla_sollecito_giorni is not None:
+            result[1] = comp.sla_sollecito_giorni
+        if comp.sla_formale_giorni is not None:
+            result[2] = comp.sla_formale_giorni
+        if comp.sla_diffida_giorni is not None:
+            result[3] = comp.sla_diffida_giorni
+        return result if result else None

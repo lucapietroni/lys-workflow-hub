@@ -58,7 +58,7 @@
   </section>
 {% else %}
   <section class="card">
-    <h2>Elenco</h2>
+    <h2>Elenco bozze risposta</h2>
     <table class="lys-table">
       <thead>
         <tr>
@@ -101,4 +101,70 @@
     </table>
   </section>
 {% endif %}
+
+{# ─── Solleciti SLA (M6.1) ──────────────────────────────────────────────── #}
+<section class="card" style="margin-top:24px;">
+  <h2>Solleciti SLA</h2>
+  <div class="form-grid">
+    <div class="field">
+      <span class="field-label">Da inviare</span>
+      <span class="field-value">{{ sol_counts[SOL_PENDING] }}</span>
+    </div>
+    <div class="field">
+      <span class="field-label">Inviati</span>
+      <span class="field-value">{{ sol_counts[SOL_SENT] }}</span>
+    </div>
+    <div class="field">
+      <span class="field-label">Annullati</span>
+      <span class="field-value">{{ sol_counts[SOL_CANCELLED] }}</span>
+    </div>
+  </div>
+  <p class="meta" style="margin-top:6px;">
+    Bozze generate automaticamente per PEC senza risposta oltre soglia SLA.
+    Revisiona il testo e invia dal pulsante "Apri".
+  </p>
+
+  {% if not solleciti %}
+    <p class="meta">Nessun sollecito da inviare.</p>
+  {% else %}
+    <table class="lys-table" style="margin-top:12px;">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Pratica</th>
+          <th>Livello</th>
+          <th>Destinatario</th>
+          <th>Stato</th>
+          <th>Creato</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for sol in solleciti %}
+        <tr>
+          <td>{{ sol.id }}</td>
+          <td>
+            <a href="/pratiche/{{ sol.pratica_numero }}">{{ sol.pratica_numero }}</a>
+          </td>
+          <td>
+            <span class="badge {{ LIVELLO_BADGE_CLASS.get(sol.livello, 'badge-gray') }}">
+              {{ LIVELLO_LABELS.get(sol.livello, sol.livello) }}
+            </span>
+          </td>
+          <td><code>{{ sol.to_address or "—" }}</code></td>
+          <td>
+            <span class="badge badge-{{ sol.status }}">
+              {{ SOL_LABELS.get(sol.status, sol.status) }}
+            </span>
+          </td>
+          <td><small class="meta">{{ sol.created_at.strftime("%d/%m/%Y %H:%M") }}</small></td>
+          <td>
+            <a class="btn btn-small" href="/solleciti/{{ sol.id }}">Apri</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</section>
 {% endblock %}

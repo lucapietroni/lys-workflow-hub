@@ -94,7 +94,8 @@ CREATE TABLE IF NOT EXISTS pec_sla_reminder (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     pec_inviata_id  INTEGER NOT NULL,
     reminded_at     TEXT    NOT NULL,
-    tipo            TEXT    NOT NULL DEFAULT 'push'
+    tipo            TEXT    NOT NULL DEFAULT 'push',
+    livello         INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE INDEX IF NOT EXISTS idx_sla_reminder_pec
@@ -139,6 +140,24 @@ class SlaAlert:
     already_reminded: bool
 
 
+@dataclass(frozen=True)
+class SlaEscalationAlert:
+    """Un livello di escalation da gestire per una PEC senza risposta (M6.1).
+
+    Un singolo ``pec_inviata_id`` può generare più alert (uno per livello
+    breached e non ancora loggato in ``pec_sla_reminder``).
+    """
+
+    pec_inviata_id: int
+    pratica_numero: int
+    compagnia_nome: str
+    destinatario_pec: str   # indirizzo PEC della compagnia
+    oggetto_originale: str  # subject della PEC originale inviata
+    data_invio: datetime
+    giorni_attesa: int
+    livello_richiesto: int  # 1 = sollecito, 2 = formale, 3 = diffida
+
+
 # --------------------------------------------------------------------------- #
 #  Repository
 # --------------------------------------------------------------------------- #
@@ -152,6 +171,15 @@ class PraticaStatoRepository:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as conn:
             conn.executescript(_SCHEMA_SQL)
+            # Migrazione M6.1: aggiunge colonna livello se non presente
+            # (DB già esistenti dalla M5 non l'hanno).
+            try:
+                conn.execute(
+                    "ALTER TABLE pec_sla_reminder "
+                    "ADD COLUMN livello INTEGER NOT NULL DEFAULT 1"
+                )
+            except sqlite3.OperationalError:
+                pass  # colonna già presente
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -372,12 +400,131 @@ class PraticaStatoRepository:
             logger.debug("count_sla_breach fallito: %s", exc)
             return 0
 
-    def log_sla_reminder(self, pec_inviata_id: int, tipo: str = "push") -> None:
-        """Registra che il reminder SLA per questa PEC è già stato inviato."""
+    def log_sla_reminder(
+        self, pec_inviata_id: int, tipo: str = "push", livello: int = 1
+    ) -> None:
+        """Registra che il reminder SLA per questa PEC è già stato inviato.
+
+        ``livello``: 1 = sollecito, 2 = formale, 3 = diffida (M6.1).
+        """
         now_iso = datetime.now().isoformat(timespec="seconds")
         with self._connect() as conn:
             conn.execute(
-                "INSERT INTO pec_sla_reminder (pec_inviata_id, reminded_at, tipo) "
-                "VALUES (?, ?, ?)",
-                (int(pec_inviata_id), now_iso, tipo),
+                "INSERT INTO pec_sla_reminder "
+                "(pec_inviata_id, reminded_at, tipo, livello) "
+                "VALUES (?, ?, ?, ?)",
+                (int(pec_inviata_id), now_iso, tipo, int(livello)),
             )
+
+    def livelli_already_sent(self, pec_inviata_id: int) -> set[int]:
+        """Set dei livelli escalation già loggati per questa PEC."""
+        try:
+            with self._connect() as conn:
+                rows = conn.execute(
+                    "SELECT livello FROM pec_sla_reminder WHERE pec_inviata_id = ?",
+                    (int(pec_inviata_id),),
+                ).fetchall()
+            return {int(r["livello"]) for r in rows}
+        except sqlite3.OperationalError:
+            return set()
+
+    def lista_sla_escalation(
+        self,
+        soglie: dict[int, int],
+        limit: int = 100,
+    ) -> list[SlaEscalationAlert]:
+        """PEC senza risposta con livelli di escalation da gestire (M6.1).
+
+        ``soglie``: dizionario {livello: giorni_soglia}, es.
+        ``{1: 15, 2: 30, 3: 45}``. Ritorna un ``SlaEscalationAlert`` per
+        ogni coppia (pec_id, livello) dove la soglia è superata e il livello
+        non è ancora stato loggato in ``pec_sla_reminder``.
+
+        Livelli con soglia 0 vengono ignorati (disabilitati).
+        Ordinato per data_invio ASC, poi livello ASC.
+        """
+        soglie_attive = {l: g for l, g in soglie.items() if g > 0}
+        if not soglie_attive:
+            return []
+
+        min_giorni = min(soglie_attive.values())
+        soglia_min_iso = (
+            datetime.now() - timedelta(days=min_giorni)
+        ).isoformat(timespec="seconds")
+
+        sql = """
+            SELECT
+                p.id                AS pec_inviata_id,
+                p.numero_pratica,
+                p.compagnia_nome,
+                p.destinatario_pec,
+                p.oggetto,
+                p.data_invio,
+                CAST(
+                    (julianday('now') - julianday(p.data_invio))
+                    AS INTEGER
+                )                   AS giorni_attesa
+            FROM pec_inviate p
+            LEFT JOIN mail_classificate m ON m.pec_inviata_id = p.id
+            WHERE p.esito IN ('OK', 'DRY_RUN')
+              AND p.data_invio <= :soglia_min_iso
+              AND m.id IS NULL
+            GROUP BY p.id
+            ORDER BY p.data_invio ASC
+            LIMIT :lim
+        """
+        try:
+            with self._connect() as conn:
+                rows = conn.execute(
+                    sql,
+                    {"soglia_min_iso": soglia_min_iso, "lim": int(limit)},
+                ).fetchall()
+
+                if not rows:
+                    return []
+
+                pec_ids = [int(r["pec_inviata_id"]) for r in rows]
+                placeholders = ",".join("?" * len(pec_ids))
+                reminder_rows = conn.execute(
+                    f"SELECT pec_inviata_id, livello "
+                    f"FROM pec_sla_reminder "
+                    f"WHERE pec_inviata_id IN ({placeholders})",
+                    pec_ids,
+                ).fetchall()
+        except sqlite3.OperationalError as exc:
+            logger.debug("lista_sla_escalation: tabelle non disponibili (%s)", exc)
+            return []
+
+        # Set dei livelli già loggati per PEC.
+        already_sent: dict[int, set[int]] = {}
+        for rr in reminder_rows:
+            pid = int(rr["pec_inviata_id"])
+            already_sent.setdefault(pid, set()).add(int(rr["livello"]))
+
+        alerts: list[SlaEscalationAlert] = []
+        for r in rows:
+            try:
+                dt = datetime.fromisoformat(r["data_invio"])
+            except (ValueError, TypeError):
+                dt = datetime.now()
+
+            pid = int(r["pec_inviata_id"])
+            giorni = int(r["giorni_attesa"] or 0)
+            sent_levels = already_sent.get(pid, set())
+
+            for livello, soglia_giorni in sorted(soglie_attive.items()):
+                if giorni >= soglia_giorni and livello not in sent_levels:
+                    alerts.append(
+                        SlaEscalationAlert(
+                            pec_inviata_id=pid,
+                            pratica_numero=int(r["numero_pratica"]),
+                            compagnia_nome=r["compagnia_nome"] or "",
+                            destinatario_pec=r["destinatario_pec"] or "",
+                            oggetto_originale=r["oggetto"] or "",
+                            data_invio=dt,
+                            giorni_attesa=giorni,
+                            livello_richiesto=livello,
+                        )
+                    )
+
+        return alerts

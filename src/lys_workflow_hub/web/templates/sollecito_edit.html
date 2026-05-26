@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}Sollecito #{{ s.id }} · LYS Workflow Hub{% endblock %}
+
+{% block content %}
+<header class="pratica-header">
+  <div>
+    <span class="badge">M6.1</span>
+    <h1>Sollecito SLA #{{ s.id }}</h1>
+    <p class="meta">
+      Pratica
+      <a href="/pratiche/{{ s.pratica_numero }}">{{ s.pratica_numero }}</a>
+      ·
+      <span class="badge {{ livello_badge }}">{{ livello_label }}</span>
+      ·
+      <span class="badge badge-{{ s.status }}">{{ SOL_LABELS.get(s.status, s.status) }}</span>
+      {% if dry_run %}
+        · <span class="badge badge-warning">DRY-RUN attivo</span>
+      {% endif %}
+    </p>
+  </div>
+  <div>
+    <a class="btn" href="/bozze">← Bozze</a>
+  </div>
+</header>
+
+{% if esito_ok is defined %}
+  {% if esito_dry_run %}
+    <div class="alert alert-info">
+      <strong>Dry-run:</strong> il file .eml è stato creato e archiviato, ma non è stata aperta
+      alcuna connessione SMTP. Imposta <code>PEC_DRY_RUN=false</code> in <code>.env</code>
+      per l'invio reale.
+    </div>
+  {% elif esito_ok %}
+    <div class="alert alert-success">
+      <strong>Sollecito inviato.</strong>
+    </div>
+  {% else %}
+    <div class="alert alert-error">
+      <strong>Errore invio:</strong> {{ esito_error }}
+    </div>
+  {% endif %}
+{% endif %}
+
+{% if s.status == SOL_SENT %}
+  <section class="card">
+    <h2>Riepilogo invio</h2>
+    <div class="form-grid">
+      <div class="field">
+        <span class="field-label">Inviato il</span>
+        <span class="field-value">{{ s.sent_at.strftime("%d/%m/%Y %H:%M") if s.sent_at else "—" }}</span>
+      </div>
+      <div class="field">
+        <span class="field-label">Destinatario</span>
+        <span class="field-value"><code>{{ s.to_address }}</code></span>
+      </div>
+      <div class="field">
+        <span class="field-label">Archivio .eml</span>
+        <span class="field-value"><code>{{ s.sent_eml_path or "—" }}</code></span>
+      </div>
+    </div>
+    <h3 style="margin-top:16px;">Testo inviato</h3>
+    <div class="body-preview" style="border:1px solid var(--border);padding:12px;border-radius:4px;">
+      {{ s.body_html|safe }}
+    </div>
+  </section>
+
+{% elif s.status == SOL_CANCELLED %}
+  <section class="card">
+    <p class="meta">Sollecito annullato. {{ ("Motivo: " + s.cancel_reason) if s.cancel_reason else "" }}</p>
+  </section>
+
+{% else %}
+  {# Editor — stato pending #}
+  <section class="card">
+    <h2>Modifica e invia</h2>
+    <form method="post" action="/solleciti/{{ s.id }}/invia">
+      <div class="form-group">
+        <label for="to_address">Destinatario PEC</label>
+        <input type="email" id="to_address" name="to_address"
+               value="{{ s.to_address }}" class="form-control">
+      </div>
+      <div class="form-group" style="margin-top:12px;">
+        <label for="subject">Oggetto</label>
+        <input type="text" id="subject" name="subject"
+               value="{{ s.subject }}" class="form-control">
+      </div>
+      <div class="form-group" style="margin-top:12px;">
+        <label for="body">Testo</label>
+        <textarea id="body" name="body" rows="16" class="form-control"
+                  style="font-family:monospace;font-size:0.85rem;">{{ s.body_html }}</textarea>
+        <small class="meta">Il testo supporta HTML minimo (&lt;p&gt;, &lt;strong&gt;, &lt;em&gt;, &lt;br&gt;).</small>
+      </div>
+      <div style="margin-top:16px;display:flex;gap:8px;align-items:center;">
+        <button type="submit" class="btn btn-primary">
+          {% if dry_run %}Invia (dry-run){% else %}Invia PEC{% endif %}
+        </button>
+        <button type="button" class="btn"
+                onclick="document.getElementById('form-salva').submit();">Salva bozza</button>
+      </div>
+    </form>
+
+    <form id="form-salva" method="post" action="/solleciti/{{ s.id }}/salva" style="display:none;">
+      <input type="hidden" name="subject" id="salva-subject">
+      <input type="hidden" name="body" id="salva-body">
+      <input type="hidden" name="to_address" id="salva-to">
+    </form>
+    <script>
+      document.querySelector('button[onclick]').addEventListener('click', function(e) {
+        document.getElementById('salva-subject').value =
+          document.getElementById('subject').value;
+        document.getElementById('salva-body').value =
+          document.getElementById('body').value;
+        document.getElementById('salva-to').value =
+          document.getElementById('to_address').value;
+      });
+    </script>
+  </section>
+
+  <section class="card" style="margin-top:12px;">
+    <details>
+      <summary>Annulla sollecito</summary>
+      <form method="post" action="/solleciti/{{ s.id }}/annulla" style="margin-top:8px;">
+        <input type="text" name="reason" placeholder="Motivo (opzionale)" class="form-control">
+        <button type="submit" class="btn btn-danger" style="margin-top:8px;"
+                onclick="return confirm('Annullare questo sollecito?')">
+          Annulla sollecito
+        </button>
+      </form>
+    </details>
+  </section>
+{% endif %}
+{% endblock %}
