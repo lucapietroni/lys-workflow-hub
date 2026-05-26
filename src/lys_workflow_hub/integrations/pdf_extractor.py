@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import io
 import logging
+import re
 from email.message import EmailMessage
 
 
@@ -30,6 +31,27 @@ _PDF_CHARS_LIMIT = 4000
 
 # Numero massimo di PDF allegati da processare per mail (per sicurezza).
 _MAX_PDF_ATTACHMENTS = 3
+
+# Parole chiave nel body che indicano "il contenuto reale è nell'allegato":
+# bypassa il controllo min_body_len anche se il body è lungo per via del
+# testo quotato del messaggio originale in risposta.
+_ALLEGATO_HINT_RE = re.compile(
+    r"\b("
+    r"in\s+allegat[oi]"
+    r"|allego"
+    r"|si\s+veda\s+allegat[oi]"
+    r"|vedi\s+allegat[oi]"
+    r"|cfr\.?\s*allegat[oi]"
+    r"|trova\s+allegat[oi]"
+    r"|trover[àa]\s+allegat[oi]"
+    r"|in\s+attach\w*"
+    r"|see\s+attach\w*"
+    r"|see\s+enclos\w*"
+    r"|enclosed\s+please\s+find"
+    r"|please\s+find\s+attach\w*"
+    r")\b",
+    re.IGNORECASE,
+)
 
 
 def extract_text_from_pdf_bytes(
@@ -132,7 +154,12 @@ def augment_body_with_pdf(
     Ritorna il body_text eventualmente arricchito, troncato a 8000 caratteri
     totali (limite attuale di `mail_in.body_text`).
     """
-    if len(body_text) >= min_body_len:
+    # Bypass min_body_len se il body contiene esplicito riferimento all'allegato
+    # (es. "in allegato"). Nelle risposte PEC il testo quotato dell'originale
+    # può gonfiare body_text >> min_body_len anche quando il mittente ha scritto
+    # solo "in allegato". Senza questo override il PDF verrebbe saltato.
+    body_hints_allegato = bool(_ALLEGATO_HINT_RE.search(body_text or ""))
+    if len(body_text) >= min_body_len and not body_hints_allegato:
         return body_text
 
     pdf_text = extract_pdf_attachments_text(msg, max_chars_per_pdf=max_chars_per_pdf)

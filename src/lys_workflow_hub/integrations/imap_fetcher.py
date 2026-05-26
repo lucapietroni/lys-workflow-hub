@@ -329,14 +329,20 @@ class ImapFetcher:
                     recipients = (msg.get("To") or "").strip()
                     subject = (msg.get("Subject") or "").strip()
                     received = _parse_received_date(msg)
-                    body_text = _extract_body_text(msg)
-                    has_att = _has_attachments(msg)
-                    # M5.3: arricchisce body_text con testo da allegati PDF
-                    # se il corpo della mail è corto/vuoto.
+                    # Trova il messaggio interno (postacert.eml) una volta sola.
+                    # Le PEC InfoCert incapsulano il messaggio reale come
+                    # message/rfc822; il PDF allegato dalla compagnia (o dal
+                    # test-mittente) è dentro quell'inner, non nell'outer wrapper.
+                    inner_msg = _find_postacert(msg) or msg
+                    body_text = _extract_body_text(msg)  # usa inner internamente
+                    has_att = _has_attachments(inner_msg)  # M5.3 fix: usa inner
+                    # M5.3: arricchisce body_text con testo da allegati PDF.
+                    # Passa inner_msg per trovare i PDF anche nelle PEC in risposta
+                    # dove l'allegato è nell'inner postacert.eml e non nell'outer.
                     if pdf_extract_enabled and has_att:
                         body_text = augment_body_with_pdf(
                             body_text,
-                            msg,
+                            inner_msg,  # M5.3 fix: usa inner
                             min_body_len=pdf_extract_min_body_len,
                         )
 
