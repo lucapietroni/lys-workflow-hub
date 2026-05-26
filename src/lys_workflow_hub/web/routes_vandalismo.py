@@ -391,7 +391,22 @@ def vandalismo_serve_allegato(
     except (OSError, ValueError) as exc:
         raise HTTPException(403, "Percorso non consentito.") from exc
 
-    return FileResponse(path=resolved, filename=nome)
+    # PDF e immagini: inline (il browser apre nella tab).
+    # Altri tipi: download (attachment, comportamento default).
+    _INLINE_EXTS = {
+        ".pdf": "application/pdf",
+        ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+        ".png": "image/png", ".gif": "image/gif",
+        ".webp": "image/webp", ".bmp": "image/bmp",
+        ".tif": "image/tiff", ".tiff": "image/tiff",
+        ".txt": "text/plain; charset=utf-8",
+    }
+    ext = resolved.suffix.lower()
+    media_type = _INLINE_EXTS.get(ext, "application/octet-stream")
+    headers: dict[str, str] = {}
+    if ext in _INLINE_EXTS:
+        headers["Content-Disposition"] = f'inline; filename="{nome}"'
+    return FileResponse(path=resolved, filename=nome, media_type=media_type, headers=headers)
 
 
 # --------------------------------------------------------------------------- #

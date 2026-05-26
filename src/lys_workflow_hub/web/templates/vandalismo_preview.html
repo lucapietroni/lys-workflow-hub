@@ -201,17 +201,19 @@
       </p>
     {% else %}
       {% macro allegato_row(a) %}
+        {% set allegato_url = "/pratiche/" ~ pratica.numero ~ "/allegato?nome=" ~ (a.nome_file|urlencode) %}
         <li class="allegato-row">
           <label>
             <input type="checkbox" name="allegati_selezionati" value="{{ a.nome_file }}"
               {% if a.nome_file in allegati_selezionati_set %}checked{% endif %} />
             {% if a.estensione == '.pdf' %}
-              <button type="button" class="pdf-preview-btn"
-                      data-src="/pratiche/{{ pratica.numero }}/allegato?nome={{ a.nome_file|urlencode }}"
-                      data-nome="{{ a.nome_file }}"
-                      title="Apri anteprima PDF — {{ a.nome_file }}">📄</button>
+              <a href="{{ allegato_url }}" target="_blank" rel="noopener"
+                 class="pdf-preview-btn" title="Apri PDF — {{ a.nome_file }}">📄</a>
+              <a href="{{ allegato_url }}" target="_blank" rel="noopener"
+                 class="allegato-name">{{ a.nome_file }}</a>
+            {% else %}
+              <span class="allegato-name">{{ a.nome_file }}</span>
             {% endif %}
-            <span class="allegato-name">{{ a.nome_file }}</span>
             <span class="allegato-meta">{{ a.size_label }} · {{ a.data_modifica.strftime("%d/%m/%Y") }}</span>
           </label>
         </li>
@@ -302,14 +304,5 @@
     setTimeout(function() { btn.textContent = old; }, 1500);
   }
 
-  // Apre PDF in nuova scheda (come bozza_edit). stopPropagation evita
-  // toggle del checkbox parent nella <label>.
-  document.querySelectorAll(".pdf-preview-btn").forEach(function (btn) {
-    btn.addEventListener("click", function (e) {
-      e.preventDefault();
-      e.stopPropagation();
-      window.open(btn.dataset.src, "_blank", "noopener");
-    });
-  });
 </script>
 {% endblock %}
