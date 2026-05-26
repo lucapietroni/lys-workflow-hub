@@ -7,7 +7,7 @@ vandalico, ecc.), monitora le risposte delle compagnie assicurative via PEC ed e
 ordinaria, classifica le risposte con un modello AI, produce bozze di replica e genera
 alert mirati.
 
-> Versione attuale: **0.4.1**
+> Versione attuale: **0.5.0**
 
 ## Stato del progetto
 
@@ -18,9 +18,50 @@ alert mirati.
 | **M2bis** | Invio effettivo via SMTP della PEC (InfoCert SSL 465) + audit | ✅ completata |
 | **M3** | Sottosistema posta in entrata + AI + Workflow C (lettura risposte) | ✅ completata |
 | **M4** | Cruscotto bozze di risposta + context builder + firma cessione | ✅ completata |
-| **M4.1** | Bug fix bozza risposta: subject annidato (POSTA CERTIFICATA) + compagnia mancante in PEC inviate | ✅ completata |
+| **M4.1** | Bug fix bozza risposta: subject annidato + compagnia mancante in PEC inviate | ✅ completata |
+| **M5** | Stato pratica + SLA tracker + statistiche compagnie | ✅ completata |
+| **M5.1** | Dashboard KPI espansa + pagina statistiche per compagnia | ✅ completata |
+| **M5.2** | Policy editor bozze da UI — senza riavvio app | ✅ completata |
 
 ---
+
+### Cosa fa M5 oggi
+
+- **Stato pratica** `/pratiche/{n}`: ogni pratica ha un ciclo di vita tracciato
+  in `lys_hub.db` (aperta → in gestione → perito nominato → in liquidazione → chiusa).
+  L'operatore aggiorna lo stato manualmente dal widget nella pagina pratica, con nota
+  opzionale. Lo stato è storicizzato (storia immutabile, no UPDATE).
+- **Transizioni automatiche**: quando il ciclo di polling classifica una risposta,
+  lo stato avanza automaticamente — `presa_in_carico` → in gestione,
+  `nomina_perito` → perito nominato, `liquidazione` → in liquidazione.
+  Non scende mai di livello, non transita mai da "chiusa".
+- **SLA tracker**: ogni ciclo di polling verifica le PEC inviate senza risposta
+  oltre la soglia configurata (`SLA_GIORNI_ALERT`, default 15 giorni). Per ogni
+  breach manda un push ntfy.sh con link diretto alla pratica. Cooldown integrato:
+  non rispamma se il reminder è già stato inviato di recente. Log in
+  `pec_sla_reminder`.
+- **KPI home espansa**: la hero strip ora mostra tre contatori — risposte da
+  gestire, bozze in attesa, **SLA scaduti** — tutti in rosso se > 0.
+- **Banner SLA** sulla pagina pratica: se la PEC di quella pratica è in breach,
+  mostra quanti giorni sono passati e verso quale compagnia.
+
+### Cosa fa M5.1 oggi
+
+- **Pagina `/statistiche`**: KPI globali (PEC inviate totali, risposte ricevute,
+  costo AI mese/totale, pratiche con stato) + tabella aggregata per compagnia
+  (PEC inviate, risposte, % risposta, giorni medi, breakdown per categoria,
+  costo AI). Dati calcolati live da query SQL su `lys_hub.db`.
+
+### Cosa fa M5.2 oggi
+
+- **Pagina `/impostazioni`**: editor visuale della policy di generazione bozze
+  per ogni categoria AI. Ogni categoria può essere impostata a:
+  *Bozza automatica*, *Solo su richiesta*, *Nessuna bozza*.
+- **Policy persistita in SQLite** (`categoria_policy`): la modifica da UI
+  è attiva al prossimo ciclo polling senza riavviare l'app. Fallback ai
+  default hardcoded se la tabella non è disponibile.
+- **Wire completo**: `crea_bozza_se_serve()` accetta `policy_override` dal DB;
+  il polling carica il dict una volta per ciclo e lo propaga a tutta la pipeline.
 
 ### Cosa fa M4 oggi
 
@@ -105,7 +146,7 @@ alert mirati.
         |  Workflow registry          |
         |   - cessione_credito        |
         |   - risarcimento_vandalismo |
-        |   - risposte (M3/M4)        |
+        |   - risposte (M3/M4/M5)     |
         +-----------------------------+
                      |
    +-----+ +-----+ +-----+ +-----+ +-----+
@@ -120,7 +161,7 @@ alert mirati.
 - **Doc** = motore documenti (python-docx + Word COM per PDF)
 - **Mail** = lettore/mittente posta (IMAP + SMTP/PEC)
 - **AI** = classificatore di risposte assicurative (Claude API)
-- **Notif** = dispatcher notifiche (email + push smartphone)
+- **Notif** = dispatcher notifiche (email + push smartphone + SLA alert)
 
 ## Requisiti
 
@@ -176,7 +217,8 @@ lys-workflow-hub/
 │   └── SETUP_PRODUCTION.md         Guida installazione PC carrozzeria
 ├── scripts/
 │   ├── dump_schema_wincar.py
-│   └── run_polling.py              Ciclo fetch→match→classify→notify
+│   ├── run_polling.py              Ciclo fetch→match→classify→notify+SLA
+│   └── reset_polling.py            Utility reset UID IMAP
 ├── src/
 │   └── lys_workflow_hub/
 │       ├── main.py                 Entry point FastAPI
@@ -185,9 +227,11 @@ lys-workflow-hub/
 │       │   ├── wincar_repository.py
 │       │   ├── schema_check.py
 │       │   ├── compagnie_repository.py
-│       │   ├── mail_in_repository.py   Mail in arrivo (M3)
-│       │   ├── pec_log_repository.py   Audit invii PEC
-│       │   └── draft_repository.py     Bozze di risposta (M4)
+│       │   ├── mail_in_repository.py       Mail in arrivo (M3)
+│       │   ├── pec_log_repository.py       Audit invii PEC
+│       │   ├── draft_repository.py         Bozze di risposta (M4)
+│       │   ├── pratica_stato_repository.py Stato pratica + SLA (M5)
+│       │   └── categoria_policy_repository.py Policy bozze in DB (M5.2)
 │       ├── workflows/
 │       │   ├── cessione_credito/       Workflow A — genera .docx/.pdf
 │       │   │   └── assets/             Firma pre-apposta (PNG)
@@ -195,6 +239,7 @@ lys-workflow-hub/
 │       │   └── risposte/               Workflow C — lettura + risposta
 │       │       ├── matcher.py
 │       │       ├── context_builder.py  Costruisce bozza risposta (M4)
+│       │       ├── categorie_policy.py Policy statiche (fallback M5.2)
 │       │       └── body_generator.py   AI classification (M3)
 │       ├── integrations/
 │       │   ├── imap_fetcher.py
@@ -207,7 +252,8 @@ lys-workflow-hub/
 │           ├── routes_compagnie.py     CRUD compagnie
 │           ├── routes_pec_log.py       Cronologia PEC
 │           ├── routes_risposte.py      Lista/dettaglio risposte (M3)
-│           └── routes_bozze.py         Cruscotto bozze (M4)
+│           ├── routes_bozze.py         Cruscotto bozze (M4)
+│           └── routes_impostazioni.py  Statistiche + policy editor (M5)
 ├── tests/
 └── data/                           DB SQLite locale (gitignored)
 ```
