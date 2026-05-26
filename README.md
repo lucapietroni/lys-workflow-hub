@@ -22,6 +22,7 @@ alert mirati.
 | **M5** | Stato pratica + SLA tracker + statistiche compagnie | ✅ completata |
 | **M5.1** | Dashboard KPI espansa + pagina statistiche per compagnia | ✅ completata |
 | **M5.2** | Policy editor bozze da UI — senza riavvio app | ✅ completata |
+| **M5.3** | Estrazione testo da allegati PDF nelle risposte assicurative | ✅ completata |
 
 ---
 
@@ -51,6 +52,27 @@ alert mirati.
   costo AI mese/totale, pratiche con stato) + tabella aggregata per compagnia
   (PEC inviate, risposte, % risposta, giorni medi, breakdown per categoria,
   costo AI). Dati calcolati live da query SQL su `lys_hub.db`.
+
+### Cosa fa M5.3 oggi
+
+- **Estrazione testo da PDF allegati**: molte compagnie assicurative inviano la
+  risposta reale (presa in carico, nomina perito, liquidazione) come PDF allegato
+  invece di scriverla nel corpo dell'email. Il body rimane un pro-forma generico
+  tipo "Si veda l'allegato" o addirittura vuoto.
+- **Logica**: durante il fetch IMAP, se `len(body_text) < PDF_EXTRACT_MIN_BODY_LEN`
+  (default 200 caratteri), il fetcher estrae il testo dai PDF allegati tramite
+  `pypdf` (puro Python, niente Ghostscript) e lo appende al corpo. Massimo 3 PDF
+  per mail, 4000 caratteri per PDF, totale troncato a 8000 caratteri.
+- **No-op per email già ricche**: se il corpo è già abbastanza lungo, il PDF non
+  viene nemmeno aperto — nessun costo extra per le email normali.
+- **Prefisso contestuale**: il testo estratto è prefissato da
+  `[ALLEGATO PDF: <nome>]` così il classificatore AI sa che il contenuto viene
+  da un allegato.
+- **Degradazione silenziosa**: se `pypdf` non è installato o il PDF è corrotto/
+  protetto/solo-immagini, la funzione restituisce stringa vuota senza bloccare
+  il polling.
+- **Configurabile** via `.env`: `PDF_EXTRACT_ENABLED=true` e
+  `PDF_EXTRACT_MIN_BODY_LEN=200`.
 
 ### Cosa fa M5.2 oggi
 
@@ -245,6 +267,7 @@ lys-workflow-hub/
 │       │   ├── imap_fetcher.py
 │       │   ├── pec_mailer.py
 │       │   ├── ai_classifier.py
+│       │   ├── pdf_extractor.py        Estrazione testo PDF allegati (M5.3)
 │       │   └── notifier.py
 │       └── web/
 │           ├── routes.py               Pratica + Workflow A
