@@ -35,6 +35,40 @@ _MAX_PDF_ATTACHMENTS = 3
 # Parole chiave nel body che indicano "il contenuto reale è nell'allegato":
 # bypassa il controllo min_body_len anche se il body è lungo per via del
 # testo quotato del messaggio originale in risposta.
+# Pattern per individuare l'inizio del testo quotato in un reply email.
+# Quando il mittente ha scritto "in allegato" + incollato la sua risposta, il
+# corpo include l'originale quotato. Troncare prima del testo quotato evita di
+# dare all'AI il testo della PEC CHE ABBIAMO INVIATO NOI (confonde la categoria).
+_QUOTE_START_PATTERNS = [
+    re.compile(r"(?m)^>", re.MULTILINE),                     # >quoted line (con o senza spazio)
+    re.compile(r"(?m)^-{5,}", re.MULTILINE),                 # -----
+    re.compile(r"(?m)^_{5,}", re.MULTILINE),                 # _____
+    re.compile(r"(?m)^={5,}", re.MULTILINE),                 # =====
+    re.compile(r"Il giorno .{5,120}ha scritto:", re.IGNORECASE | re.DOTALL),
+    re.compile(r"On .{5,120}wrote:", re.IGNORECASE | re.DOTALL),
+    re.compile(r"(?m)^Da:\s.{1,120}@", re.MULTILINE | re.IGNORECASE),
+    re.compile(r"(?m)^From:\s.{1,120}@", re.MULTILINE | re.IGNORECASE),
+    re.compile(r"(?m)^--\s*$", re.MULTILINE),                # firma separator
+]
+
+
+def _strip_quoted_reply(text: str) -> str:
+    """Ritorna solo la parte NON quotata di un reply email.
+
+    Trova il primo marcatore di testo quotato (linee con >, separatori,
+    header "Da:" / "Il giorno X ha scritto:", ecc.) e tronca prima di esso.
+    Se non trova marcatori, restituisce il testo invariato.
+    """
+    if not text:
+        return text
+    first_pos = len(text)
+    for p in _QUOTE_START_PATTERNS:
+        m = p.search(text)
+        if m and m.start() < first_pos:
+            first_pos = m.start()
+    return text[:first_pos].strip()
+
+
 _ALLEGATO_HINT_RE = re.compile(
     r"\b("
     r"in\s+allegat[oi]"
@@ -166,8 +200,21 @@ def augment_body_with_pdf(
     if not pdf_text:
         return body_text
 
-    if body_text.strip():
-        combined = f"{body_text.strip()}\n\n{pdf_text}"
+    # Quando il body cita esplicitamente l'allegato, strippa il testo quotato
+    # prima di combinare. In un reply PEC il quoted text è la nostra PEC originale
+    # inviata alla compagnia: darla all'AI inquina la classificazione (l'AI vede
+    # "richiesta risarcimento" invece della risposta della compagnia).
+    if body_hints_allegato:
+        meaningful_body = _strip_quoted_reply(body_text)
+        logger.info(
+            "PDF augmentation: testo quotato rimosso (%d→%d char), allegato PDF aggiunto",
+            len(body_text), len(meaningful_body),
+        )
+    else:
+        meaningful_body = body_text.strip()
+
+    if meaningful_body:
+        combined = f"{meaningful_body}\n\n{pdf_text}"
     else:
         combined = pdf_text
 

@@ -219,6 +219,13 @@ class MailRepository:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as conn:
             conn.executescript(_SCHEMA_SQL)
+            # Migrazione: colonna ignorata (soft-delete per evitare re-download).
+            try:
+                conn.execute(
+                    "ALTER TABLE mail_in ADD COLUMN ignorata INTEGER NOT NULL DEFAULT 0"
+                )
+            except sqlite3.OperationalError:
+                pass  # già presente
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -313,13 +320,18 @@ class MailRepository:
     def list_mail(self, limit: int = 200) -> list[MailIn]:
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT * FROM mail_in ORDER BY ricevuto_at DESC, id DESC LIMIT ?",
+                "SELECT * FROM mail_in WHERE ignorata = 0 "
+                "ORDER BY ricevuto_at DESC, id DESC LIMIT ?",
                 (int(limit),),
             ).fetchall()
         return [self._row_to_mail(r) for r in rows]
 
     def max_uid(self, casella: str) -> int:
-        """UID IMAP più alto già scaricato per la casella (per fetch incrementale)."""
+        """UID IMAP più alto già scaricato per la casella (per fetch incrementale).
+
+        Considera TUTTE le mail incluse quelle soft-deleted (ignorata=1):
+        così il fetcher non ri-scarica mai una mail eliminata dal cruscotto.
+        """
         with self._connect() as conn:
             row = conn.execute(
                 "SELECT MAX(uid_imap) AS m FROM mail_in WHERE casella = ?",
@@ -328,12 +340,12 @@ class MailRepository:
         return int(row["m"]) if row and row["m"] is not None else 0
 
     def conta_da_classificare(self) -> int:
-        """Mail in arrivo per cui non c'è ancora classificazione."""
+        """Mail in arrivo per cui non c'è ancora classificazione (ignora soft-delete)."""
         with self._connect() as conn:
             row = conn.execute(
                 "SELECT COUNT(*) AS n FROM mail_in mi "
                 "LEFT JOIN mail_classificate mc ON mc.mail_in_id = mi.id "
-                "WHERE mc.id IS NULL"
+                "WHERE mc.id IS NULL AND mi.ignorata = 0"
             ).fetchone()
         return int(row["n"]) if row else 0
 
@@ -342,7 +354,7 @@ class MailRepository:
             rows = conn.execute(
                 "SELECT mi.* FROM mail_in mi "
                 "LEFT JOIN mail_classificate mc ON mc.mail_in_id = mi.id "
-                "WHERE mc.id IS NULL "
+                "WHERE mc.id IS NULL AND mi.ignorata = 0 "
                 "ORDER BY mi.ricevuto_at ASC LIMIT ?",
                 (int(limit),),
             ).fetchall()
@@ -451,9 +463,9 @@ class MailRepository:
         - `solo_matched=False`: mostra tutte le mail in archivio.
         """
         if solo_matched:
-            where = "WHERE mc.pec_inviata_id IS NOT NULL"
+            where = "WHERE mc.pec_inviata_id IS NOT NULL AND mi.ignorata = 0"
         else:
-            where = ""
+            where = "WHERE mi.ignorata = 0"
         with self._connect() as conn:
             rows = conn.execute(
                 "SELECT mi.id AS m_id, mc.id AS c_id FROM mail_in mi "
@@ -491,8 +503,10 @@ class MailRepository:
         pratica (usato per il KPI sulla home)."""
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT COUNT(*) AS n FROM mail_classificate "
-                "WHERE action_required = 1 AND pec_inviata_id IS NOT NULL"
+                "SELECT COUNT(*) AS n FROM mail_classificate mc "
+                "JOIN mail_in mi ON mi.id = mc.mail_in_id "
+                "WHERE mc.action_required = 1 AND mc.pec_inviata_id IS NOT NULL "
+                "AND mi.ignorata = 0"
             ).fetchone()
         return int(row["n"]) if row else 0
 
@@ -531,19 +545,19 @@ class MailRepository:
             return cur.rowcount > 0
 
     def delete_mail(self, mail_id: int) -> bool:
-        """Elimina mail_in + mail_classificate associata (cascade manuale).
+        """Soft-delete: imposta ignorata=1 su mail_in e cancella mail_classificate.
 
-        La mail NON verrà riscaricata al prossimo polling se ha Message-ID
-        valorizzato (grazie all'UNIQUE INDEX su casella+message_id). Mail
-        senza Message-ID (raro) potrebbero essere riscaricate e riclassificate.
+        La riga rimane in DB con ignorata=1 così max_uid non scende e il fetcher
+        non riscarica mai la mail. Tutte le query di lista filtrano ignorata=0.
         """
         with self._connect() as conn:
+            # Cancella classificazione (così può essere riclassificata se necessario).
             conn.execute(
                 "DELETE FROM mail_classificate WHERE mail_in_id = ?",
                 (int(mail_id),),
             )
             cur = conn.execute(
-                "DELETE FROM mail_in WHERE id = ?",
+                "UPDATE mail_in SET ignorata = 1 WHERE id = ?",
                 (int(mail_id),),
             )
             return cur.rowcount > 0
