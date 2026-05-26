@@ -550,7 +550,14 @@ def run_once() -> int:
                             policy_override=_policies_db,
                         )
                         # Hook M5: auto-transizione stato pratica.
-                        if classif_obj.pratica_numero is not None:
+                        # Soglia confidence 0.70: evita transizioni da
+                        # classificazioni incerte. Dinieghi/polizza-non-trovata
+                        # arrivano come "altro" e non triggherano transizioni.
+                        _AUTO_TRANSITION_MIN_CONF = 0.70
+                        if (
+                            classif_obj.pratica_numero is not None
+                            and classif_obj.confidence >= _AUTO_TRANSITION_MIN_CONF
+                        ):
                             try:
                                 stato_repo = PraticaStatoRepository(
                                     db_path=settings.app_db_path
@@ -564,6 +571,15 @@ def run_once() -> int:
                                     "M5 auto_transition fallita per pratica %s: %s",
                                     classif_obj.pratica_numero, _exc,
                                 )
+                        elif classif_obj.pratica_numero is not None:
+                            log.info(
+                                "M5 skip auto_transition pratica %s: "
+                                "categoria=%s conf=%.2f < soglia %.2f",
+                                classif_obj.pratica_numero,
+                                classif_obj.categoria,
+                                classif_obj.confidence,
+                                _AUTO_TRANSITION_MIN_CONF,
+                            )
                 except Exception as exc:  # noqa: BLE001
                     log.exception("Errore classificando mail %s: %s", mail_id, exc)
 

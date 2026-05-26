@@ -85,10 +85,14 @@ Devi classificare ogni email in ESATTAMENTE una di queste 5 categorie:
 - "richiesta_documenti": la compagnia chiede documenti aggiuntivi prima di \
   procedere (foto, denuncia integrativa, dichiarazione testimoni, certificati \
   vari, libretti, patente, ecc.).
-- "liquidazione": la compagnia comunica l'importo che riconosce/liquida, o \
-  l'avvenuto pagamento, o il diniego di copertura.
-- "altro": tutto ciò che non rientra nelle 4 categorie sopra (es. messaggi \
-  automatici, ricevute di consegna PEC, comunicazioni generiche).
+- "liquidazione": la compagnia comunica l'importo che riconosce e liquida, \
+  oppure conferma l'avvenuto pagamento. Usa questa categoria SOLO se c'è un \
+  importo concreto o una conferma esplicita di pagamento.
+- "altro": tutto ciò che non rientra nelle 4 categorie sopra. Comprende: \
+  messaggi automatici, ricevute di consegna PEC, comunicazioni generiche, \
+  E ANCHE dinieghi/rifiuti di copertura (es. "il veicolo non risulta \
+  assicurato con noi", "polizza non trovata", "non siamo competenti per \
+  questo sinistro"). I dinieghi NON sono liquidazioni.
 
 Rispondi SEMPRE e SOLO con un singolo oggetto JSON che rispetta esattamente \
 questo schema (niente testo prima o dopo, niente markdown):
