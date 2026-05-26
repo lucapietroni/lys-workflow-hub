@@ -253,6 +253,9 @@ class CompagnieRepository:
         provincia: str = "",
         ufficio_sinistri: str = "",
         note: str = "",
+        sla_sollecito_giorni: int | None = None,
+        sla_formale_giorni: int | None = None,
+        sla_diffida_giorni: int | None = None,
     ) -> Compagnia:
         if not (nome or "").strip():
             raise ValueError("Il nome della compagnia è obbligatorio.")
@@ -264,8 +267,9 @@ class CompagnieRepository:
                 cur = conn.execute(
                     "INSERT INTO compagnie_assicurative "
                     "(nome, pec, email, indirizzo, cap, citta, provincia, "
-                    " ufficio_sinistri, note, nome_norm, created_at, updated_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    " ufficio_sinistri, note, nome_norm, created_at, updated_at, "
+                    " sla_sollecito_giorni, sla_formale_giorni, sla_diffida_giorni) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         nome.strip(),
                         pec.strip(),
@@ -279,6 +283,9 @@ class CompagnieRepository:
                         _normalizza_nome(nome),
                         now,
                         now,
+                        sla_sollecito_giorni,
+                        sla_formale_giorni,
+                        sla_diffida_giorni,
                     ),
                 )
                 new_id = cur.lastrowid
@@ -301,6 +308,9 @@ class CompagnieRepository:
         provincia: str = "",
         ufficio_sinistri: str = "",
         note: str = "",
+        sla_sollecito_giorni: int | None = None,
+        sla_formale_giorni: int | None = None,
+        sla_diffida_giorni: int | None = None,
     ) -> Compagnia:
         existing = self.get(compagnia_id)
         if existing is None:
@@ -316,7 +326,9 @@ class CompagnieRepository:
                     "UPDATE compagnie_assicurative SET "
                     " nome = ?, pec = ?, email = ?, indirizzo = ?, cap = ?, "
                     " citta = ?, provincia = ?, ufficio_sinistri = ?, note = ?, "
-                    " nome_norm = ?, updated_at = ? "
+                    " nome_norm = ?, updated_at = ?, "
+                    " sla_sollecito_giorni = ?, sla_formale_giorni = ?, "
+                    " sla_diffida_giorni = ? "
                     "WHERE id = ?",
                     (
                         nome.strip(),
@@ -330,6 +342,9 @@ class CompagnieRepository:
                         note.strip(),
                         _normalizza_nome(nome),
                         now,
+                        sla_sollecito_giorni,
+                        sla_formale_giorni,
+                        sla_diffida_giorni,
                         int(compagnia_id),
                     ),
                 )

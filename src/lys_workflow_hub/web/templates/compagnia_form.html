@@ -81,6 +81,27 @@
              hint="Annotazioni libere (orari, tempistiche di risposta, contatti diretti, ecc.).") }}
   </section>
 
+  <section class="card">
+    <h2>Soglie SLA personalizzate <small class="meta">(M6.1)</small></h2>
+    <p class="meta">
+      Sovrascrivono i default globali (<code>SLA_GIORNI_ALERT</code> /
+      <code>SLA_FORMALE_GIORNI</code> / <code>SLA_DIFFIDA_GIORNI</code>)
+      solo per questa compagnia. Lasciare vuoto per usare i default di sistema
+      (attualmente {{ sla_defaults.sollecito }}&nbsp;/&nbsp;{{ sla_defaults.formale }}&nbsp;/&nbsp;{{ sla_defaults.diffida }} giorni).
+    </p>
+    <div class="form-grid">
+      {{ field("Sollecito (giorni)", "sla_sollecito_giorni",
+               values.sla_sollecito_giorni, type="number",
+               hint="Livello 1 — tono cortese. Vuoto = default globale (" ~ sla_defaults.sollecito ~ " gg).") }}
+      {{ field("Sollecito formale (giorni)", "sla_formale_giorni",
+               values.sla_formale_giorni, type="number",
+               hint="Livello 2 — termine 15 gg. Vuoto = default globale (" ~ sla_defaults.formale ~ " gg).") }}
+      {{ field("Diffida formale (giorni)", "sla_diffida_giorni",
+               values.sla_diffida_giorni, type="number",
+               hint="Livello 3 — messa in mora. Vuoto = default globale (" ~ sla_defaults.diffida ~ " gg).") }}
+    </div>
+  </section>
+
   <div class="form-actions">
     <a href="/compagnie" class="btn">Annulla</a>
     <button type="submit" class="btn btn-primary">

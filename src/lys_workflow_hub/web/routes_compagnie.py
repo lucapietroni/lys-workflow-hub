@@ -52,16 +52,30 @@ def _form_to_dict(form) -> dict:
     return out
 
 
+def _parse_int_or_none(s: str) -> int | None:
+    """Converte stringa in int oppure None se vuota/non numerica."""
+    s = (s or "").strip()
+    if not s:
+        return None
+    try:
+        return int(s)
+    except ValueError:
+        return None
+
+
 def _render_form(
     request: Request,
     *,
     compagnia: Compagnia | None,
     error: str | None,
     form_values: dict | None,
+    sla_defaults: dict | None = None,
 ) -> HTMLResponse:
     context = _common_context()
     context["compagnia"] = compagnia
     context["error"] = error
+    # sla_defaults: valori globali da mostrare come placeholder nei campi SLA.
+    context["sla_defaults"] = sla_defaults or {"sollecito": 15, "formale": 30, "diffida": 45}
     # Pre-fill: se è una correzione di un POST fallito, mostro i valori inviati;
     # altrimenti uso quelli del record (in modifica) o stringhe vuote (in nuovo).
     if form_values is not None:
@@ -77,12 +91,29 @@ def _render_form(
             "provincia": compagnia.provincia,
             "ufficio_sinistri": compagnia.ufficio_sinistri,
             "note": compagnia.note,
+            "sla_sollecito_giorni": (
+                str(compagnia.sla_sollecito_giorni)
+                if compagnia.sla_sollecito_giorni is not None else ""
+            ),
+            "sla_formale_giorni": (
+                str(compagnia.sla_formale_giorni)
+                if compagnia.sla_formale_giorni is not None else ""
+            ),
+            "sla_diffida_giorni": (
+                str(compagnia.sla_diffida_giorni)
+                if compagnia.sla_diffida_giorni is not None else ""
+            ),
         }
     else:
+        # Nuova compagnia: pre-popola con i default globali.
+        d = context["sla_defaults"]
         context["values"] = {
             "nome": "", "pec": "", "email": "", "indirizzo": "",
             "cap": "", "citta": "", "provincia": "", "ufficio_sinistri": "",
             "note": "",
+            "sla_sollecito_giorni": str(d["sollecito"]),
+            "sla_formale_giorni": str(d["formale"]),
+            "sla_diffida_giorni": str(d["diffida"]),
         }
     return templates.TemplateResponse(request, "compagnia_form.html", context)
 
@@ -108,17 +139,34 @@ def compagnie_list(
 
 
 @router.get("/compagnie/nuova", response_class=HTMLResponse)
-def compagnia_new_form(request: Request) -> HTMLResponse:
-    return _render_form(request, compagnia=None, error=None, form_values=None)
+def compagnia_new_form(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+) -> HTMLResponse:
+    sla_defaults = {
+        "sollecito": settings.sla_giorni_alert,
+        "formale": settings.sla_formale_giorni,
+        "diffida": settings.sla_diffida_giorni,
+    }
+    return _render_form(
+        request, compagnia=None, error=None, form_values=None,
+        sla_defaults=sla_defaults,
+    )
 
 
 @router.post("/compagnie/nuova")
 async def compagnia_new_submit(
     request: Request,
     repo: CompagnieRepository = Depends(get_compagnie_repo),
+    settings: Settings = Depends(get_settings),
 ):
     form = await request.form()
     values = _form_to_dict(form)
+    sla_defaults = {
+        "sollecito": settings.sla_giorni_alert,
+        "formale": settings.sla_formale_giorni,
+        "diffida": settings.sla_diffida_giorni,
+    }
     try:
         repo.create(
             nome=values.get("nome", ""),
@@ -130,10 +178,14 @@ async def compagnia_new_submit(
             provincia=values.get("provincia", ""),
             ufficio_sinistri=values.get("ufficio_sinistri", ""),
             note=values.get("note", ""),
+            sla_sollecito_giorni=_parse_int_or_none(values.get("sla_sollecito_giorni", "")),
+            sla_formale_giorni=_parse_int_or_none(values.get("sla_formale_giorni", "")),
+            sla_diffida_giorni=_parse_int_or_none(values.get("sla_diffida_giorni", "")),
         )
     except ValueError as exc:
         return _render_form(
-            request, compagnia=None, error=str(exc), form_values=values
+            request, compagnia=None, error=str(exc), form_values=values,
+            sla_defaults=sla_defaults,
         )
     return RedirectResponse(url="/compagnie", status_code=303)
 
@@ -148,11 +200,20 @@ def compagnia_edit_form(
     compagnia_id: int,
     request: Request,
     repo: CompagnieRepository = Depends(get_compagnie_repo),
+    settings: Settings = Depends(get_settings),
 ) -> HTMLResponse:
     compagnia = repo.get(compagnia_id)
     if compagnia is None:
         raise HTTPException(404, f"Compagnia id={compagnia_id} non trovata.")
-    return _render_form(request, compagnia=compagnia, error=None, form_values=None)
+    sla_defaults = {
+        "sollecito": settings.sla_giorni_alert,
+        "formale": settings.sla_formale_giorni,
+        "diffida": settings.sla_diffida_giorni,
+    }
+    return _render_form(
+        request, compagnia=compagnia, error=None, form_values=None,
+        sla_defaults=sla_defaults,
+    )
 
 
 @router.post("/compagnie/{compagnia_id}")
@@ -160,12 +221,18 @@ async def compagnia_edit_submit(
     compagnia_id: int,
     request: Request,
     repo: CompagnieRepository = Depends(get_compagnie_repo),
+    settings: Settings = Depends(get_settings),
 ):
     existing = repo.get(compagnia_id)
     if existing is None:
         raise HTTPException(404, f"Compagnia id={compagnia_id} non trovata.")
     form = await request.form()
     values = _form_to_dict(form)
+    sla_defaults = {
+        "sollecito": settings.sla_giorni_alert,
+        "formale": settings.sla_formale_giorni,
+        "diffida": settings.sla_diffida_giorni,
+    }
     try:
         repo.update(
             compagnia_id,
@@ -178,10 +245,14 @@ async def compagnia_edit_submit(
             provincia=values.get("provincia", ""),
             ufficio_sinistri=values.get("ufficio_sinistri", ""),
             note=values.get("note", ""),
+            sla_sollecito_giorni=_parse_int_or_none(values.get("sla_sollecito_giorni", "")),
+            sla_formale_giorni=_parse_int_or_none(values.get("sla_formale_giorni", "")),
+            sla_diffida_giorni=_parse_int_or_none(values.get("sla_diffida_giorni", "")),
         )
     except ValueError as exc:
         return _render_form(
-            request, compagnia=existing, error=str(exc), form_values=values
+            request, compagnia=existing, error=str(exc), form_values=values,
+            sla_defaults=sla_defaults,
         )
     return RedirectResponse(url="/compagnie", status_code=303)
 
