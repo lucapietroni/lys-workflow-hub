@@ -289,18 +289,6 @@
   </section>
 </form>
 
-{# ------------------------------------------------------------------ #}
-{# Modal anteprima PDF (aperta dai pulsanti 📄 negli allegati)         #}
-{# ------------------------------------------------------------------ #}
-<dialog id="pdf-dialog" class="pdf-dialog">
-  <div class="pdf-dialog-header">
-    <strong id="pdf-dialog-title" class="pdf-dialog-title"></strong>
-    <button type="button" id="pdf-dialog-close" class="pdf-dialog-close"
-            aria-label="Chiudi anteprima PDF">✕</button>
-  </div>
-  <embed id="pdf-dialog-embed" class="pdf-dialog-embed" src="" type="application/pdf" />
-</dialog>
-
 <script>
   function copyPecBody() {
     var ta = document.getElementById("pec-body");
@@ -314,41 +302,14 @@
     setTimeout(function() { btn.textContent = old; }, 1500);
   }
 
-  // ---- PDF preview modal ------------------------------------------------
-  (function () {
-    var dialog = document.getElementById("pdf-dialog");
-    var embed  = document.getElementById("pdf-dialog-embed");
-    var title  = document.getElementById("pdf-dialog-title");
-    if (!dialog) return;
-
-    function openPdf(src, nome) {
-      title.textContent = nome;
-      embed.src = src;
-      dialog.showModal();
-    }
-
-    function closePdf() {
-      dialog.close();
-      // Svuota src dopo chiusura per liberare memoria e fermare rendering.
-      setTimeout(function () { embed.src = ""; }, 200);
-    }
-
-    document.querySelectorAll(".pdf-preview-btn").forEach(function (btn) {
-      btn.addEventListener("click", function (e) {
-        e.preventDefault();
-        e.stopPropagation(); // evita toggle del checkbox parent
-        openPdf(btn.dataset.src, btn.dataset.nome);
-      });
+  // Apre PDF in nuova scheda (come bozza_edit). stopPropagation evita
+  // toggle del checkbox parent nella <label>.
+  document.querySelectorAll(".pdf-preview-btn").forEach(function (btn) {
+    btn.addEventListener("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      window.open(btn.dataset.src, "_blank", "noopener");
     });
-
-    document.getElementById("pdf-dialog-close").addEventListener("click", closePdf);
-
-    // Click sul backdrop (fuori dalla box) chiude il dialog.
-    dialog.addEventListener("click", function (e) {
-      if (e.target === dialog) closePdf();
-    });
-
-    // Tasto Escape già gestito nativamente dal browser per <dialog>.
-  })();
+  });
 </script>
 {% endblock %}
