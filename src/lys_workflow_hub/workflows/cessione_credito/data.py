@@ -48,6 +48,9 @@ class CessioneData:
     ditta_nome: str = ""
     ditta_partita_iva: str = ""
 
+    # --- Tipo sinistro ---
+    e_vandalismo: bool = False  # True = atto vandalico (nessuna controparte)
+
     # --- Sinistro ---
     sinistro_data: date | None = None
     sinistro_ora: str = ""
@@ -119,14 +122,17 @@ class CessioneData:
             "Via sinistro": self.sinistro_via,
             "Veicolo del cedente": self.veicolo_cedente_descrizione,
             "Targa del cedente": self.veicolo_cedente_targa,
-            "Veicolo controparte": self.controparte_veicolo_descrizione,
-            "Targa controparte": self.controparte_veicolo_targa,
-            "Proprietario controparte": self.controparte_proprietario,
-            "Conducente controparte": self.controparte_conducente,
-            "Compagnia assicurativa controparte": self.controparte_compagnia,
-            "Numero polizza controparte": self.controparte_polizza,
             "Dinamica del sinistro": self.sinistro_dinamica,
         }
+        if not self.e_vandalismo:
+            check.update({
+                "Veicolo controparte": self.controparte_veicolo_descrizione,
+                "Targa controparte": self.controparte_veicolo_targa,
+                "Proprietario controparte": self.controparte_proprietario,
+                "Conducente controparte": self.controparte_conducente,
+                "Compagnia assicurativa controparte": self.controparte_compagnia,
+                "Numero polizza controparte": self.controparte_polizza,
+            })
         if self.e_ditta:
             check["Nome ditta"] = self.ditta_nome
             check["Partita IVA"] = self.ditta_partita_iva
@@ -180,6 +186,7 @@ def from_pratica(
         e_ditta=_take("e_ditta", e_ditta),
         ditta_nome=_take("ditta_nome", ditta_nome),
         ditta_partita_iva=_take("ditta_partita_iva", ditta_piva),
+        e_vandalismo=_take("e_vandalismo", False),
         sinistro_data=_take("sinistro_data", pratica.sinistro.data),
         sinistro_ora=_take("sinistro_ora", pratica.sinistro.ora or ""),
         sinistro_comune=_take("sinistro_comune", pratica.sinistro.comune or ""),

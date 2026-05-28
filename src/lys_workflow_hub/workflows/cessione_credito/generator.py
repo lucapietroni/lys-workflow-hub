@@ -249,58 +249,89 @@ def generate(data: CessioneData, out: BinaryIO | None = None) -> bytes:
     # ------------- PREMESSO -------------
     _add_section_label(doc, "PREMESSO")
 
-    p = _justified(doc)
-    _add_segments(p, [
-        ("che in data ", False),
-        (data.sinistro_data_formattata, True),
-        (" alle ore ", False),
-        (data.sinistro_ora, True),
-        (" nel Comune di ", False),
-        (data.sinistro_comune, True),
-        (", Via ", False),
-        (data.sinistro_via, True),
-        (
-            ", ha subito un incidente stradale per la collisione tra il veicolo "
-            "di sua proprietà ",
-            False,
-        ),
-        (data.veicolo_cedente_descrizione, True),
-        (" targato ", False),
-        (data.veicolo_cedente_targa, True),
-        (" ed il veicolo ", False),
-        (data.controparte_veicolo_descrizione, True),
-        (", targato ", False),
-        (data.controparte_veicolo_targa, True),
-        (", di proprietà del Sig./ra/ Ditta ", False),
-        (data.controparte_proprietario, True),
-        (" condotto dal Sig/Sig.ra ", False),
-        (data.controparte_conducente, True),
-        (";", False),
-    ])
+    if data.e_vandalismo:
+        p = _justified(doc)
+        _add_segments(p, [
+            ("che in data ", False),
+            (data.sinistro_data_formattata, True),
+            (" alle ore ", False),
+            (data.sinistro_ora, True),
+            (" nel Comune di ", False),
+            (data.sinistro_comune, True),
+            (", Via ", False),
+            (data.sinistro_via, True),
+            (
+                ", il proprio veicolo ",
+                False,
+            ),
+            (data.veicolo_cedente_descrizione, True),
+            (" targato ", False),
+            (data.veicolo_cedente_targa, True),
+            (" ha subito danni causati da atto vandalico ad opera di ignoti;", False),
+        ])
 
-    p = _justified(doc)
-    _add_segments(p, [
-        (
-            "che l'esponente ritiene che la responsabilità vada ascritta alla "
-            "controparte sopra indicata, assicurata per la responsabilità civile "
-            "con la compagnia ",
-            False,
-        ),
-        (data.controparte_compagnia, True),
-        (", polizza n. ", False),
-        (data.controparte_polizza, True),
-        (", in quanto: ", False),
-        (data.sinistro_dinamica, True),
-        (";", False),
-    ])
+        p = _justified(doc)
+        _add_segments(p, [
+            (
+                "che la dinamica e i danni subiti sono i seguenti: ",
+                False,
+            ),
+            (data.sinistro_dinamica, True),
+            (";", False),
+        ])
+    else:
+        p = _justified(doc)
+        _add_segments(p, [
+            ("che in data ", False),
+            (data.sinistro_data_formattata, True),
+            (" alle ore ", False),
+            (data.sinistro_ora, True),
+            (" nel Comune di ", False),
+            (data.sinistro_comune, True),
+            (", Via ", False),
+            (data.sinistro_via, True),
+            (
+                ", ha subito un incidente stradale per la collisione tra il veicolo "
+                "di sua proprietà ",
+                False,
+            ),
+            (data.veicolo_cedente_descrizione, True),
+            (" targato ", False),
+            (data.veicolo_cedente_targa, True),
+            (" ed il veicolo ", False),
+            (data.controparte_veicolo_descrizione, True),
+            (", targato ", False),
+            (data.controparte_veicolo_targa, True),
+            (", di proprietà del Sig./ra/ Ditta ", False),
+            (data.controparte_proprietario, True),
+            (" condotto dal Sig/Sig.ra ", False),
+            (data.controparte_conducente, True),
+            (";", False),
+        ])
 
-    p = _justified(doc)
-    _add_run(
-        p,
-        "che la dinamica dell'incidente si evince dalla CAI che si allega e/o dal "
-        "verbale di incidente redatto dalle autorità intervenute, che il danneggiato "
-        "si impegna a consegnare alla carrozzeria cessionaria;",
-    )
+        p = _justified(doc)
+        _add_segments(p, [
+            (
+                "che l'esponente ritiene che la responsabilità vada ascritta alla "
+                "controparte sopra indicata, assicurata per la responsabilità civile "
+                "con la compagnia ",
+                False,
+            ),
+            (data.controparte_compagnia, True),
+            (", polizza n. ", False),
+            (data.controparte_polizza, True),
+            (", in quanto: ", False),
+            (data.sinistro_dinamica, True),
+            (";", False),
+        ])
+
+        p = _justified(doc)
+        _add_run(
+            p,
+            "che la dinamica dell'incidente si evince dalla CAI che si allega e/o dal "
+            "verbale di incidente redatto dalle autorità intervenute, che il danneggiato "
+            "si impegna a consegnare alla carrozzeria cessionaria;",
+        )
 
     p = _justified(doc)
     _add_segments(p, [

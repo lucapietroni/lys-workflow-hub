@@ -206,13 +206,14 @@ def _build_overrides(form: dict[str, Any]) -> dict[str, Any]:
     for key, raw in form.items():
         if key in ("cedente_data_nascita", "sinistro_data"):
             overrides[key] = _parse_date(raw)
-        elif key == "e_ditta":
+        elif key in ("e_ditta", "e_vandalismo"):
             overrides[key] = str(raw).lower() in ("on", "true", "1", "yes")
         elif key in ("cedente_sesso",):
             overrides[key] = "F" if str(raw).upper() == "F" else "M"
         else:
             overrides[key] = (raw or "").strip() if isinstance(raw, str) else raw
     overrides.setdefault("e_ditta", False)
+    overrides.setdefault("e_vandalismo", False)
     return overrides
 
 

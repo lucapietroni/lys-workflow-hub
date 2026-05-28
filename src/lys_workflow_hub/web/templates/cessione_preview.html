@@ -87,6 +87,17 @@
   </section>
 
   <section class="card">
+    <h2>Tipo di sinistro</h2>
+    <div class="form-field checkbox-field">
+      <label>
+        <input type="checkbox" name="e_vandalismo" id="cb_vandalismo"
+               {% if data.e_vandalismo %}checked{% endif %} />
+        Atto vandalico (nessuna controparte — nasconde e rende facoltativi i dati controparte)
+      </label>
+    </div>
+  </section>
+
+  <section class="card">
     <h2>Sinistro</h2>
     <div class="form-grid">
       {{ field("Data", "sinistro_data",
@@ -109,22 +120,27 @@
     </div>
   </section>
 
-  <section class="card">
+  <section class="card" id="section-controparte">
     <h2>Controparte</h2>
     <div class="form-grid">
       {{ field("Veicolo controparte (marca/modello)", "controparte_veicolo_descrizione",
-               data.controparte_veicolo_descrizione, required=True) }}
-      {{ field("Targa controparte", "controparte_veicolo_targa", data.controparte_veicolo_targa, required=True) }}
-      {{ field("Proprietario / ditta", "controparte_proprietario", data.controparte_proprietario, required=True) }}
-      {{ field("Conducente", "controparte_conducente", data.controparte_conducente, required=True) }}
+               data.controparte_veicolo_descrizione, required=not data.e_vandalismo) }}
+      {{ field("Targa controparte", "controparte_veicolo_targa",
+               data.controparte_veicolo_targa, required=not data.e_vandalismo) }}
+      {{ field("Proprietario / ditta", "controparte_proprietario",
+               data.controparte_proprietario, required=not data.e_vandalismo) }}
+      {{ field("Conducente", "controparte_conducente",
+               data.controparte_conducente, required=not data.e_vandalismo) }}
     </div>
   </section>
 
-  <section class="card">
+  <section class="card" id="section-assicurazione-controparte">
     <h2>Assicurazione controparte</h2>
     <div class="form-grid">
-      {{ field("Compagnia", "controparte_compagnia", data.controparte_compagnia, required=True) }}
-      {{ field("Numero polizza", "controparte_polizza", data.controparte_polizza, required=True) }}
+      {{ field("Compagnia", "controparte_compagnia",
+               data.controparte_compagnia, required=not data.e_vandalismo) }}
+      {{ field("Numero polizza", "controparte_polizza",
+               data.controparte_polizza, required=not data.e_vandalismo) }}
     </div>
   </section>
 
@@ -142,4 +158,38 @@
     </button>
   </div>
 </form>
+
+<script>
+(function () {
+  var cb = document.getElementById("cb_vandalismo");
+  var sections = [
+    document.getElementById("section-controparte"),
+    document.getElementById("section-assicurazione-controparte"),
+  ];
+
+  function toggle(vandalismo) {
+    sections.forEach(function (sec) {
+      sec.style.display = vandalismo ? "none" : "";
+      sec.querySelectorAll("input, textarea, select").forEach(function (el) {
+        if (vandalismo) {
+          el.removeAttribute("required");
+        } else {
+          // Ripristina required solo sui campi che lo avevano originariamente
+          // (tutti i campi controparte hanno required nel template server-side
+          // quando e_vandalismo=False — se si toglie la spunta li rifacciamo required).
+          if (el.tagName !== "SELECT") {
+            el.setAttribute("required", "");
+          }
+        }
+      });
+    });
+  }
+
+  // Stato iniziale (server ha già reso il markup corretto, ma nascondiamo via JS
+  // per coerenza visiva senza reload).
+  toggle(cb.checked);
+
+  cb.addEventListener("change", function () { toggle(cb.checked); });
+})();
+</script>
 {% endblock %}
