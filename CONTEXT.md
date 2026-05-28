@@ -1,6 +1,6 @@
 # LYS Workflow Hub — Contesto di sviluppo
 
-> Aggiornato automaticamente ad ogni commit. Versione corrente: **0.7.2**
+> Aggiornato automaticamente ad ogni commit. Versione corrente: **0.7.3**
 
 ---
 
@@ -151,6 +151,7 @@ versione editata dall'operatore si usa `dataclasses.replace(params, body=edited_
 | 0.7.0 | M7 | Fix AI dinieghi, fix PDF inner_msg, riclassifica/elimina, PDF preview |
 | 0.7.1 | M7.1 | Fix Content-Disposition inline; bump versione footer |
 | 0.7.2 | M7.2 | Aggiunti CONTEXT.md (documentazione sviluppo) e hook git commit reminder |
+| 0.7.3 | M7.3 | Fix update_lys.bat: preserva lys_hub.db durante aggiornamento produzione |
 
 ---
 
