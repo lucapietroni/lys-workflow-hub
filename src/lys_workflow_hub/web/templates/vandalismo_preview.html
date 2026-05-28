@@ -273,7 +273,7 @@
         <div><strong>A:</strong> <code>{{ data.compagnia_pec or "(da inserire)" }}</code></div>
         <div><strong>Oggetto:</strong> {{ pec_subject }}</div>
       </div>
-      <textarea id="pec-body" class="pec-body" readonly rows="22">{{ pec_body }}</textarea>
+      <textarea id="pec-body" name="pec_body" class="pec-body" rows="22">{{ pec_body }}</textarea>
     </div>
     <div class="form-actions" style="border:none; padding-top:8px; margin-top:0;">
       <button type="button" class="btn" onclick="copyPecBody()">Copia corpo PEC</button>

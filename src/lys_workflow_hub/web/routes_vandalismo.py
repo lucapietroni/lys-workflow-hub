@@ -13,6 +13,7 @@ degli allegati da agganciare manualmente.
 from __future__ import annotations
 
 import logging
+from dataclasses import replace as dc_replace
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -317,6 +318,9 @@ async def vandalismo_scarica(
         altri=[a for a in selezionati_obj if a.categoria == "altro"],
     )
     bozza = build_all(data, allegati=allegati_filtrati)
+    edited_body = (form_dict.get("pec_body") or "").strip()
+    if edited_body:
+        bozza = dict(bozza, body=edited_body)
 
     # Compongo un .txt con header utili in cima (per ricordare allegati e destinatario).
     header_lines = [
@@ -516,6 +520,9 @@ async def vandalismo_conferma(
     )
 
     params = _build_parametri_invio(numero, data, compagnia, selezionati, settings)
+    edited_body = (form_dict.get("pec_body") or "").strip()
+    if edited_body:
+        params = dc_replace(params, body=edited_body)
     dim_totale = params.stima_dimensione_bytes()
     dim_label = (
         f"{dim_totale / 1024 / 1024:.1f} MB"
@@ -571,6 +578,9 @@ async def vandalismo_invia(
         )
 
     params = _build_parametri_invio(numero, data, compagnia, selezionati, settings)
+    edited_body = (form_dict.get("pec_body") or "").strip()
+    if edited_body:
+        params = dc_replace(params, body=edited_body)
     esito = invia(params, repo=pec_log)
 
     context = _common_context()

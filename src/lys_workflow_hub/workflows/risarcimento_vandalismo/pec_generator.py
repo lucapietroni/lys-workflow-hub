@@ -221,8 +221,6 @@ def _sezione_contatti(data: RichiestaVandalismoData) -> list[str]:
         lines.append(f"Email: {data.carrozzeria_email}")
     if data.carrozzeria_telefono:
         lines.append(f"Tel: {data.carrozzeria_telefono}")
-    if data.carrozzeria_referente:
-        lines.append(f"Referente pratica: {data.carrozzeria_referente}")
     return lines
 
 
@@ -275,7 +273,6 @@ def build_body(
         f"{CARROZZERIA_COMUNE}, {oggi.strftime('%d/%m/%Y')}",
         "",
         f"Per {CARROZZERIA_NOME}",
-        (data.carrozzeria_referente or "Il legale rappresentante pro-tempore"),
     ]
     blocchi.append(chiusura)
 
