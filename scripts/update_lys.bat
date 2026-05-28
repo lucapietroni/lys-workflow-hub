@@ -66,6 +66,15 @@ if exist "%OLD%\.env" (
     echo ATTENZIONE: %OLD%\.env non trovato. Dovrai ricrearlo a mano.
 )
 
+REM ---- Preserva database SQLite ----
+if exist "%OLD%\data\lys_hub.db" (
+    echo Preservo data\lys_hub.db ...
+    if not exist "%NEW%\data" mkdir "%NEW%\data"
+    copy /Y "%OLD%\data\lys_hub.db" "%NEW%\data\lys_hub.db" >nul
+) else (
+    echo ATTENZIONE: %OLD%\data\lys_hub.db non trovato. Verra' creato vuoto al primo avvio.
+)
+
 REM ---- Preserva .venv (rinomina, non copia: e' grosso) ----
 if exist "%OLD%\.venv" (
     echo Sposto .venv nella nuova versione...
