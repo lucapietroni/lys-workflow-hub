@@ -155,7 +155,23 @@ versione editata dall'operatore si usa `dataclasses.replace(params, body=edited_
 
 ---
 
-## Lavoro svolto in questa sessione (v0.7.x)
+## Lavoro svolto in questa sessione (v0.7.2–0.7.3)
+
+### CONTEXT.md + hook commit reminder (v0.7.2)
+- Creato `CONTEXT.md` con documentazione architetturale, decisioni tecniche, milestone.
+- Aggiunto PostToolUse hook in `.claude/settings.local.json`: dopo ogni `git commit`
+  inietta reminder nel contesto Claude per aggiornare CONTEXT.md prima del push.
+
+### Fix update_lys.bat — preserva DB (v0.7.3)
+- **Problema**: `scripts/update_lys.bat` preservava `.env` e `.venv` ma non
+  `data/lys_hub.db`. Al primo aggiornamento prod si perdevano compagnie, PEC inviate,
+  mail classificate.
+- **Fix**: aggiunto blocco `copy /Y lys_hub.db OLD→NEW` con `mkdir data` se assente,
+  prima del backup dell'installazione precedente.
+
+---
+
+## Lavoro svolto in sessioni precedenti (v0.7.0–0.7.1)
 
 ### Fix classificazione AI (dinieghi)
 - **Problema**: risposta "veicolo non assicurato con noi" classificata come
@@ -227,6 +243,8 @@ versione editata dall'operatore si usa `dataclasses.replace(params, body=edited_
 
 ## Pending / TODO
 
-- Aggiornamento produzione (`C:\LYSApp\lys-workflow-hub`) — non ancora eseguito
-  in questa sessione (comando `ls /mnt/c/LYSApp/` rifiutato dall'utente, da chiarire).
-- Nessun altro task aperto noto.
+- Aggiornamento produzione (`C:\LYSApp\lys-workflow-hub`) a v0.7.3 — da eseguire
+  con `scripts/update_lys.bat` (ora preserva `lys_hub.db`).
+- Feature candidate discusse ma non implementate: timeline pratica, storico
+  comunicazioni unificato, filtri cruscotto, notifica push su risposta ricevuta,
+  matching ricevute PEC InfoCert, export CSV/Excel, backup DB automatico notturno.
