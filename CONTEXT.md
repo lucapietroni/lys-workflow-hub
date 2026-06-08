@@ -279,7 +279,7 @@ versione editata dall'operatore si usa `dataclasses.replace(params, body=edited_
 
 - Aggiornamento produzione (`C:\LYSApp\lys-workflow-hub`) a v0.7.3 — da eseguire
   con `scripts/update_lys.bat` (ora preserva `lys_hub.db`).
-- Aggiornamento produzione a v0.7.3 — da eseguire con `scripts/update_lys.bat`.
+- Aggiornamento produzione a v0.7.5 — da eseguire con `scripts/update_lys.bat`.
 - Feature candidate discusse ma non implementate: timeline pratica, storico
   comunicazioni unificato, filtri cruscotto, notifica push su risposta ricevuta,
   matching ricevute PEC InfoCert, export CSV/Excel, backup DB automatico notturno.
