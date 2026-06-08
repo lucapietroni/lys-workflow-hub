@@ -149,8 +149,8 @@
     </div>
     <h3 class="card-subhead">Indirizzi compagnia destinataria</h3>
     <div class="form-grid">
-      {{ field("Indirizzo PEC", "compagnia_pec", data.compagnia_pec, type="email", required=True,
-               hint="Precompilato dall'anagrafica compagnie. Modificabile in casi puntuali.") }}
+      {{ field("Indirizzo PEC / email", "compagnia_pec", data.compagnia_pec, type="email", required=True,
+               hint="PEC se disponibile, altrimenti email ordinaria. Precompilato dall'anagrafica. L'invio avviene sempre tramite il server PEC.") }}
       {{ field("Ufficio sinistri / referente", "compagnia_ufficio_sinistri",
                data.compagnia_ufficio_sinistri) }}
       {{ field("Indirizzo postale", "compagnia_indirizzo", data.compagnia_indirizzo) }}

@@ -228,10 +228,13 @@ class CompagnieRepository:
         return candidates[0] if candidates else None
 
     def lookup_all_by_name(self, nome: str) -> list[Compagnia]:
-        """Tutti i match per nome normalizzato, ordinati per PEC presente → id.
+        """Tutti i match per nome normalizzato con prefix matching bidirezionale.
 
-        Utile quando esistono più record con lo stesso nome (es. compagnia
-        principale + agenzia locale) e l'operatore deve scegliere quale usare.
+        Trova sia match esatti sia record il cui nome normalizzato è un prefisso
+        del termine cercato (o viceversa). Esempio: cercando "Unipol" restituisce
+        anche "Unipol Agenzia 39622"; cercando "Unipol Agenzia 39622" restituisce
+        anche "Unipol".
+        Ordine: PEC presente → lunghezza nome (più generico prima) → id.
         """
         if not nome or not nome.strip():
             return []
@@ -240,9 +243,13 @@ class CompagnieRepository:
             return []
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT * FROM compagnie_assicurative WHERE nome_norm = ? "
-                "ORDER BY CASE WHEN pec <> '' THEN 0 ELSE 1 END, id",
-                (norm,),
+                "SELECT * FROM compagnie_assicurative "
+                "WHERE nome_norm = ? "
+                "   OR nome_norm LIKE ? || ' %' "
+                "   OR ? LIKE nome_norm || ' %' "
+                "ORDER BY CASE WHEN pec <> '' THEN 0 ELSE 1 END, "
+                "         length(nome_norm), id",
+                (norm, norm, norm),
             ).fetchall()
         return [self._row_to_compagnia(r) for r in rows]
 
