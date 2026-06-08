@@ -288,6 +288,11 @@ async def vandalismo_rigenera(
     compagnia, compagnie_candidate = _trova_compagnia(
         nome_compagnia, compagnie_repo, compagnia_id=compagnia_id
     )
+    # Se l'operatore ha scelto una compagnia dal dropdown, scarta il vecchio
+    # valore di compagnia_pec che era nel form (apparteneva alla compagnia
+    # precedente) e lascia che from_pratica lo ricavi dalla nuova compagnia.
+    if compagnia_id:
+        overrides.pop("compagnia_pec", None)
     data = _build_data(pratica, compagnia, settings, overrides=overrides)
 
     context = _build_context(
