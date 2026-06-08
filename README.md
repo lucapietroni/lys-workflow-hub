@@ -7,7 +7,7 @@ vandalico, ecc.), monitora le risposte delle compagnie assicurative via PEC ed e
 ordinaria, classifica le risposte con un modello AI, produce bozze di replica e genera
 alert mirati.
 
-> Versione attuale: **0.7.1**
+> Versione attuale: **0.7.4**
 
 ## Stato del progetto
 
@@ -26,6 +26,9 @@ alert mirati.
 | **M6.1** | Escalation SLA automatica — sollecito / formale / diffida | ✅ completata |
 | **M7** | Fix qualità classificazione AI + robustezza cruscotto risposte + UX allegati | ✅ completata |
 | **M7.1** | Hotfix: PDF e immagini aperti inline nel browser (no download forzato) | ✅ completata |
+| **M7.2** | CONTEXT.md documentazione sviluppo + hook commit reminder | ✅ completata |
+| **M7.3** | Fix update_lys.bat (preserva DB), compagnie con email ordinaria, dropdown match multipli | ✅ completata |
+| **M7.4** | Fix prefix matching compagnie bidirezionale + label campo PEC/email | ✅ completata |
 
 ---
 

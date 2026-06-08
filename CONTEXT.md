@@ -1,6 +1,6 @@
 # LYS Workflow Hub — Contesto di sviluppo
 
-> Aggiornato automaticamente ad ogni commit. Versione corrente: **0.7.3**
+> Aggiornato automaticamente ad ogni commit. Versione corrente: **0.7.4**
 
 ---
 
@@ -152,10 +152,11 @@ versione editata dall'operatore si usa `dataclasses.replace(params, body=edited_
 | 0.7.1 | M7.1 | Fix Content-Disposition inline; bump versione footer |
 | 0.7.2 | M7.2 | Aggiunti CONTEXT.md (documentazione sviluppo) e hook git commit reminder |
 | 0.7.3 | M7.3 | Fix update_lys.bat: preserva lys_hub.db durante aggiornamento produzione |
+| 0.7.4 | M7.4 | Fix prefix matching compagnie bidirezionale + label PEC/email |
 
 ---
 
-## Lavoro svolto in questa sessione (v0.7.2–0.7.3)
+## Lavoro svolto in questa sessione (v0.7.2–0.7.4)
 
 ### CONTEXT.md + hook commit reminder (v0.7.2)
 - Creato `CONTEXT.md` con documentazione architetturale, decisioni tecniche, milestone.
@@ -181,6 +182,16 @@ versione editata dall'operatore si usa `dataclasses.replace(params, body=edited_
   - `_trova_compagnia()` in `routes_vandalismo.py` restituisce `(compagnia, lista_candidati)`.
   - Se match > 1: mostra `<select>` con tutte le opzioni (nome + PEC/email).
   - `compagnia_id` come hidden field → sopravvive al flusso anteprima → conferma → invia.
+
+### Fix prefix matching compagnie + label PEC/email (v0.7.4)
+- **Bug**: `lookup_all_by_name` usava match esatto su `nome_norm`. "Unipol" (norm `unipol`) non
+  trovava "Unipol Agenzia 39622" (norm `unipol agenzia 39622`) → dropdown non compariva.
+- **Fix**: query con prefix matching bidirezionale:
+  `nome_norm = ? OR nome_norm LIKE ? || ' %' OR ? LIKE nome_norm || ' %'`
+  → trova sia la compagnia madre cercando la figlia, sia viceversa.
+- **Label** campo `compagnia_pec` in `vandalismo_preview.html` cambiata in "Indirizzo PEC / email"
+  con hint che spiega che l'invio avviene sempre via server PEC (InfoCert gestisce la consegna
+  a email ordinaria in modo trasparente).
 
 ---
 
