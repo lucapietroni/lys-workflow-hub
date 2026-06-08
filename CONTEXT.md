@@ -1,6 +1,6 @@
 # LYS Workflow Hub — Contesto di sviluppo
 
-> Aggiornato automaticamente ad ogni commit. Versione corrente: **0.7.4**
+> Aggiornato automaticamente ad ogni commit. Versione corrente: **0.7.5**
 
 ---
 
@@ -153,6 +153,7 @@ versione editata dall'operatore si usa `dataclasses.replace(params, body=edited_
 | 0.7.2 | M7.2 | Aggiunti CONTEXT.md (documentazione sviluppo) e hook git commit reminder |
 | 0.7.3 | M7.3 | Fix update_lys.bat: preserva lys_hub.db durante aggiornamento produzione |
 | 0.7.4 | M7.4 | Fix prefix matching compagnie bidirezionale + label PEC/email |
+| 0.7.5 | M7.5 | Fix compagnia_pec override non svuotato su cambio dropdown |
 
 ---
 
@@ -192,6 +193,15 @@ versione editata dall'operatore si usa `dataclasses.replace(params, body=edited_
 - **Label** campo `compagnia_pec` in `vandalismo_preview.html` cambiata in "Indirizzo PEC / email"
   con hint che spiega che l'invio avviene sempre via server PEC (InfoCert gestisce la consegna
   a email ordinaria in modo trasparente).
+
+### Fix compagnia_pec override su cambio dropdown (v0.7.5)
+- **Bug**: cambiando compagnia dal dropdown e cliccando "Rigenera", il campo
+  "Indirizzo PEC / email" restava valorizzato con l'indirizzo della compagnia
+  precedente. Causa: `overrides["compagnia_pec"]` (valore dal form) aveva priorità
+  su `from_pratica()` anche quando l'utente aveva scelto una nuova compagnia.
+- **Fix** (`routes_vandalismo.py`): se `compagnia_id` è esplicitamente valorizzato
+  (scelta dal dropdown), `overrides.pop("compagnia_pec")` prima di chiamare
+  `from_pratica()` → il campo viene ricompilato dalla nuova compagnia.
 
 ---
 
