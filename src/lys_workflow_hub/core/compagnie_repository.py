@@ -224,20 +224,27 @@ class CompagnieRepository:
         Restituisce il match più "ricco" (con PEC valorizzata) se ce ne sono più
         di uno con lo stesso nome normalizzato. None se non c'è niente.
         """
+        candidates = self.lookup_all_by_name(nome)
+        return candidates[0] if candidates else None
+
+    def lookup_all_by_name(self, nome: str) -> list[Compagnia]:
+        """Tutti i match per nome normalizzato, ordinati per PEC presente → id.
+
+        Utile quando esistono più record con lo stesso nome (es. compagnia
+        principale + agenzia locale) e l'operatore deve scegliere quale usare.
+        """
         if not nome or not nome.strip():
-            return None
+            return []
         norm = _normalizza_nome(nome)
         if not norm:
-            return None
+            return []
         with self._connect() as conn:
             rows = conn.execute(
                 "SELECT * FROM compagnie_assicurative WHERE nome_norm = ? "
                 "ORDER BY CASE WHEN pec <> '' THEN 0 ELSE 1 END, id",
                 (norm,),
             ).fetchall()
-        if not rows:
-            return None
-        return self._row_to_compagnia(rows[0])
+        return [self._row_to_compagnia(r) for r in rows]
 
     # -- mutate --------------------------------------------------------------
 
@@ -259,8 +266,10 @@ class CompagnieRepository:
     ) -> Compagnia:
         if not (nome or "").strip():
             raise ValueError("Il nome della compagnia è obbligatorio.")
-        if not (pec or "").strip():
-            raise ValueError("L'indirizzo PEC è obbligatorio.")
+        if not (pec or "").strip() and not (email or "").strip():
+            raise ValueError(
+                "Inserire almeno un indirizzo PEC o un'email ordinaria."
+            )
         now = datetime.now().isoformat(timespec="seconds")
         with self._connect() as conn:
             try:
@@ -317,8 +326,10 @@ class CompagnieRepository:
             raise ValueError(f"Compagnia id={compagnia_id} non trovata.")
         if not (nome or "").strip():
             raise ValueError("Il nome della compagnia è obbligatorio.")
-        if not (pec or "").strip():
-            raise ValueError("L'indirizzo PEC è obbligatorio.")
+        if not (pec or "").strip() and not (email or "").strip():
+            raise ValueError(
+                "Inserire almeno un indirizzo PEC o un'email ordinaria."
+            )
         now = datetime.now().isoformat(timespec="seconds")
         with self._connect() as conn:
             try:

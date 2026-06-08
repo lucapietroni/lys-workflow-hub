@@ -53,10 +53,10 @@
     <div class="form-grid">
       {{ field("Nome compagnia (come riportato in WinCar)", "nome", values.nome, required=True,
                hint="Verrà usato per il matching automatico con la pratica WinCar.") }}
-      {{ field("Indirizzo PEC", "pec", values.pec, type="email", required=True,
-               hint="Indirizzo di posta certificata dove inviare la richiesta.") }}
+      {{ field("Indirizzo PEC", "pec", values.pec, type="email",
+               hint="Obbligatoria se non si inserisce un'email ordinaria. La richiesta sarà inviata via PEC.") }}
       {{ field("Email ordinaria", "email", values.email, type="email",
-               hint="Opzionale, per CC/copia di cortesia.") }}
+               hint="Obbligatoria se non si inserisce la PEC (es. agenzia senza PEC). La richiesta sarà inviata via email normale.") }}
     </div>
   </section>
 
@@ -109,4 +109,16 @@
     </button>
   </div>
 </form>
+
+<script>
+  document.querySelector("form").addEventListener("submit", function(e) {
+    var pec = document.getElementById("f_pec").value.trim();
+    var email = document.getElementById("f_email").value.trim();
+    if (!pec && !email) {
+      e.preventDefault();
+      alert("Inserire almeno un indirizzo PEC o un'email ordinaria.");
+      document.getElementById("f_pec").focus();
+    }
+  });
+</script>
 {% endblock %}

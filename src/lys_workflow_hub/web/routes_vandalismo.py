@@ -143,11 +143,22 @@ def _carica_pratica(numero: int, repo: WinCarRepository) -> Pratica:
 
 
 def _trova_compagnia(
-    nome: str | None, repo: CompagnieRepository
-) -> Compagnia | None:
+    nome: str | None,
+    repo: CompagnieRepository,
+    compagnia_id: int | None = None,
+) -> tuple[Compagnia | None, list[Compagnia]]:
+    """Restituisce (compagnia_selezionata, lista_candidati).
+
+    Se `compagnia_id` è valorizzato, carica quel record direttamente.
+    Altrimenti cerca per nome e restituisce tutti i match (per il dropdown).
+    """
+    if compagnia_id:
+        comp = repo.get(compagnia_id)
+        return comp, ([comp] if comp else [])
     if not nome or not nome.strip():
-        return None
-    return repo.lookup_by_name(nome)
+        return None, []
+    candidates = repo.lookup_all_by_name(nome)
+    return (candidates[0] if candidates else None), candidates
 
 
 def _build_data(
@@ -239,7 +250,7 @@ def vandalismo_preview(
     settings: Settings = Depends(get_settings),
 ) -> HTMLResponse:
     pratica = _carica_pratica(numero, repo)
-    compagnia = _trova_compagnia(
+    compagnia, compagnie_candidate = _trova_compagnia(
         pratica.assicurazione_cliente.nome, compagnie_repo
     )
     data = _build_data(pratica, compagnia, settings)
@@ -247,6 +258,7 @@ def vandalismo_preview(
         request, pratica, data, settings, selezione=None, pec_log=pec_log,
     )
     context["compagnia_match"] = compagnia
+    context["compagnie_candidate"] = compagnie_candidate
     return templates.TemplateResponse(request, "vandalismo_preview.html", context)
 
 
@@ -269,19 +281,20 @@ async def vandalismo_rigenera(
     selezione = _allegati_selezionati(form)
 
     overrides = _build_overrides(form_dict)
-    # Lookup della compagnia: se l'operatore ha modificato il nome a video,
-    # usiamo il nuovo valore per il lookup; il record selezionato ha
-    # comunque la precedenza nei campi PEC/indirizzo.
     nome_compagnia = (
         overrides.get("polizza_compagnia_nome") or pratica.assicurazione_cliente.nome
     )
-    compagnia = _trova_compagnia(nome_compagnia, compagnie_repo)
+    compagnia_id = _parse_compagnia_id(form_dict)
+    compagnia, compagnie_candidate = _trova_compagnia(
+        nome_compagnia, compagnie_repo, compagnia_id=compagnia_id
+    )
     data = _build_data(pratica, compagnia, settings, overrides=overrides)
 
     context = _build_context(
         request, pratica, data, settings, selezione=selezione, pec_log=pec_log,
     )
     context["compagnia_match"] = compagnia
+    context["compagnie_candidate"] = compagnie_candidate
     return templates.TemplateResponse(request, "vandalismo_preview.html", context)
 
 
@@ -424,6 +437,14 @@ def vandalismo_serve_allegato(
 # --------------------------------------------------------------------------- #
 
 
+def _parse_compagnia_id(form_dict: dict[str, Any]) -> int | None:
+    raw = form_dict.get("compagnia_id", "")
+    try:
+        return int(raw) if raw else None
+    except (ValueError, TypeError):
+        return None
+
+
 def _ricostruisci_invio(
     numero: int,
     form_dict: dict[str, Any],
@@ -443,7 +464,8 @@ def _ricostruisci_invio(
     nome_compagnia = (
         overrides.get("polizza_compagnia_nome") or pratica.assicurazione_cliente.nome
     )
-    compagnia = _trova_compagnia(nome_compagnia, compagnie_repo)
+    compagnia_id = _parse_compagnia_id(form_dict)
+    compagnia, _ = _trova_compagnia(nome_compagnia, compagnie_repo, compagnia_id=compagnia_id)
     data = _build_data(pratica, compagnia, settings, overrides=overrides)
     allegati = scan(settings.wincar_archivio, pratica.numero)
     nomi = set(selezione)

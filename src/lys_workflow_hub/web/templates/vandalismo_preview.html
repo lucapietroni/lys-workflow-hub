@@ -53,7 +53,24 @@
   </div>
 {% endif %}
 
-{% if not compagnia_match %}
+{% if compagnie_candidate | length > 1 %}
+  <div class="alert alert-warn">
+    <strong>Più compagnie trovate per "{{ data.polizza_compagnia_nome }}".</strong>
+    Scegli quella corretta e clicca <em>Rigenera anteprima</em>.
+    <div style="margin-top:8px">
+      <label for="compagnia_id_select"><strong>Compagnia da usare:</strong></label>
+      <select id="compagnia_id_select" style="margin-left:8px"
+              onchange="document.getElementById('compagnia_id_hidden').value = this.value">
+        {% for c in compagnie_candidate %}
+          <option value="{{ c.id }}"
+            {% if compagnia_match and c.id == compagnia_match.id %}selected{% endif %}>
+            {{ c.nome }}{% if c.pec %} — PEC: {{ c.pec }}{% elif c.email %} — Email: {{ c.email }}{% endif %}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+{% elif not compagnia_match %}
   <div class="alert alert-warn">
     Nessuna compagnia trovata in anagrafica per
     <strong>{{ data.polizza_compagnia_nome or "(nome non valorizzato)" }}</strong>.
@@ -64,12 +81,14 @@
   <div class="alert alert-success">
     Compagnia riconosciuta in anagrafica:
     <strong>{{ compagnia_match.nome }}</strong>
-    (PEC <code>{{ compagnia_match.pec }}</code>).
+    ({% if compagnia_match.pec %}PEC <code>{{ compagnia_match.pec }}</code>{% else %}Email <code>{{ compagnia_match.email }}</code>{% endif %}).
     <a href="/compagnie/{{ compagnia_match.id }}" target="_blank" rel="noopener">Modifica</a>
   </div>
 {% endif %}
 
 <form method="post" action="/pratiche/{{ pratica.numero }}/vandalismo" class="cessione-form">
+  <input type="hidden" id="compagnia_id_hidden" name="compagnia_id"
+         value="{{ compagnia_match.id if compagnia_match else '' }}" />
 
   <section class="card">
     <h2>Assicurato</h2>
@@ -304,5 +323,10 @@
     setTimeout(function() { btn.textContent = old; }, 1500);
   }
 
+  // Sync select → hidden al caricamento (caso multi-match)
+  var sel = document.getElementById("compagnia_id_select");
+  if (sel) {
+    document.getElementById("compagnia_id_hidden").value = sel.value;
+  }
 </script>
 {% endblock %}

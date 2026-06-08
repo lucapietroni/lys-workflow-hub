@@ -293,7 +293,8 @@ def from_pratica(
         denuncia_data=_take("denuncia_data", None),
         denuncia_protocollo=_take("denuncia_protocollo", ""),
         compagnia_pec=_take(
-            "compagnia_pec", (compagnia.pec if compagnia else "") or ""
+            "compagnia_pec",
+            ((compagnia.pec or compagnia.email) if compagnia else "") or "",
         ),
         compagnia_indirizzo=_take(
             "compagnia_indirizzo",
