@@ -169,6 +169,19 @@ versione editata dall'operatore si usa `dataclasses.replace(params, body=edited_
 - **Fix**: aggiunto blocco `copy /Y lys_hub.db OLD→NEW` con `mkdir data` se assente,
   prima del backup dell'installazione precedente.
 
+### Compagnie — PEC o email obbligatoria + dropdown match multipli (v0.7.3)
+- **Anagrafica compagnie** (`/compagnie/nuova`, `/compagnie/{id}`):
+  - Validazione cambiata da "PEC obbligatoria" a "PEC **o** email ordinaria obbligatoria"
+    (`compagnie_repository.py`: `create()` + `update()`).
+  - Form: campo PEC non più `required`; hint aggiornati; JS blocca submit se entrambi vuoti.
+- **Invio a email ordinaria**: `data.py` → `compagnia_pec` usa `compagnia.pec or compagnia.email`
+  come fallback → SMTP invia all'email quando la compagnia non ha PEC.
+- **Dropdown match multipli** (`vandalismo_preview.html`):
+  - Aggiunto `lookup_all_by_name()` in `compagnie_repository.py`.
+  - `_trova_compagnia()` in `routes_vandalismo.py` restituisce `(compagnia, lista_candidati)`.
+  - Se match > 1: mostra `<select>` con tutte le opzioni (nome + PEC/email).
+  - `compagnia_id` come hidden field → sopravvive al flusso anteprima → conferma → invia.
+
 ---
 
 ## Lavoro svolto in sessioni precedenti (v0.7.0–0.7.1)
@@ -245,6 +258,7 @@ versione editata dall'operatore si usa `dataclasses.replace(params, body=edited_
 
 - Aggiornamento produzione (`C:\LYSApp\lys-workflow-hub`) a v0.7.3 — da eseguire
   con `scripts/update_lys.bat` (ora preserva `lys_hub.db`).
+- Aggiornamento produzione a v0.7.3 — da eseguire con `scripts/update_lys.bat`.
 - Feature candidate discusse ma non implementate: timeline pratica, storico
   comunicazioni unificato, filtri cruscotto, notifica push su risposta ricevuta,
   matching ricevute PEC InfoCert, export CSV/Excel, backup DB automatico notturno.
