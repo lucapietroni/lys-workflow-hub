@@ -7,7 +7,7 @@ vandalico, ecc.), monitora le risposte delle compagnie assicurative via PEC ed e
 ordinaria, classifica le risposte con un modello AI, produce bozze di replica e genera
 alert mirati.
 
-> Versione attuale: **0.7.4**
+> Versione attuale: **0.7.5**
 
 ## Stato del progetto
 
@@ -29,8 +29,41 @@ alert mirati.
 | **M7.2** | CONTEXT.md documentazione sviluppo + hook commit reminder | ✅ completata |
 | **M7.3** | Fix update_lys.bat (preserva DB), compagnie con email ordinaria, dropdown match multipli | ✅ completata |
 | **M7.4** | Fix prefix matching compagnie bidirezionale + label campo PEC/email | ✅ completata |
+| **M7.5** | Fix campo PEC/email non aggiornato su cambio compagnia dal dropdown | ✅ completata |
 
 ---
+
+### Cosa fa M7.5 oggi
+
+- **Fix dropdown compagnia**: selezionando una compagnia diversa dal menu a tendina nella
+  pagina di richiesta vandalismo, il campo "Indirizzo PEC / email" restava valorizzato con
+  l'indirizzo della compagnia precedente. Il valore del form (`overrides["compagnia_pec"]`)
+  aveva priorità su `from_pratica()` anche quando la compagnia era cambiata. Fix:
+  `routes_vandalismo.py` ora esegue `overrides.pop("compagnia_pec")` quando `compagnia_id`
+  è esplicitamente valorizzato dal dropdown, forzando il ricaricamento dell'indirizzo dalla
+  nuova compagnia selezionata.
+
+### Cosa fa M7.4 oggi
+
+- **Fix matching compagnie**: `lookup_all_by_name` ora usa prefix matching bidirezionale
+  per trovare compagnie correlate anche con nomi diversi (es. "Unipol" ↔ "Unipol Agenzia 39622").
+  Query: `nome_norm = ? OR nome_norm LIKE ? || ' %' OR ? LIKE nome_norm || ' %'`.
+- **Label campo**: "Indirizzo PEC" rinominato "Indirizzo PEC / email" con hint che spiega
+  che l'invio avviene sempre via server PEC (InfoCert gestisce la consegna a email ordinaria).
+
+### Cosa fa M7.3 oggi
+
+- **Fix `update_lys.bat`**: preserva `data/lys_hub.db` durante l'aggiornamento produzione.
+  Il blocco `copy /Y lys_hub.db OLD→NEW` viene eseguito prima del backup, così compagnie,
+  PEC inviate e mail classificate non vengono perse al deploy.
+- **Compagnie con sola email ordinaria**: anagrafica compagnie ora accetta compagnie con
+  sola email (senza PEC), utile per agenzie locali. Validazione: almeno PEC o email
+  obbligatoria. Il campo viene precompilato con `compagnia.pec or compagnia.email` nella
+  richiesta vandalismo; l'invio avviene sempre via SMTP PEC (InfoCert consegna come email
+  normale al destinatario).
+- **Dropdown match multipli**: quando WinCar contiene un nome compagnia che corrisponde
+  a più record in anagrafica, viene mostrato un `<select>` per scegliere quale usare.
+  La scelta (`compagnia_id`) sopravvive al flusso anteprima → conferma → invia.
 
 ### Cosa fa M7.1 oggi
 
