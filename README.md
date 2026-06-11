@@ -7,7 +7,7 @@ vandalico, ecc.), monitora le risposte delle compagnie assicurative via PEC ed e
 ordinaria, classifica le risposte con un modello AI, produce bozze di replica e genera
 alert mirati.
 
-> Versione attuale: **0.7.8**
+> Versione attuale: **0.7.9**
 
 ## Stato del progetto
 
@@ -33,8 +33,18 @@ alert mirati.
 | **M7.6** | Collegamento manuale risposta → PEC inviata per fermare escalation SLA | ✅ completata |
 | **M7.7** | Scollegamento PEC da risposta + fix crash cerca_pratica vuota | ✅ completata |
 | **M7.8** | Lista compagnie: colonna PEC/Email con fallback a email ordinaria | ✅ completata |
+| **M7.9** | Tab "Da collegare" in /risposte con badge contatore mail non matchate | ✅ completata |
 
 ---
+
+### Cosa fa M7.9 oggi
+
+- **Tab "Da collegare"** in `/risposte`: accanto al tab "Collegate a pratica" compare
+  un secondo tab con badge rosso che mostra quante mail non sono state abbinate
+  automaticamente a nessuna pratica. Cliccando sul tab si vede la lista di quelle
+  mail con il pulsante "Collega" diretto alla pagina dettaglio (che ha già il form
+  di collegamento manuale di M7.6). Escluse le ricevute PEC di sistema (rumore).
+  Quando tutte le mail sono collegate il badge scompare.
 
 ### Cosa fa M7.8 oggi
 

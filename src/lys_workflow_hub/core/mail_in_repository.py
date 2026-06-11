@@ -453,16 +453,23 @@ class MailRepository:
         limit: int = 200,
         *,
         solo_matched: bool = True,
+        solo_non_matchate: bool = False,
     ) -> list[MailConClassificazione]:
         """Lista cronologica delle mail con eventuale classificazione.
 
-        - `solo_matched=True` (default): mostra solo le mail collegate a una
-          PEC inviata della carrozzeria (`pec_inviata_id IS NOT NULL`).
-          Filtra automaticamente il rumore: newsletter, ricevute PEC di
-          sistema, spam che ha superato i filtri della casella.
-        - `solo_matched=False`: mostra tutte le mail in archivio.
+        - `solo_matched=True` (default): solo mail collegate a una PEC inviata.
+        - `solo_non_matchate=True`: mail processate ma senza PEC abbinata,
+          escluse le ricevute PEC di sistema (ai_model='(skip)').
+        - entrambi False: tutte le mail in archivio.
         """
-        if solo_matched:
+        if solo_non_matchate:
+            where = (
+                "WHERE mc.pec_inviata_id IS NULL "
+                "AND mc.ai_model != '(skip)' "
+                "AND mc.id IS NOT NULL "
+                "AND mi.ignorata = 0"
+            )
+        elif solo_matched:
             where = "WHERE mc.pec_inviata_id IS NOT NULL AND mi.ignorata = 0"
         else:
             where = "WHERE mi.ignorata = 0"
@@ -506,6 +513,18 @@ class MailRepository:
                 "SELECT COUNT(*) AS n FROM mail_classificate mc "
                 "JOIN mail_in mi ON mi.id = mc.mail_in_id "
                 "WHERE mc.action_required = 1 AND mc.pec_inviata_id IS NOT NULL "
+                "AND mi.ignorata = 0"
+            ).fetchone()
+        return int(row["n"]) if row else 0
+
+    def count_non_matchate(self) -> int:
+        """Mail processate senza PEC abbinata (escluse ricevute sistema)."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) AS n FROM mail_classificate mc "
+                "JOIN mail_in mi ON mi.id = mc.mail_in_id "
+                "WHERE mc.pec_inviata_id IS NULL "
+                "AND mc.ai_model != '(skip)' "
                 "AND mi.ignorata = 0"
             ).fetchone()
         return int(row["n"]) if row else 0

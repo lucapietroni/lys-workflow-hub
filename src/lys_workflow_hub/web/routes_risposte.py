@@ -60,37 +60,35 @@ def get_pec_log_repo(
 @router.get("/risposte", response_class=HTMLResponse)
 def risposte_list(
     request: Request,
+    tab: str = "matchate",
     categoria: str | None = None,
     only_action: bool = False,
-    show_all: bool = False,
     mail_repo: MailRepository = Depends(get_mail_repo),
 ) -> HTMLResponse:
-    """Lista risposte.
-
-    Di default mostra solo le mail collegate a una PEC inviata
-    (`solo_matched=True`): è il caso d'uso operativo, evita di vedere
-    newsletter e ricevute di sistema. Con `?show_all=1` la query restituisce
-    invece TUTTE le mail in archivio (utile per debug).
-    """
+    non_matchate = tab == "non_matchate"
     records = mail_repo.list_con_classificazione(
-        limit=300, solo_matched=(not show_all),
+        limit=300,
+        solo_matched=(not non_matchate),
+        solo_non_matchate=non_matchate,
     )
     if categoria and categoria in CATEGORIE:
         records = [r for r in records if r.categoria == categoria]
-    if only_action:
+    if only_action and not non_matchate:
         records = [r for r in records if r.action_required]
+    count_nm = mail_repo.count_non_matchate()
     return templates.TemplateResponse(
         request,
         "risposte_list.html",
         {
             "version": __version__,
             "records": records,
+            "tab": tab,
             "categoria": categoria,
             "only_action": only_action,
-            "show_all": show_all,
             "categorie": CATEGORIE,
             "categorie_labels": CATEGORIA_LABELS,
             "totale": len(records),
+            "count_non_matchate": count_nm,
         },
     )
 
