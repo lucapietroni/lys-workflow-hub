@@ -31,6 +31,7 @@ from lys_workflow_hub.integrations.pec_mailer import (
     BuiltMessage,
     SendResult,
     build_message,
+    salva_in_posta_inviata,
     send_message,
 )
 from lys_workflow_hub.workflows.risarcimento_vandalismo.allegati import (
@@ -276,8 +277,16 @@ def invia_email_ordinaria(
     smtp_password: str,
     dry_run: bool,
     repo: PecLogRepository,
+    imap_host: str = "",
+    imap_port: int = 993,
+    imap_user: str = "",
+    imap_password: str = "",
 ) -> EsitoEmailOrdinaria:
-    """Invia il corpo della PEC via email ordinaria e aggiorna il record DB."""
+    """Invia il corpo della PEC via email ordinaria e aggiorna il record DB.
+
+    Se imap_host/imap_user sono valorizzati, dopo l'invio tenta IMAP APPEND
+    alla cartella Posta inviata (non fatale: loggato ma non blocca).
+    """
     try:
         built: BuiltMessage = build_message(
             sender_email=sender_email,
@@ -309,4 +318,18 @@ def invia_email_ordinaria(
         "invia_email_ordinaria: pec_id=%s → %s esito=%s",
         pec_id, email_destinatario, esito,
     )
+
+    if result.ok and not dry_run and imap_host and imap_user:
+        try:
+            salva_in_posta_inviata(
+                built.eml_bytes,
+                imap_host=imap_host,
+                imap_port=imap_port,
+                imap_user=imap_user,
+                imap_password=imap_password,
+            )
+            logger.info("invia_email_ordinaria: IMAP APPEND ok, pec_id=%s", pec_id)
+        except Exception as exc:
+            logger.warning("invia_email_ordinaria: IMAP APPEND fallito (non fatale): %s", exc)
+
     return EsitoEmailOrdinaria(ok=result.ok or result.dry_run, error=result.error or "")

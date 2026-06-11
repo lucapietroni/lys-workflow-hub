@@ -40,11 +40,15 @@
           <td><code>{{ r.destinatario_pec }}</code></td>
           <td>
             {% if r.esito == "OK" %}
-              <strong style="color: var(--lys-success);">Inviata</strong>
+              {% if r.email_esito == "KO" %}
+                <strong style="color: var(--lys-warn);">{{ r.esito_label }}</strong>
+              {% else %}
+                <strong style="color: var(--lys-success);">{{ r.esito_label }}</strong>
+              {% endif %}
             {% elif r.esito == "DRY_RUN" %}
-              <span style="color: var(--lys-warn);">Dry-run</span>
+              <span style="color: var(--lys-warn);">{{ r.esito_label }}</span>
             {% else %}
-              <strong style="color: #C24545;">Errore</strong>
+              <strong style="color: #C24545;">{{ r.esito_label }}</strong>
             {% endif %}
           </td>
           <td class="col-actions">

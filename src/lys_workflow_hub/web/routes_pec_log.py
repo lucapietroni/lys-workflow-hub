@@ -218,6 +218,10 @@ async def pec_invia_email(
         smtp_password=settings.smtp_password,
         dry_run=bool(settings.pec_dry_run),
         repo=pec_log,
+        imap_host=settings.email_imap_host,
+        imap_port=int(settings.email_imap_port),
+        imap_user=settings.email_user,
+        imap_password=settings.email_password,
     )
     return RedirectResponse(url=f"/pec-inviate/{pec_id}?email_inviata=1", status_code=303)
 

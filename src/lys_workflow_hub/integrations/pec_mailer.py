@@ -19,9 +19,12 @@ La separazione tra "costruisco" e "invio" permette di:
 """
 from __future__ import annotations
 
+import imaplib
 import logging
+import re
 import smtplib
 import ssl
+import time as _time
 import uuid
 from dataclasses import dataclass
 from email.message import EmailMessage
@@ -274,3 +277,56 @@ def send_message(
         dry_run=False,
         smtp_response=resp,
     )
+
+
+# --------------------------------------------------------------------------- #
+#  IMAP APPEND — salva in Posta inviata
+# --------------------------------------------------------------------------- #
+
+_IMAP_LIST_RE = re.compile(r'\(([^)]*)\)\s+"[^"]*"\s+"?([^"\n]+)"?')
+
+
+def _trova_cartella_inviata(conn: imaplib.IMAP4) -> str | None:
+    """Trova cartella con attributo \\Sent tramite LIST; fallback su nomi noti."""
+    _, data = conn.list()
+    if data:
+        for line in data:
+            if not line:
+                continue
+            s = line.decode("utf-8", errors="replace") if isinstance(line, bytes) else str(line)
+            m = _IMAP_LIST_RE.match(s.strip())
+            if m and "\\Sent" in m.group(1):
+                name = m.group(2).strip()
+                return f'"{name}"' if " " in name else name
+    for candidate in ("Sent", "INBOX.Sent", "Sent Items", "Posta inviata"):
+        try:
+            status, _ = conn.status(f'"{candidate}"', "(MESSAGES)")
+            if status == "OK":
+                return f'"{candidate}"'
+        except Exception:
+            pass
+    return None
+
+
+def salva_in_posta_inviata(
+    eml_bytes: bytes,
+    *,
+    imap_host: str,
+    imap_port: int,
+    imap_user: str,
+    imap_password: str,
+) -> None:
+    """Appende il messaggio già inviato alla cartella Posta inviata via IMAP APPEND.
+
+    Rilancia eccezione in caso di errore; il chiamante decide se ignorarla.
+    """
+    with imaplib.IMAP4_SSL(imap_host, imap_port) as conn:
+        conn.login(imap_user, imap_password)
+        folder = _trova_cartella_inviata(conn)
+        if not folder:
+            raise RuntimeError(
+                "Cartella Posta inviata non trovata sul server IMAP. "
+                "Verificare che il server supporti l'attributo \\\\Sent."
+            )
+        internaldate = imaplib.Time2Internaldate(_time.time())
+        conn.append(folder, r"\Seen", internaldate, eml_bytes)
