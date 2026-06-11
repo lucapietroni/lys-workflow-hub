@@ -612,27 +612,19 @@ class MailRepository:
                 return 0
             placeholders = ",".join("?" * len(ids))
             conn.execute(
-                f"DELETE FROM mail_classificate WHERE mail_in_id IN ({placeholders})",
-                ids,
-            )
-            conn.execute(
                 f"UPDATE mail_in SET ignorata = 1 WHERE id IN ({placeholders})",
                 ids,
             )
             return len(ids)
 
     def delete_mail(self, mail_id: int) -> bool:
-        """Soft-delete: imposta ignorata=1 su mail_in e cancella mail_classificate.
+        """Soft-delete: imposta ignorata=1 su mail_in.
 
         La riga rimane in DB con ignorata=1 così max_uid non scende e il fetcher
-        non riscarica mai la mail. Tutte le query di lista filtrano ignorata=0.
+        non riscarica mai la mail. mail_classificate viene conservata per mantenere
+        la mail visibile nel tab "Da collegare" dopo l'ignore.
         """
         with self._connect() as conn:
-            # Cancella classificazione (così può essere riclassificata se necessario).
-            conn.execute(
-                "DELETE FROM mail_classificate WHERE mail_in_id = ?",
-                (int(mail_id),),
-            )
             cur = conn.execute(
                 "UPDATE mail_in SET ignorata = 1 WHERE id = ?",
                 (int(mail_id),),
