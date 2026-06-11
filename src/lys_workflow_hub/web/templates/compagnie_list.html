@@ -7,8 +7,8 @@
     <span class="badge">Anagrafica</span>
     <h1>Compagnie assicurative</h1>
     <p class="meta">
-      Indirizzi PEC e recapiti delle compagnie destinatarie delle richieste di
-      risarcimento. La PEC qui registrata viene precompilata automaticamente nelle
+      Indirizzi PEC / email e recapiti delle compagnie destinatarie delle richieste di
+      risarcimento. L'indirizzo qui registrato viene precompilato automaticamente nelle
       bozze generate dal workflow vandalismo (M2).
     </p>
   </div>
@@ -28,7 +28,7 @@
       <thead>
         <tr>
           <th>Nome</th>
-          <th>PEC</th>
+          <th>PEC / Email</th>
           <th>Indirizzo</th>
           <th>Ufficio sinistri</th>
           <th class="col-actions"></th>
@@ -38,7 +38,15 @@
         {% for c in compagnie %}
         <tr>
           <td><strong>{{ c.nome }}</strong></td>
-          <td><code>{{ c.pec or "—" }}</code></td>
+          <td>
+            {% if c.pec %}
+              <code>{{ c.pec }}</code>
+            {% elif c.email %}
+              <code>{{ c.email }}</code> <small class="meta">(email)</small>
+            {% else %}
+              —
+            {% endif %}
+          </td>
           <td>{{ c.indirizzo_compatto or "—" }}</td>
           <td>{{ c.ufficio_sinistri or "—" }}</td>
           <td class="col-actions">

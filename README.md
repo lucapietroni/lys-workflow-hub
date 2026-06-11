@@ -7,7 +7,7 @@ vandalico, ecc.), monitora le risposte delle compagnie assicurative via PEC ed e
 ordinaria, classifica le risposte con un modello AI, produce bozze di replica e genera
 alert mirati.
 
-> Versione attuale: **0.7.7**
+> Versione attuale: **0.7.8**
 
 ## Stato del progetto
 
@@ -32,8 +32,15 @@ alert mirati.
 | **M7.5** | Fix campo PEC/email non aggiornato su cambio compagnia dal dropdown | ✅ completata |
 | **M7.6** | Collegamento manuale risposta → PEC inviata per fermare escalation SLA | ✅ completata |
 | **M7.7** | Scollegamento PEC da risposta + fix crash cerca_pratica vuota | ✅ completata |
+| **M7.8** | Lista compagnie: colonna PEC/Email con fallback a email ordinaria | ✅ completata |
 
 ---
+
+### Cosa fa M7.8 oggi
+
+- **Lista compagnie**: la colonna "PEC" rinominata "PEC / Email". Se la compagnia ha
+  solo email ordinaria (nessuna PEC), la tabella mostra l'email con etichetta `(email)`
+  invece del trattino. Aggiornato anche il testo descrittivo della pagina.
 
 ### Cosa fa M7.7 oggi
 
