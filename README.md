@@ -7,7 +7,7 @@ vandalico, ecc.), monitora le risposte delle compagnie assicurative via PEC ed e
 ordinaria, classifica le risposte con un modello AI, produce bozze di replica e genera
 alert mirati.
 
-> Versione attuale: **0.8.0**
+> Versione attuale: **0.8.4**
 
 ## Stato del progetto
 
@@ -36,8 +36,45 @@ alert mirati.
 | **M7.9** | Tab "Da collegare" in /risposte con badge contatore mail non matchate | ✅ completata |
 | **M7.10** | Ignora singola / Ignora tutte nel tab "Da collegare" | ✅ completata |
 | **M8** | Dual send PEC+email, invio retroattivo, email-only SMTP normale, campo telefono compagnia | ✅ completata |
+| **M8.1** | Lista PEC inviate: esito_label corretto + IMAP APPEND posta inviata (email ordinaria) | ✅ completata |
+| **M8.2** | Fix tab "Da collegare": Ignora rimuove badge senza nascondere le mail | ✅ completata |
+| **M8.3** | IMAP APPEND posta inviata anche per PEC InfoCert (+ email-only) | ✅ completata |
+| **M8.4** | Fix mail ignorata rimane visibile nel tab dopo soft-delete | ✅ completata |
 
 ---
+
+### Cosa fa M8.4 oggi
+
+- **Fix soft-delete tab "Da collegare"**: `delete_mail()` e `ignora_non_matchate()` non
+  cancellano più `mail_classificate` all'atto del soft-delete. La riga `mc.id IS NOT NULL`
+  resta soddisfatta → la mail rimane visibile nel tab anche dopo aver cliccato "Ignora".
+  Il badge a 0 funziona lo stesso perché `count_non_matchate()` filtra ancora `ignorata=0`.
+
+### Cosa fa M8.3 oggi
+
+- **IMAP APPEND per PEC**: dopo ogni invio PEC riuscito via InfoCert (SMTP SSL 465), il
+  messaggio viene appendato automaticamente alla cartella Posta inviata del client PEC
+  tramite IMAP APPEND (`pec_imap_host` / `pec_user` / `pec_password`).
+- **ParametriInvio** ora include `imap_host/port/user/password`; per il path email-only
+  usa le credenziali Tophost (`email_imap_*`), per il path PEC usa quelle InfoCert.
+- Errore IMAP non fatale: loggato come warning e ignorato.
+
+### Cosa fa M8.2 oggi
+
+- **"Ignora tutte"** nel tab "Da collegare": rimuove il badge numerico (count → 0)
+  ma le mail restano visibili nel tab.
+- **"Ignora" singola**: riga rimane visibile con label "ignorata" al posto del pulsante.
+- **"Ignora tutte"** nascosto quando `count_non_matchate == 0` (badge già a 0).
+- **`MailIn.ignorata`**: campo aggiunto al dataclass e popolato da `_row_to_mail()`.
+
+### Cosa fa M8.1 oggi
+
+- **Lista `/pec-inviate`**: colonna esito ora usa `r.esito_label` — mostra "Inviata PEC",
+  "Inviata PEC + email", "Inviata PEC (email fallita)" con colori corretti (arancio per
+  email fallita, verde per OK).
+- **IMAP APPEND email ordinaria**: dopo invio SMTP OK via Tophost, il messaggio viene
+  appendato alla cartella Posta inviata tramite IMAP. Rileva la cartella con attributo
+  `\Sent`; fallback su nomi comuni ("Sent", "INBOX.Sent", …). Non fatale su errore.
 
 ### Cosa fa M8 oggi
 

@@ -1,6 +1,6 @@
 # LYS Workflow Hub — Contesto di sviluppo
 
-> Aggiornato automaticamente ad ogni commit. Versione corrente: **0.8.0**
+> Aggiornato automaticamente ad ogni commit. Versione corrente: **0.8.4**
 
 ---
 
@@ -122,8 +122,15 @@ per evitare transizioni errate da classificazioni incerte.
 ### Soft delete mail_in
 `delete_mail()` scrive `UPDATE mail_in SET ignorata=1` invece di DELETE fisico.
 Il motivo: `max_uid()` include anche le righe `ignorata=1`, così l'UID non scende
-mai e il fetcher non riscarica mail già viste. Tutte le query di lista/count
-filtrano `WHERE ignorata = 0`.
+mai e il fetcher non riscarica mail già viste.
+
+**Regola critica (v0.8.4)**: `delete_mail()` e `ignora_non_matchate()` NON cancellano
+`mail_classificate`. Se venissero cancellate, la query `solo_non_matchate` (che richiede
+`mc.id IS NOT NULL`) escluderebbe la mail dal tab "Da collegare". Il badge scende a 0
+perché `count_non_matchate()` filtra `ignorata=0`, ma la mail rimane visibile.
+
+Query di lista/count: `tab matchate` e `tab tutte` filtrano `ignorata=0`. Il tab
+`solo_non_matchate` non filtra più `ignorata` (per mostrare le mail ignorate).
 
 ### Content-Disposition per file allegati
 **Bug Starlette**: passare `headers={"Content-Disposition": "inline; ..."}` (mixed
@@ -160,6 +167,55 @@ versione editata dall'operatore si usa `dataclasses.replace(params, body=edited_
 | 0.7.9 | M7.9 | Tab "Da collegare" in /risposte con badge contatore mail non matchate |
 | 0.7.10 | M7.10 | Ignora singola / Ignora tutte nel tab "Da collegare" |
 | 0.8.0 | M8 | Dual send PEC+email, email-only SMTP corretto, invio retroattivo, telefono compagnia |
+| 0.8.1 | M8.1 | Lista PEC: esito_label corretto + IMAP APPEND posta inviata (email ordinaria) |
+| 0.8.2 | M8.2 | Fix tab "Da collegare": Ignora rimuove badge senza nascondere mail; MailIn.ignorata |
+| 0.8.3 | M8.3 | IMAP APPEND posta inviata anche per PEC InfoCert (ParametriInvio + imap_*) |
+| 0.8.4 | M8.4 | Fix mail ignorata visibile nel tab: delete_mail non cancella mail_classificate |
+
+---
+
+## Lavoro svolto in questa sessione (v0.8.1–0.8.4)
+
+### IMAP APPEND posta inviata (v0.8.1 + v0.8.3)
+
+- **`pec_mailer.py`**: aggiunta `salva_in_posta_inviata(eml_bytes, *, imap_host, imap_port,
+  imap_user, imap_password)` — connessione `IMAP4_SSL`, rileva cartella Sent via attributo
+  `\Sent` nel LIST, fallback su nomi noti ("Sent", "INBOX.Sent", …), APPEND con flag `\Seen`.
+  `_trova_cartella_inviata()` helper interno.
+- **`invio_pec.py`**: `invia_email_ordinaria()` accetta `imap_host/port/user/password`
+  (default `""`); dopo SMTP OK chiama `salva_in_posta_inviata()` (non fatale su errore).
+  `ParametriInvio` esteso con `imap_host/port/user/password`; `invia()` chiama
+  `salva_in_posta_inviata()` dopo send OK.
+- **`routes_vandalismo.py`**: `_build_parametri_invio` popola IMAP: path PEC usa
+  `pec_imap_host + pec_user/pec_password`; path email-only usa `email_imap_host +
+  email_user/email_password`.
+- **`routes_pec_log.py`**: POST `/pec-inviate/{id}/invia-email` passa `email_imap_*` a
+  `invia_email_ordinaria()`.
+
+### Fix lista PEC inviate — esito_label (v0.8.1)
+
+- **`pec_inviate_list.html`**: colonna esito sostituita da `r.esito_label` con colori:
+  verde per OK, arancio per `email_esito == "KO"`, rosso per Errore.
+
+### Fix tab "Da collegare" — Ignora non nasconde (v0.8.2 + v0.8.4)
+
+- **`mail_in_repository.py`**: `list_con_classificazione(solo_non_matchate=True)` non
+  filtra più `ignorata=0` → le mail ignorate restano visibili nel tab.
+  `delete_mail()` e `ignora_non_matchate()` NON cancellano più `mail_classificate`:
+  `mc.id IS NOT NULL` resta soddisfatta dopo ignore → mail visibile nel tab.
+  `count_non_matchate()` filtra ancora `ignorata=0` → badge scende a 0.
+- **`MailIn`**: aggiunto campo `ignorata: bool = False`; `_row_to_mail()` lo popola.
+- **`risposte_list.html`**: "Ignora tutte" visibile solo se `count_non_matchate > 0`;
+  per-row: mail già ignorate mostrano label "ignorata" invece del pulsante Ignora.
+
+### Regole aggiornate
+
+| Regola | Dove | Dettaglio |
+|--------|------|-----------|
+| Soft delete mail | `mail_in_repository.py` | Solo `ignorata=1`; NON cancellare `mail_classificate` (serve per visibilità nel tab) |
+| IMAP APPEND | `pec_mailer.py` | Dopo ogni send OK (PEC e email ordinaria), non fatale su errore |
+| Cartella Sent IMAP | `pec_mailer.py` | Attributo `\Sent` nel LIST; fallback "Sent"/"INBOX.Sent" |
+| IMAP credenziali | `routes_vandalismo.py` | PEC → `pec_imap_host`/`pec_user`; email-only → `email_imap_host`/`email_user` |
 
 ---
 
@@ -375,7 +431,7 @@ versione editata dall'operatore si usa `dataclasses.replace(params, body=edited_
 
 ## Pending / TODO
 
-- Aggiornamento produzione (`C:\LYSApp\lys-workflow-hub`) a v0.8.0 — da eseguire
+- Aggiornamento produzione (`C:\LYSApp\lys-workflow-hub`) a v0.8.4 — da eseguire
   con `scripts/update_lys.bat` (preserva `lys_hub.db`).
 - Prossimo: rilascio 1.0.
 - Feature candidate discusse ma non implementate: timeline pratica, storico
