@@ -79,6 +79,12 @@ class ParametriInvio:
     dry_run: bool
     archivio_pec_root: Path  # cartella centrale dove salvare i .eml
 
+    # IMAP — salva in Posta inviata (opzionale; vuoto = skip)
+    imap_host: str = ""
+    imap_port: int = 993
+    imap_user: str = ""
+    imap_password: str = ""
+
     def stima_dimensione_bytes(self) -> int:
         """Stima rapida della dimensione totale del messaggio."""
         n = len((self.body or "").encode("utf-8"))
@@ -242,6 +248,19 @@ def invia(
         errore=result.error or "",
         data_invio=when,
     )
+
+    if result.ok and not result.dry_run and params.imap_host and params.imap_user:
+        try:
+            salva_in_posta_inviata(
+                built.eml_bytes,
+                imap_host=params.imap_host,
+                imap_port=params.imap_port,
+                imap_user=params.imap_user,
+                imap_password=params.imap_password,
+            )
+            logger.info("invia: IMAP APPEND ok, pec_id=%s", record.id)
+        except Exception as exc:
+            logger.warning("invia: IMAP APPEND fallito (non fatale): %s", exc)
 
     return EsitoInvio(
         ok=result.ok,

@@ -505,6 +505,10 @@ def _build_parametri_invio(
         smtp_u = settings.smtp_user
         smtp_pw = settings.smtp_password
         recipient = compagnia.email  # type: ignore[union-attr]
+        imap_h = settings.email_imap_host
+        imap_p = int(settings.email_imap_port)
+        imap_u = settings.email_user
+        imap_pw = settings.email_password
     else:
         sender_email = settings.pec_smtp_user or settings.carrozzeria_pec
         smtp_h = settings.pec_smtp_host
@@ -512,6 +516,10 @@ def _build_parametri_invio(
         smtp_u = settings.pec_smtp_user
         smtp_pw = settings.pec_smtp_password
         recipient = data.compagnia_pec
+        imap_h = settings.pec_imap_host
+        imap_p = int(settings.pec_imap_port)
+        imap_u = settings.pec_user
+        imap_pw = settings.pec_password
     sender_display = settings.carrozzeria_pec_alias or VAND_CARROZZERIA_NOME
     return ParametriInvio(
         numero_pratica=numero_pratica,
@@ -530,6 +538,10 @@ def _build_parametri_invio(
         smtp_password=smtp_pw,
         dry_run=bool(settings.pec_dry_run),
         archivio_pec_root=settings.app_archivio_pec,
+        imap_host=imap_h,
+        imap_port=imap_p,
+        imap_user=imap_u,
+        imap_password=imap_pw,
     )
 
 
