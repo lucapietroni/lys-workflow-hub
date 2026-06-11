@@ -81,6 +81,7 @@ class MailIn:
     raw_eml_path: str  # path assoluto del .eml grezzo
     ricevuto_at: datetime
     fetched_at: datetime
+    ignorata: bool = False
 
 
 @dataclass(frozen=True)
@@ -256,6 +257,7 @@ class MailRepository:
             raw_eml_path=row["raw_eml_path"] or "",
             ricevuto_at=_parse_dt(row["ricevuto_at"]) or datetime.now(),
             fetched_at=_parse_dt(row["fetched_at"]) or datetime.now(),
+            ignorata=bool(row["ignorata"]),
         )
 
     def insert_mail(
@@ -466,8 +468,7 @@ class MailRepository:
             where = (
                 "WHERE mc.pec_inviata_id IS NULL "
                 "AND mc.ai_model != '(skip)' "
-                "AND mc.id IS NOT NULL "
-                "AND mi.ignorata = 0"
+                "AND mc.id IS NOT NULL"
             )
         elif solo_matched:
             where = "WHERE mc.pec_inviata_id IS NOT NULL AND mi.ignorata = 0"
