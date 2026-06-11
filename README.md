@@ -7,7 +7,7 @@ vandalico, ecc.), monitora le risposte delle compagnie assicurative via PEC ed e
 ordinaria, classifica le risposte con un modello AI, produce bozze di replica e genera
 alert mirati.
 
-> Versione attuale: **0.7.5**
+> Versione attuale: **0.7.6**
 
 ## Stato del progetto
 
@@ -30,8 +30,20 @@ alert mirati.
 | **M7.3** | Fix update_lys.bat (preserva DB), compagnie con email ordinaria, dropdown match multipli | ✅ completata |
 | **M7.4** | Fix prefix matching compagnie bidirezionale + label campo PEC/email | ✅ completata |
 | **M7.5** | Fix campo PEC/email non aggiornato su cambio compagnia dal dropdown | ✅ completata |
+| **M7.6** | Collegamento manuale risposta → PEC inviata per fermare escalation SLA | ✅ completata |
 
 ---
+
+### Cosa fa M7.6 oggi
+
+- **Collegamento manuale risposta → PEC**: quando il sistema non riesce a matchare
+  automaticamente una risposta di compagnia a una PEC inviata (nessun `In-Reply-To` e
+  nessun segnale utile nel testo), l'operatore può collegarla manualmente dalla pagina
+  `/risposte/{id}`. La sezione "Collega manualmente" appare solo se la mail non è già
+  associata. Step 1: inserimento numero pratica → lista PEC inviate per quella pratica.
+  Step 2: dropdown con id, data, destinatario ed esito di ogni PEC → bottone "Collega".
+  Una volta salvato, `mail_classificate.pec_inviata_id` viene aggiornato con
+  `match_method='manual'`; al prossimo ciclo di polling l'escalation SLA si ferma.
 
 ### Cosa fa M7.5 oggi
 

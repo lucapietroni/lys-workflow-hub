@@ -5,6 +5,7 @@ Route esposte:
     GET  /risposte/{mail_id}                Dettaglio risposta + classificazione AI
     GET  /risposte/{mail_id}/scarica        Download del .eml grezzo
     POST /risposte/{mail_id}/riclassifica   Re-estrae body+PDF e riclassifica con AI
+    POST /risposte/{mail_id}/collega        Collega manualmente a una PEC inviata
     POST /risposte/{mail_id}/elimina        Elimina mail_in + classificazione dal DB
 """
 from __future__ import annotations
@@ -12,7 +13,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
@@ -97,6 +98,7 @@ def risposte_list(
 def risposta_detail(
     mail_id: int,
     request: Request,
+    cerca_pratica: int | None = None,
     mail_repo: MailRepository = Depends(get_mail_repo),
     pec_repo: PecLogRepository = Depends(get_pec_log_repo),
 ) -> HTMLResponse:
@@ -107,6 +109,9 @@ def risposta_detail(
     pec_inviata = None
     if classif and classif.pec_inviata_id is not None:
         pec_inviata = pec_repo.get(classif.pec_inviata_id)
+    pec_candidates: list = []
+    if pec_inviata is None and cerca_pratica is not None:
+        pec_candidates = pec_repo.list_by_pratica(cerca_pratica)
     return templates.TemplateResponse(
         request,
         "risposta_detail.html",
@@ -115,6 +120,8 @@ def risposta_detail(
             "mail": mail,
             "classificazione": classif,
             "pec_inviata": pec_inviata,
+            "pec_candidates": pec_candidates,
+            "cerca_pratica": cerca_pratica,
         },
     )
 
@@ -244,6 +251,46 @@ def risposta_riclassifica(
         )
 
     return RedirectResponse(url=f"/risposte/{mail_id}?riclassificata=1", status_code=303)
+
+
+# --------------------------------------------------------------------------- #
+#  Collegamento manuale PEC
+# --------------------------------------------------------------------------- #
+
+
+@router.post("/risposte/{mail_id}/collega")
+def risposta_collega(
+    mail_id: int,
+    pec_inviata_id: int = Form(...),
+    mail_repo: MailRepository = Depends(get_mail_repo),
+    pec_repo: PecLogRepository = Depends(get_pec_log_repo),
+) -> RedirectResponse:
+    """Collega manualmente la risposta a una PEC inviata specifica."""
+    mail = mail_repo.get_mail(mail_id)
+    if mail is None:
+        raise HTTPException(404, f"Mail id={mail_id} non trovata.")
+    pec = pec_repo.get(pec_inviata_id)
+    if pec is None:
+        raise HTTPException(404, f"PEC id={pec_inviata_id} non trovata.")
+    classif = mail_repo.get_classification_for_mail(mail_id)
+    if classif is None:
+        raise HTTPException(
+            400, "Questa mail non ha ancora una classificazione. Esegui prima Riclassifica."
+        )
+    updated = mail_repo.aggiorna_link_pec(
+        mail_in_id=mail_id,
+        pec_inviata_id=pec_inviata_id,
+        pratica_numero=pec.numero_pratica,
+    )
+    if not updated:
+        raise HTTPException(500, "Aggiornamento classificazione fallito.")
+    logger.info(
+        "Mail %s collegata manualmente a PEC %s (pratica %s).",
+        mail_id, pec_inviata_id, pec.numero_pratica,
+    )
+    return RedirectResponse(
+        url=f"/risposte/{mail_id}?collegata=1", status_code=303
+    )
 
 
 # --------------------------------------------------------------------------- #

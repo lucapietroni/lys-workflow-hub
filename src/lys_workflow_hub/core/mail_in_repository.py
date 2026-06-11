@@ -531,6 +531,24 @@ class MailRepository:
                 ((body_text or "")[:8000], int(mail_id)),
             )
 
+    def aggiorna_link_pec(
+        self, mail_in_id: int, pec_inviata_id: int, pratica_numero: int
+    ) -> bool:
+        """Collega manualmente una mail a una PEC inviata.
+
+        Aggiorna pec_inviata_id + pratica_numero + match_method='manual' sulla
+        classificazione esistente. Ritorna True se la riga è stata trovata.
+        """
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE mail_classificate "
+                "SET pec_inviata_id = ?, pratica_numero = ?, "
+                "    match_method = 'manual', match_confidence = 1.0 "
+                "WHERE mail_in_id = ?",
+                (int(pec_inviata_id), int(pratica_numero), int(mail_in_id)),
+            )
+            return cur.rowcount > 0
+
     def delete_classification_for_mail(self, mail_in_id: int) -> bool:
         """Cancella la classificazione esistente per una mail.
 

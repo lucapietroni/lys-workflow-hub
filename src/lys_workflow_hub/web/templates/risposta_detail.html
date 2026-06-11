@@ -49,6 +49,12 @@
     Body aggiornato dal .eml e nuova classificazione AI salvata.
   </div>
 {% endif %}
+{% if request.query_params.get('collegata') %}
+  <div class="alert alert-success">
+    <strong>Collegamento salvato.</strong>
+    La risposta è ora associata alla PEC selezionata. L'escalation SLA si fermerà al prossimo ciclo di polling.
+  </div>
+{% endif %}
 
 {% if classificazione and classificazione.action_required %}
   <div class="alert alert-warn">
@@ -152,4 +158,51 @@
     Per il messaggio completo + allegati apri il file .eml con un client email.
   </p>
 </section>
+
+{% if pec_inviata is none %}
+<section class="card">
+  <h2>Collega manualmente a una pratica</h2>
+  <p class="meta">
+    Il sistema non ha trovato automaticamente una PEC corrispondente.
+    Inserisci il numero pratica per cercare le PEC inviate e seleziona quella corretta.
+  </p>
+
+  {# Step 1: cerca PEC per pratica #}
+  <form method="get" action="/risposte/{{ mail.id }}" style="display:flex; gap:8px; align-items:flex-end; margin-bottom:16px;">
+    <div class="field" style="margin:0; flex:1; max-width:200px;">
+      <label class="field-label" for="cerca_pratica_input">Numero pratica</label>
+      <input id="cerca_pratica_input" type="number" name="cerca_pratica" min="1"
+             value="{{ cerca_pratica if cerca_pratica else '' }}"
+             placeholder="es. 1234"
+             style="width:100%; padding:6px 10px; border:1px solid var(--lys-grey-300); border-radius:6px; font-size:0.95rem;">
+    </div>
+    <button type="submit" class="btn">Cerca PEC →</button>
+  </form>
+
+  {# Step 2: dropdown PEC trovate #}
+  {% if cerca_pratica is not none %}
+    {% if pec_candidates %}
+      <form method="post" action="/risposte/{{ mail.id }}/collega" style="display:flex; gap:8px; align-items:flex-end;">
+        <div class="field" style="margin:0; flex:1;">
+          <label class="field-label" for="pec_select">PEC inviate per pratica {{ cerca_pratica }}</label>
+          <select id="pec_select" name="pec_inviata_id"
+                  style="width:100%; padding:6px 10px; border:1px solid var(--lys-grey-300); border-radius:6px; font-size:0.95rem;">
+            {% for p in pec_candidates %}
+              <option value="{{ p.id }}">
+                PEC #{{ p.id }} · {{ p.data_invio.strftime("%d/%m/%Y %H:%M") }} · {{ p.destinatario_pec }} · {{ p.esito_label }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+        <button type="submit" class="btn btn-primary">Collega</button>
+      </form>
+    {% else %}
+      <div class="alert alert-warn">
+        <strong>Nessuna PEC trovata</strong> per la pratica {{ cerca_pratica }}.
+        Verifica il numero o controlla in <a href="/pec-inviate">PEC inviate</a>.
+      </div>
+    {% endif %}
+  {% endif %}
+</section>
+{% endif %}
 {% endblock %}

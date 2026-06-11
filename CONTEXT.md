@@ -1,6 +1,6 @@
 # LYS Workflow Hub — Contesto di sviluppo
 
-> Aggiornato automaticamente ad ogni commit. Versione corrente: **0.7.5**
+> Aggiornato automaticamente ad ogni commit. Versione corrente: **0.7.6**
 
 ---
 
@@ -154,10 +154,32 @@ versione editata dall'operatore si usa `dataclasses.replace(params, body=edited_
 | 0.7.3 | M7.3 | Fix update_lys.bat: preserva lys_hub.db durante aggiornamento produzione |
 | 0.7.4 | M7.4 | Fix prefix matching compagnie bidirezionale + label PEC/email |
 | 0.7.5 | M7.5 | Fix compagnia_pec override non svuotato su cambio dropdown |
+| 0.7.6 | M7.6 | Collegamento manuale risposta → PEC inviata (stop escalation SLA) |
 
 ---
 
-## Lavoro svolto in questa sessione (v0.7.2–0.7.4)
+## Lavoro svolto in questa sessione (v0.7.6)
+
+### Collegamento manuale risposta → PEC inviata (v0.7.6)
+- **Problema**: quando il matcher non trova corrispondenza automatica (nessun
+  `In-Reply-To`, nessuna targa/pratica/polizza nel testo), `mail_classificate.pec_inviata_id`
+  rimane NULL e l'escalation SLA continua anche se la compagnia ha risposto.
+- **Fix** (`mail_in_repository.py`): nuovo metodo `aggiorna_link_pec(mail_in_id,
+  pec_inviata_id, pratica_numero)` — UPDATE su `mail_classificate` con
+  `match_method='manual'`, `match_confidence=1.0`.
+- **Route** (`routes_risposte.py`):
+  - GET `/risposte/{id}` accetta `?cerca_pratica=N` → carica `pec_repo.list_by_pratica(N)`
+    e passa `pec_candidates` al template.
+  - POST `/risposte/{id}/collega` — valida mail + PEC, chiama `aggiorna_link_pec`,
+    redirect a `?collegata=1`.
+- **UI** (`risposta_detail.html`): sezione "Collega manualmente" visibile solo se
+  `pec_inviata IS NULL`. Step 1: input numero pratica + "Cerca PEC →". Step 2: dropdown
+  con PEC trovate (id, data, destinatario, esito) + bottone "Collega".
+  Banner di conferma `?collegata=1` dopo il salvataggio.
+
+---
+
+## Lavoro svolto in sessioni precedenti (v0.7.2–0.7.5)
 
 ### CONTEXT.md + hook commit reminder (v0.7.2)
 - Creato `CONTEXT.md` con documentazione architetturale, decisioni tecniche, milestone.
@@ -277,9 +299,8 @@ versione editata dall'operatore si usa `dataclasses.replace(params, body=edited_
 
 ## Pending / TODO
 
-- Aggiornamento produzione (`C:\LYSApp\lys-workflow-hub`) a v0.7.3 — da eseguire
-  con `scripts/update_lys.bat` (ora preserva `lys_hub.db`).
-- Aggiornamento produzione a v0.7.5 — da eseguire con `scripts/update_lys.bat`.
+- Aggiornamento produzione (`C:\LYSApp\lys-workflow-hub`) a v0.7.6 — da eseguire
+  con `scripts/update_lys.bat` (preserva `lys_hub.db`).
 - Feature candidate discusse ma non implementate: timeline pratica, storico
   comunicazioni unificato, filtri cruscotto, notifica push su risposta ricevuta,
   matching ricevute PEC InfoCert, export CSV/Excel, backup DB automatico notturno.
