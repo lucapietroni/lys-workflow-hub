@@ -55,6 +55,12 @@
     La risposta è ora associata alla PEC selezionata. L'escalation SLA si fermerà al prossimo ciclo di polling.
   </div>
 {% endif %}
+{% if request.query_params.get('scollegata') %}
+  <div class="alert alert-success">
+    <strong>Collegamento rimosso.</strong>
+    La risposta non è più associata a nessuna PEC inviata.
+  </div>
+{% endif %}
 
 {% if classificazione and classificazione.action_required %}
   <div class="alert alert-warn">
@@ -123,9 +129,19 @@
     {% if pec_inviata %}
     <div class="field">
       <span class="field-label">PEC originale</span>
-      <span class="field-value">
-        <a href="/pec-inviate/{{ pec_inviata.id }}">PEC #{{ pec_inviata.id }}</a>
-        del {{ pec_inviata.data_invio.strftime("%d/%m/%Y %H:%M") }}
+      <span class="field-value" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+        <span>
+          <a href="/pec-inviate/{{ pec_inviata.id }}">PEC #{{ pec_inviata.id }}</a>
+          del {{ pec_inviata.data_invio.strftime("%d/%m/%Y %H:%M") }}
+          <small class="meta">({{ classificazione.match_method }})</small>
+        </span>
+        <form method="post" action="/risposte/{{ mail.id }}/scollega" style="margin:0;">
+          <button type="submit" class="btn btn-danger-outline"
+                  onclick="return confirm('Rimuovere il collegamento a questa PEC?')"
+                  style="font-size:0.82rem; padding:3px 10px;">
+            Scollega
+          </button>
+        </form>
       </span>
     </div>
     {% endif %}
@@ -173,7 +189,7 @@
       <label class="field-label" for="cerca_pratica_input">Numero pratica</label>
       <input id="cerca_pratica_input" type="number" name="cerca_pratica" min="1"
              value="{{ cerca_pratica if cerca_pratica else '' }}"
-             placeholder="es. 1234"
+             placeholder="es. 1234" required
              style="width:100%; padding:6px 10px; border:1px solid var(--lys-grey-300); border-radius:6px; font-size:0.95rem;">
     </div>
     <button type="submit" class="btn">Cerca PEC →</button>

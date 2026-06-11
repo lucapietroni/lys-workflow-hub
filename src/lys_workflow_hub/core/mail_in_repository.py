@@ -531,6 +531,18 @@ class MailRepository:
                 ((body_text or "")[:8000], int(mail_id)),
             )
 
+    def scollega_pec(self, mail_in_id: int) -> bool:
+        """Rimuove il collegamento PEC da una classificazione (pec_inviata_id → NULL)."""
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE mail_classificate "
+                "SET pec_inviata_id = NULL, pratica_numero = NULL, "
+                "    match_method = 'none', match_confidence = 0.0 "
+                "WHERE mail_in_id = ?",
+                (int(mail_in_id),),
+            )
+            return cur.rowcount > 0
+
     def aggiorna_link_pec(
         self, mail_in_id: int, pec_inviata_id: int, pratica_numero: int
     ) -> bool:

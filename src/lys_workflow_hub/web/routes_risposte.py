@@ -6,6 +6,7 @@ Route esposte:
     GET  /risposte/{mail_id}/scarica        Download del .eml grezzo
     POST /risposte/{mail_id}/riclassifica   Re-estrae body+PDF e riclassifica con AI
     POST /risposte/{mail_id}/collega        Collega manualmente a una PEC inviata
+    POST /risposte/{mail_id}/scollega       Rimuove collegamento PEC (torna a non matchata)
     POST /risposte/{mail_id}/elimina        Elimina mail_in + classificazione dal DB
 """
 from __future__ import annotations
@@ -98,7 +99,7 @@ def risposte_list(
 def risposta_detail(
     mail_id: int,
     request: Request,
-    cerca_pratica: int | None = None,
+    cerca_pratica: str | None = None,
     mail_repo: MailRepository = Depends(get_mail_repo),
     pec_repo: PecLogRepository = Depends(get_pec_log_repo),
 ) -> HTMLResponse:
@@ -109,9 +110,15 @@ def risposta_detail(
     pec_inviata = None
     if classif and classif.pec_inviata_id is not None:
         pec_inviata = pec_repo.get(classif.pec_inviata_id)
+    cerca_pratica_int: int | None = None
+    try:
+        if cerca_pratica and cerca_pratica.strip():
+            cerca_pratica_int = int(cerca_pratica.strip())
+    except ValueError:
+        pass
     pec_candidates: list = []
-    if pec_inviata is None and cerca_pratica is not None:
-        pec_candidates = pec_repo.list_by_pratica(cerca_pratica)
+    if pec_inviata is None and cerca_pratica_int is not None:
+        pec_candidates = pec_repo.list_by_pratica(cerca_pratica_int)
     return templates.TemplateResponse(
         request,
         "risposta_detail.html",
@@ -121,7 +128,7 @@ def risposta_detail(
             "classificazione": classif,
             "pec_inviata": pec_inviata,
             "pec_candidates": pec_candidates,
-            "cerca_pratica": cerca_pratica,
+            "cerca_pratica": cerca_pratica_int,
         },
     )
 
@@ -256,6 +263,23 @@ def risposta_riclassifica(
 # --------------------------------------------------------------------------- #
 #  Collegamento manuale PEC
 # --------------------------------------------------------------------------- #
+
+
+@router.post("/risposte/{mail_id}/scollega")
+def risposta_scollega(
+    mail_id: int,
+    mail_repo: MailRepository = Depends(get_mail_repo),
+) -> RedirectResponse:
+    """Rimuove il collegamento PEC dalla classificazione (manuale o automatico)."""
+    mail = mail_repo.get_mail(mail_id)
+    if mail is None:
+        raise HTTPException(404, f"Mail id={mail_id} non trovata.")
+    classif = mail_repo.get_classification_for_mail(mail_id)
+    if classif is None:
+        raise HTTPException(400, "Nessuna classificazione da scollegare.")
+    mail_repo.scollega_pec(mail_id)
+    logger.info("Mail %s: collegamento PEC rimosso.", mail_id)
+    return RedirectResponse(url=f"/risposte/{mail_id}?scollegata=1", status_code=303)
 
 
 @router.post("/risposte/{mail_id}/collega")

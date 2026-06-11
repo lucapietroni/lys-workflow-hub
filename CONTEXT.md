@@ -1,6 +1,6 @@
 # LYS Workflow Hub — Contesto di sviluppo
 
-> Aggiornato automaticamente ad ogni commit. Versione corrente: **0.7.6**
+> Aggiornato automaticamente ad ogni commit. Versione corrente: **0.7.7**
 
 ---
 
@@ -155,10 +155,11 @@ versione editata dall'operatore si usa `dataclasses.replace(params, body=edited_
 | 0.7.4 | M7.4 | Fix prefix matching compagnie bidirezionale + label PEC/email |
 | 0.7.5 | M7.5 | Fix compagnia_pec override non svuotato su cambio dropdown |
 | 0.7.6 | M7.6 | Collegamento manuale risposta → PEC inviata (stop escalation SLA) |
+| 0.7.7 | M7.7 | Scollegamento PEC da risposta + fix crash cerca_pratica vuota |
 
 ---
 
-## Lavoro svolto in questa sessione (v0.7.6)
+## Lavoro svolto in questa sessione (v0.7.6–0.7.7)
 
 ### Collegamento manuale risposta → PEC inviata (v0.7.6)
 - **Problema**: quando il matcher non trova corrispondenza automatica (nessun
@@ -176,6 +177,15 @@ versione editata dall'operatore si usa `dataclasses.replace(params, body=edited_
   `pec_inviata IS NULL`. Step 1: input numero pratica + "Cerca PEC →". Step 2: dropdown
   con PEC trovate (id, data, destinatario, esito) + bottone "Collega".
   Banner di conferma `?collegata=1` dopo il salvataggio.
+
+### Scollegamento PEC + fix cerca_pratica vuota (v0.7.7)
+- **Scollega** (`mail_in_repository.py`): nuovo `scollega_pec(mail_in_id)` — UPDATE
+  `mail_classificate` con `pec_inviata_id=NULL`, `match_method='none'`.
+- **Route** (`routes_risposte.py`): POST `/risposte/{id}/scollega` + banner `?scollegata=1`.
+- **UI** (`risposta_detail.html`): pulsante "Scollega" inline accanto a "PEC originale"
+  (visibile sia per match automatici che manuali), con `confirm()` JS.
+- **Fix crash**: `cerca_pratica` da `int | None` a `str | None` nel route; parsing
+  manuale con `try/except`; attributo `required` sull'input HTML.
 
 ---
 
@@ -299,7 +309,7 @@ versione editata dall'operatore si usa `dataclasses.replace(params, body=edited_
 
 ## Pending / TODO
 
-- Aggiornamento produzione (`C:\LYSApp\lys-workflow-hub`) a v0.7.6 — da eseguire
+- Aggiornamento produzione (`C:\LYSApp\lys-workflow-hub`) a v0.7.7 — da eseguire
   con `scripts/update_lys.bat` (preserva `lys_hub.db`).
 - Feature candidate discusse ma non implementate: timeline pratica, storico
   comunicazioni unificato, filtri cruscotto, notifica push su risposta ricevuta,

@@ -7,7 +7,7 @@ vandalico, ecc.), monitora le risposte delle compagnie assicurative via PEC ed e
 ordinaria, classifica le risposte con un modello AI, produce bozze di replica e genera
 alert mirati.
 
-> Versione attuale: **0.7.6**
+> Versione attuale: **0.7.7**
 
 ## Stato del progetto
 
@@ -31,8 +31,21 @@ alert mirati.
 | **M7.4** | Fix prefix matching compagnie bidirezionale + label campo PEC/email | ✅ completata |
 | **M7.5** | Fix campo PEC/email non aggiornato su cambio compagnia dal dropdown | ✅ completata |
 | **M7.6** | Collegamento manuale risposta → PEC inviata per fermare escalation SLA | ✅ completata |
+| **M7.7** | Scollegamento PEC da risposta + fix crash cerca_pratica vuota | ✅ completata |
 
 ---
+
+### Cosa fa M7.7 oggi
+
+- **Scollegamento PEC**: dalla pagina `/risposte/{id}`, se la mail è già associata a una
+  PEC (automaticamente o manualmente), compare il pulsante **Scollega** accanto a
+  "PEC originale". Un click (con confirm) riporta `pec_inviata_id = NULL` e
+  `match_method = 'none'`, rendendo la mail di nuovo "non matchata". Utile quando il
+  matcher automatico ha collegato erroneamente una risposta a una pratica sbagliata.
+- **Fix crash cerca_pratica vuota**: premere "Cerca PEC →" senza inserire il numero
+  pratica causava un errore 422. Il parametro `cerca_pratica` ora viene accettato come
+  stringa opzionale e convertito a intero solo se non vuoto; il campo HTML ha `required`
+  per blocco browser preventivo.
 
 ### Cosa fa M7.6 oggi
 
