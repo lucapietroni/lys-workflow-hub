@@ -85,6 +85,7 @@ def _render_form(
             "nome": compagnia.nome,
             "pec": compagnia.pec,
             "email": compagnia.email,
+            "telefono": compagnia.telefono,
             "indirizzo": compagnia.indirizzo,
             "cap": compagnia.cap,
             "citta": compagnia.citta,
@@ -108,7 +109,7 @@ def _render_form(
         # Nuova compagnia: pre-popola con i default globali.
         d = context["sla_defaults"]
         context["values"] = {
-            "nome": "", "pec": "", "email": "", "indirizzo": "",
+            "nome": "", "pec": "", "email": "", "telefono": "", "indirizzo": "",
             "cap": "", "citta": "", "provincia": "", "ufficio_sinistri": "",
             "note": "",
             "sla_sollecito_giorni": str(d["sollecito"]),
@@ -172,6 +173,7 @@ async def compagnia_new_submit(
             nome=values.get("nome", ""),
             pec=values.get("pec", ""),
             email=values.get("email", ""),
+            telefono=values.get("telefono", ""),
             indirizzo=values.get("indirizzo", ""),
             cap=values.get("cap", ""),
             citta=values.get("citta", ""),
@@ -239,6 +241,7 @@ async def compagnia_edit_submit(
             nome=values.get("nome", ""),
             pec=values.get("pec", ""),
             email=values.get("email", ""),
+            telefono=values.get("telefono", ""),
             indirizzo=values.get("indirizzo", ""),
             cap=values.get("cap", ""),
             citta=values.get("citta", ""),

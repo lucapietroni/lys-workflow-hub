@@ -58,6 +58,8 @@ class PecInviata:
     data_invio: datetime
     esito: str  # ESITO_OK | ESITO_DRY_RUN | ESITO_KO
     errore: str = ""
+    email_destinatario: str = ""
+    email_esito: str = ""
     created_at: datetime | None = field(default=None)
 
     @property
@@ -70,8 +72,13 @@ class PecInviata:
 
     @property
     def esito_label(self) -> str:
+        if self.esito == ESITO_OK:
+            if self.email_esito == ESITO_OK:
+                return "Inviata PEC + email"
+            if self.email_esito == ESITO_KO:
+                return "Inviata PEC (email fallita)"
+            return "Inviata PEC"
         return {
-            ESITO_OK: "Inviata",
             ESITO_DRY_RUN: "Dry-run",
             ESITO_KO: "Errore",
         }.get(self.esito, self.esito)
@@ -95,10 +102,12 @@ CREATE TABLE IF NOT EXISTS pec_inviate (
     allegati_json    TEXT NOT NULL DEFAULT '[]',
     path_eml         TEXT NOT NULL DEFAULT '',
     message_id       TEXT NOT NULL DEFAULT '',
-    data_invio       TEXT NOT NULL,
-    esito            TEXT NOT NULL,
-    errore           TEXT NOT NULL DEFAULT '',
-    created_at       TEXT NOT NULL
+    data_invio           TEXT NOT NULL,
+    esito                TEXT NOT NULL,
+    errore               TEXT NOT NULL DEFAULT '',
+    email_destinatario   TEXT NOT NULL DEFAULT '',
+    email_esito          TEXT NOT NULL DEFAULT '',
+    created_at           TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_pec_inviate_pratica
@@ -126,6 +135,14 @@ class PecLogRepository:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as conn:
             conn.executescript(_SCHEMA_SQL)
+            for col_def in (
+                "email_destinatario TEXT NOT NULL DEFAULT ''",
+                "email_esito TEXT NOT NULL DEFAULT ''",
+            ):
+                try:
+                    conn.execute(f"ALTER TABLE pec_inviate ADD COLUMN {col_def}")
+                except sqlite3.OperationalError:
+                    pass
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -158,6 +175,8 @@ class PecLogRepository:
             data_invio=_parse_dt(row["data_invio"]) or datetime.now(),
             esito=row["esito"] or ESITO_KO,
             errore=row["errore"] or "",
+            email_destinatario=row["email_destinatario"] or "",
+            email_esito=row["email_esito"] or "",
             created_at=_parse_dt(row["created_at"]),
         )
 
@@ -250,3 +269,13 @@ class PecLogRepository:
                 (int(numero_pratica), ESITO_OK),
             ).fetchone()
         return self._row_to_pec(row) if row else None
+
+    def aggiorna_email_esito(
+        self, pec_id: int, email_destinatario: str, email_esito: str
+    ) -> None:
+        """Aggiorna i campi email_destinatario e email_esito di un invio."""
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE pec_inviate SET email_destinatario = ?, email_esito = ? WHERE id = ?",
+                (email_destinatario, email_esito, int(pec_id)),
+            )

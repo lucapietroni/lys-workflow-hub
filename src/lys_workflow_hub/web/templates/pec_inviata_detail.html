@@ -19,8 +19,21 @@
     {% if record.path_eml %}
       <a class="btn" href="/pec-inviate/{{ record.id }}/scarica">Scarica .eml</a>
     {% endif %}
+    {% if compagnia and compagnia.email and record.esito == 'OK' and not record.email_esito %}
+      <form method="post" action="/pec-inviate/{{ record.id }}/invia-email"
+            style="display:inline;"
+            onsubmit="return confirm('Inviare via email a {{ compagnia.email }}?')">
+        <button type="submit" class="btn">Invia via email</button>
+      </form>
+    {% endif %}
   </div>
 </header>
+
+{% if email_inviata %}
+  <div class="alert" style="background:#EBF8FF; border-left:4px solid #3182CE; padding:12px 16px; margin-bottom:16px;">
+    Email inviata a <strong>{{ record.email_destinatario }}</strong>.
+  </div>
+{% endif %}
 
 {% if record.esito == "KO" and record.errore %}
   <div class="alert alert-warn">
@@ -59,6 +72,21 @@
       <span class="field-label">File .eml archiviato</span>
       <span class="field-value"><code>{{ record.path_eml or "—" }}</code></span>
     </div>
+    {% if record.email_destinatario %}
+    <div class="field">
+      <span class="field-label">Email ordinaria</span>
+      <span class="field-value">
+        <code>{{ record.email_destinatario }}</code>
+        {% if record.email_esito == 'OK' %}
+          <span class="badge" style="background:#38A169; color:#fff;">Inviata</span>
+        {% elif record.email_esito == 'KO' %}
+          <span class="badge" style="background:#E53E3E; color:#fff;">Errore</span>
+        {% elif record.email_esito == 'DRY_RUN' %}
+          <span class="badge" style="background:#DD6B20; color:#fff;">Dry-run</span>
+        {% endif %}
+      </span>
+    </div>
+    {% endif %}
   </div>
   <h3 class="card-subhead">Oggetto</h3>
   <p style="margin:0; color:var(--lys-grey-900);">{{ record.oggetto }}</p>

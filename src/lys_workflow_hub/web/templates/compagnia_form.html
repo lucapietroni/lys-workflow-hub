@@ -57,6 +57,8 @@
                hint="Obbligatoria se non si inserisce un'email ordinaria. La richiesta sarà inviata via PEC.") }}
       {{ field("Email ordinaria", "email", values.email, type="email",
                hint="Obbligatoria se non si inserisce la PEC (es. agenzia senza PEC). La richiesta sarà inviata via email normale.") }}
+      {{ field("Telefono", "telefono", values.telefono, type="tel",
+               hint="Numero di telefono ufficio sinistri (opzionale).") }}
     </div>
   </section>
 

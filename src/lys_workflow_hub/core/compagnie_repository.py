@@ -45,6 +45,7 @@ class Compagnia:
     cap: str = ""
     citta: str = ""
     provincia: str = ""
+    telefono: str = ""
     ufficio_sinistri: str = ""
     note: str = ""
     created_at: datetime | None = field(default=None)
@@ -110,6 +111,7 @@ CREATE TABLE IF NOT EXISTS compagnie_assicurative (
     cap                   TEXT NOT NULL DEFAULT '',
     citta                 TEXT NOT NULL DEFAULT '',
     provincia             TEXT NOT NULL DEFAULT '',
+    telefono              TEXT NOT NULL DEFAULT '',
     ufficio_sinistri      TEXT NOT NULL DEFAULT '',
     note                  TEXT NOT NULL DEFAULT '',
     nome_norm             TEXT NOT NULL DEFAULT '',
@@ -152,11 +154,11 @@ class CompagnieRepository:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as conn:
             conn.executescript(_SCHEMA_SQL)
-            # Migrazione M6.1: aggiunge colonne SLA se non presenti.
             for col_def in (
                 "sla_sollecito_giorni INTEGER",
                 "sla_formale_giorni   INTEGER",
                 "sla_diffida_giorni   INTEGER",
+                "telefono TEXT NOT NULL DEFAULT ''",
             ):
                 try:
                     conn.execute(
@@ -191,6 +193,7 @@ class CompagnieRepository:
             cap=d.get("cap") or "",
             citta=d.get("citta") or "",
             provincia=d.get("provincia") or "",
+            telefono=d.get("telefono") or "",
             ufficio_sinistri=d.get("ufficio_sinistri") or "",
             note=d.get("note") or "",
             created_at=_parse_dt(d.get("created_at")),
@@ -261,6 +264,7 @@ class CompagnieRepository:
         nome: str,
         pec: str,
         email: str = "",
+        telefono: str = "",
         indirizzo: str = "",
         cap: str = "",
         citta: str = "",
@@ -282,14 +286,15 @@ class CompagnieRepository:
             try:
                 cur = conn.execute(
                     "INSERT INTO compagnie_assicurative "
-                    "(nome, pec, email, indirizzo, cap, citta, provincia, "
+                    "(nome, pec, email, telefono, indirizzo, cap, citta, provincia, "
                     " ufficio_sinistri, note, nome_norm, created_at, updated_at, "
                     " sla_sollecito_giorni, sla_formale_giorni, sla_diffida_giorni) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         nome.strip(),
                         pec.strip(),
                         email.strip(),
+                        (telefono or "").strip(),
                         indirizzo.strip(),
                         cap.strip(),
                         citta.strip(),
@@ -318,6 +323,7 @@ class CompagnieRepository:
         nome: str,
         pec: str,
         email: str = "",
+        telefono: str = "",
         indirizzo: str = "",
         cap: str = "",
         citta: str = "",
@@ -342,7 +348,7 @@ class CompagnieRepository:
             try:
                 conn.execute(
                     "UPDATE compagnie_assicurative SET "
-                    " nome = ?, pec = ?, email = ?, indirizzo = ?, cap = ?, "
+                    " nome = ?, pec = ?, email = ?, telefono = ?, indirizzo = ?, cap = ?, "
                     " citta = ?, provincia = ?, ufficio_sinistri = ?, note = ?, "
                     " nome_norm = ?, updated_at = ?, "
                     " sla_sollecito_giorni = ?, sla_formale_giorni = ?, "
@@ -352,6 +358,7 @@ class CompagnieRepository:
                         nome.strip(),
                         pec.strip(),
                         email.strip(),
+                        (telefono or "").strip(),
                         indirizzo.strip(),
                         cap.strip(),
                         citta.strip(),

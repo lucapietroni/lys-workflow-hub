@@ -4,19 +4,28 @@ Route esposte:
     GET  /pec-inviate                       Lista cronologica
     GET  /pec-inviate/{id}                  Dettaglio di un invio
     GET  /pec-inviate/{id}/scarica          Download del file .eml archiviato
+    POST /pec-inviate/{id}/invia-email      Invio retroattivo via email ordinaria
 """
 from __future__ import annotations
 
+import email as _email_lib
 import logging
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from lys_workflow_hub import __version__
 from lys_workflow_hub.config import Settings, get_settings
+from lys_workflow_hub.core.compagnie_repository import CompagnieRepository
 from lys_workflow_hub.core.pec_log_repository import PecLogRepository
+from lys_workflow_hub.workflows.risarcimento_vandalismo.invio_pec import (
+    invia_email_ordinaria,
+)
+from lys_workflow_hub.workflows.risarcimento_vandalismo.data import (
+    CARROZZERIA_NOME as VAND_CARROZZERIA_NOME,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -31,6 +40,41 @@ def get_pec_log_repo(
     settings: Settings = Depends(get_settings),
 ) -> PecLogRepository:
     return PecLogRepository(db_path=settings.app_db_path)
+
+
+def get_compagnie_repo(
+    settings: Settings = Depends(get_settings),
+) -> CompagnieRepository:
+    return CompagnieRepository(db_path=settings.app_db_path)
+
+
+def _estrai_body_da_eml(eml_path: Path) -> str:
+    """Estrae il corpo testuale (text/plain) da un file .eml."""
+    raw = eml_path.read_bytes()
+    msg = _email_lib.message_from_bytes(raw)
+    for part in msg.walk():
+        if part.get_content_type() == "text/plain" and not part.get_filename():
+            charset = part.get_content_charset() or "utf-8"
+            try:
+                return (part.get_payload(decode=True) or b"").decode(charset, errors="replace")
+            except Exception:
+                pass
+    return ""
+
+
+def _trova_allegati_pratica(
+    numero_pratica: int, nomi: list[str], archivio_root: Path
+) -> list[Path]:
+    """Cerca i file allegati per nome nella cartella della pratica WinCar."""
+    cartella = archivio_root / "Pratiche" / str(numero_pratica)
+    if not cartella.exists():
+        return []
+    trovati: list[Path] = []
+    for nome in nomi:
+        matches = list(cartella.rglob(nome))
+        if matches:
+            trovati.append(matches[0])
+    return trovati
 
 
 @router.get("/pec-inviate", response_class=HTMLResponse)
@@ -51,15 +95,78 @@ def pec_detail(
     pec_id: int,
     request: Request,
     pec_log: PecLogRepository = Depends(get_pec_log_repo),
+    compagnie_repo: CompagnieRepository = Depends(get_compagnie_repo),
 ) -> HTMLResponse:
     record = pec_log.get(pec_id)
     if record is None:
         raise HTTPException(404, f"PEC id={pec_id} non trovata.")
+    compagnia = None
+    if record.compagnia_id:
+        compagnia = compagnie_repo.get(record.compagnia_id)
     return templates.TemplateResponse(
         request,
         "pec_inviata_detail.html",
-        {"version": __version__, "record": record},
+        {
+            "version": __version__,
+            "record": record,
+            "compagnia": compagnia,
+            "email_inviata": request.query_params.get("email_inviata") == "1",
+        },
     )
+
+
+@router.post("/pec-inviate/{pec_id}/invia-email")
+def pec_invia_email(
+    pec_id: int,
+    pec_log: PecLogRepository = Depends(get_pec_log_repo),
+    compagnie_repo: CompagnieRepository = Depends(get_compagnie_repo),
+    settings: Settings = Depends(get_settings),
+) -> RedirectResponse:
+    """Invia (o ri-invia) il corpo della PEC via email ordinaria (SMTP normale)."""
+    record = pec_log.get(pec_id)
+    if record is None:
+        raise HTTPException(404, f"PEC id={pec_id} non trovata.")
+    if not record.compagnia_id:
+        raise HTTPException(400, "PEC senza compagnia associata: impossibile trovare l'email.")
+    compagnia = compagnie_repo.get(record.compagnia_id)
+    if not compagnia or not compagnia.email:
+        raise HTTPException(400, "Compagnia senza email ordinaria configurata.")
+
+    # Estrai il corpo testuale dal file .eml archiviato.
+    body = ""
+    if record.path_eml:
+        eml_path = Path(record.path_eml)
+        if eml_path.exists():
+            body = _estrai_body_da_eml(eml_path)
+    if not body:
+        body = record.body_excerpt  # fallback: estratto 300 char
+
+    # Cerca i file allegati originali nella cartella WinCar.
+    allegati_paths: list[Path] = []
+    if record.allegati:
+        allegati_paths = _trova_allegati_pratica(
+            record.numero_pratica, record.allegati, settings.wincar_archivio
+        )
+
+    sender_email = settings.smtp_from or settings.smtp_user
+    sender_display = settings.carrozzeria_pec_alias or VAND_CARROZZERIA_NOME
+
+    invia_email_ordinaria(
+        pec_id=record.id,
+        email_destinatario=compagnia.email,
+        subject=record.oggetto,
+        body=body,
+        allegati_paths=allegati_paths,
+        sender_email=sender_email,
+        sender_display=sender_display,
+        smtp_host=settings.smtp_host,
+        smtp_port=int(settings.smtp_port),
+        smtp_user=settings.smtp_user,
+        smtp_password=settings.smtp_password,
+        dry_run=bool(settings.pec_dry_run),
+        repo=pec_log,
+    )
+    return RedirectResponse(url=f"/pec-inviate/{pec_id}?email_inviata=1", status_code=303)
 
 
 @router.get("/pec-inviate/{pec_id}/scarica")

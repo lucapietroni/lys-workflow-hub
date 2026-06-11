@@ -44,6 +44,7 @@ from lys_workflow_hub.workflows.risarcimento_vandalismo.allegati import (
 from lys_workflow_hub.workflows.risarcimento_vandalismo.invio_pec import (
     ParametriInvio,
     invia,
+    invia_email_ordinaria,
 )
 from lys_workflow_hub.workflows.risarcimento_vandalismo.data import (
     CARROZZERIA_NOME as VAND_CARROZZERIA_NOME,
@@ -495,30 +496,38 @@ def _build_parametri_invio(
             altri=[a for a in allegati_selezionati if a.categoria == "altro"],
         ),
     )
-    sender_email = settings.pec_smtp_user or settings.carrozzeria_pec
-    sender_display = (
-        settings.carrozzeria_pec_alias or VAND_CARROZZERIA_NOME
-    )
+    # Email-only company: usa SMTP normale invece di account PEC.
+    is_email_only = bool(compagnia and compagnia.email and not compagnia.pec)
+    if is_email_only:
+        sender_email = settings.smtp_from or settings.smtp_user
+        smtp_h = settings.smtp_host
+        smtp_p = int(settings.smtp_port)
+        smtp_u = settings.smtp_user
+        smtp_pw = settings.smtp_password
+        recipient = compagnia.email  # type: ignore[union-attr]
+    else:
+        sender_email = settings.pec_smtp_user or settings.carrozzeria_pec
+        smtp_h = settings.pec_smtp_host
+        smtp_p = int(settings.pec_smtp_port)
+        smtp_u = settings.pec_smtp_user
+        smtp_pw = settings.pec_smtp_password
+        recipient = data.compagnia_pec
+    sender_display = settings.carrozzeria_pec_alias or VAND_CARROZZERIA_NOME
     return ParametriInvio(
         numero_pratica=numero_pratica,
         compagnia_id=(compagnia.id if compagnia else None),
         compagnia_nome=data.polizza_compagnia_nome or (compagnia.nome if compagnia else ""),
         sender_email=sender_email,
         sender_display=sender_display,
-        # NIENTE Reply-To di default: vogliamo che la compagnia risponda alla
-        # nostra stessa PEC (il `From:`), così la risposta ha valore legale e
-        # finisce nella casella che il polling M3 monitora. Mettere qui la
-        # mail ordinaria farebbe sì che "Rispondi" del client PEC compili la
-        # casella sbagliata.
         reply_to="",
-        recipient_email=data.compagnia_pec,
+        recipient_email=recipient,
         subject=bozza["subject"],
         body=bozza["body"],
         allegati=allegati_selezionati,
-        smtp_host=settings.pec_smtp_host,
-        smtp_port=int(settings.pec_smtp_port),
-        smtp_user=settings.pec_smtp_user,
-        smtp_password=settings.pec_smtp_password,
+        smtp_host=smtp_h,
+        smtp_port=smtp_p,
+        smtp_user=smtp_u,
+        smtp_password=smtp_pw,
         dry_run=bool(settings.pec_dry_run),
         archivio_pec_root=settings.app_archivio_pec,
     )
@@ -610,10 +619,28 @@ async def vandalismo_invia(
         params = dc_replace(params, body=edited_body)
     esito = invia(params, repo=pec_log)
 
+    # Dual send: se OK e la compagnia ha sia PEC che email, manda anche via SMTP normale.
+    if compagnia and compagnia.pec and compagnia.email and esito.record.esito != "KO":
+        invia_email_ordinaria(
+            pec_id=esito.record.id,
+            email_destinatario=compagnia.email,
+            subject=params.subject,
+            body=params.body,
+            allegati_paths=[a.path for a in params.allegati],
+            sender_email=settings.smtp_from or settings.smtp_user,
+            sender_display=settings.carrozzeria_pec_alias or VAND_CARROZZERIA_NOME,
+            smtp_host=settings.smtp_host,
+            smtp_port=int(settings.smtp_port),
+            smtp_user=settings.smtp_user,
+            smtp_password=settings.smtp_password,
+            dry_run=bool(settings.pec_dry_run),
+            repo=pec_log,
+        )
+
     context = _common_context()
     context["pratica"] = pratica
     context["numero"] = numero
     context["esito"] = esito
-    context["record"] = esito.record
+    context["record"] = pec_log.get(esito.record.id) or esito.record
     context["dry_run"] = esito.dry_run
     return templates.TemplateResponse(request, "vandalismo_esito.html", context)

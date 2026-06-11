@@ -7,7 +7,7 @@ vandalico, ecc.), monitora le risposte delle compagnie assicurative via PEC ed e
 ordinaria, classifica le risposte con un modello AI, produce bozze di replica e genera
 alert mirati.
 
-> Versione attuale: **0.7.10**
+> Versione attuale: **0.8.0**
 
 ## Stato del progetto
 
@@ -35,8 +35,28 @@ alert mirati.
 | **M7.8** | Lista compagnie: colonna PEC/Email con fallback a email ordinaria | ✅ completata |
 | **M7.9** | Tab "Da collegare" in /risposte con badge contatore mail non matchate | ✅ completata |
 | **M7.10** | Ignora singola / Ignora tutte nel tab "Da collegare" | ✅ completata |
+| **M8** | Dual send PEC+email, invio retroattivo, email-only SMTP normale, campo telefono compagnia | ✅ completata |
 
 ---
+
+### Cosa fa M8 oggi
+
+- **Dual send PEC + email**: quando una compagnia ha sia PEC che email nell'anagrafica,
+  l'invio della richiesta vandalismo manda contemporaneamente la PEC via account InfoCert
+  **e** una email via account SMTP normale (Tophost) alla casella email. Un unico record
+  `pec_inviate`; `esito_label` mostra "Inviata PEC + email", "Inviata PEC (email fallita)"
+  o "Inviata PEC" a seconda dell'esito.
+- **Email-only SMTP corretto**: compagnie con sola email (nessuna PEC) ora inviano
+  correttamente via account SMTP normale invece che via account PEC (InfoCert).
+- **Invio retroattivo via email**: dalla pagina `/pec-inviate/{id}`, il pulsante
+  "Invia via email" (visibile solo se compagnia ha email e email non ancora inviata)
+  permette di inviare a posteriori il corpo della PEC + allegati originali all'indirizzo
+  email della compagnia tramite account SMTP normale. Il corpo viene estratto dal file
+  `.eml` archiviato; gli allegati vengono cercati nella cartella WinCar della pratica.
+- **Campo telefono in anagrafica compagnia**: form `compagnia_form.html` e DB ora
+  includono un campo `telefono` facoltativo per l'ufficio sinistri.
+- **Badge email nel dettaglio PEC**: la pagina `/pec-inviate/{id}` mostra destinatario
+  email + badge esito (Inviata / Errore / Dry-run) se l'email è stata spedita.
 
 ### Cosa fa M7.10 oggi
 

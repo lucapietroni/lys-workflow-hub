@@ -248,3 +248,65 @@ def invia(
         record=record,
         error=result.error or "",
     )
+
+
+# --------------------------------------------------------------------------- #
+#  Invio email ordinaria (SMTP normale, non PEC)
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class EsitoEmailOrdinaria:
+    ok: bool
+    error: str = ""
+
+
+def invia_email_ordinaria(
+    *,
+    pec_id: int,
+    email_destinatario: str,
+    subject: str,
+    body: str,
+    allegati_paths: list[Path],
+    sender_email: str,
+    sender_display: str,
+    smtp_host: str,
+    smtp_port: int,
+    smtp_user: str,
+    smtp_password: str,
+    dry_run: bool,
+    repo: PecLogRepository,
+) -> EsitoEmailOrdinaria:
+    """Invia il corpo della PEC via email ordinaria e aggiorna il record DB."""
+    try:
+        built: BuiltMessage = build_message(
+            sender_email=sender_email,
+            sender_display=sender_display,
+            recipient_email=email_destinatario,
+            subject=subject,
+            body_text=body,
+            attachments=allegati_paths,
+            reply_to="",
+        )
+    except (ValueError, FileNotFoundError) as exc:
+        logger.error("invia_email_ordinaria: build_message fallita: %s", exc)
+        repo.aggiorna_email_esito(pec_id, email_destinatario, ESITO_KO)
+        return EsitoEmailOrdinaria(ok=False, error=str(exc))
+
+    result: SendResult = send_message(
+        built,
+        smtp_host=smtp_host,
+        smtp_port=smtp_port,
+        smtp_user=smtp_user,
+        smtp_password=smtp_password,
+        sender_email=sender_email,
+        recipient_email=email_destinatario,
+        dry_run=dry_run,
+    )
+    esito = ESITO_DRY_RUN if result.dry_run else (ESITO_OK if result.ok else ESITO_KO)
+    repo.aggiorna_email_esito(pec_id, email_destinatario, esito)
+    logger.info(
+        "invia_email_ordinaria: pec_id=%s → %s esito=%s",
+        pec_id, email_destinatario, esito,
+    )
+    return EsitoEmailOrdinaria(ok=result.ok or result.dry_run, error=result.error or "")

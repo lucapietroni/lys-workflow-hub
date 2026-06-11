@@ -1,6 +1,6 @@
 # LYS Workflow Hub — Contesto di sviluppo
 
-> Aggiornato automaticamente ad ogni commit. Versione corrente: **0.7.10**
+> Aggiornato automaticamente ad ogni commit. Versione corrente: **0.8.0**
 
 ---
 
@@ -159,10 +159,50 @@ versione editata dall'operatore si usa `dataclasses.replace(params, body=edited_
 | 0.7.8 | M7.8 | Lista compagnie: colonna PEC/Email con fallback a email ordinaria |
 | 0.7.9 | M7.9 | Tab "Da collegare" in /risposte con badge contatore mail non matchate |
 | 0.7.10 | M7.10 | Ignora singola / Ignora tutte nel tab "Da collegare" |
+| 0.8.0 | M8 | Dual send PEC+email, email-only SMTP corretto, invio retroattivo, telefono compagnia |
 
 ---
 
-## Lavoro svolto in questa sessione (v0.7.6–0.7.10)
+## Lavoro svolto in questa sessione (v0.8.0)
+
+### Dual send PEC + email ordinaria (M8)
+
+- **`compagnie_repository.py`**: aggiunto campo `telefono: str = ""` alla dataclass
+  `Compagnia`, alla tabella SQLite (+ migration `ALTER TABLE`), a `_row_to_compagnia`,
+  `create()`, `update()`.
+- **`compagnia_form.html`**: campo "Telefono" facoltativo nella sezione "Identificazione".
+- **`routes_compagnie.py`**: `telefono` aggiunto a `create()`, `update()`, valori form.
+- **`pec_log_repository.py`**: due nuove colonne in `pec_inviate`:
+  `email_destinatario TEXT DEFAULT ''` e `email_esito TEXT DEFAULT ''` (+ migration).
+  `PecInviata` ha i due campi. `esito_label` aggiornato: "Inviata PEC + email" /
+  "Inviata PEC (email fallita)" / "Inviata PEC". Nuovo metodo `aggiorna_email_esito()`.
+- **`invio_pec.py`**: aggiunta funzione `invia_email_ordinaria()` che costruisce il MIME,
+  invia via SMTP normale e aggiorna `email_destinatario`/`email_esito` nel record DB.
+  Nuovo dataclass `EsitoEmailOrdinaria`.
+- **`routes_vandalismo.py`**: `_build_parametri_invio` ora usa SMTP normale per compagnie
+  email-only (`not compagnia.pec`). `vandalismo_invia` aggiunge dual send se compagnia
+  ha sia PEC che email: chiama `invia_email_ordinaria()` dopo `invia()` e ricarica il
+  record aggiornato dal DB.
+- **`routes_pec_log.py`**: route GET `/pec-inviate/{id}` ora carica anche la compagnia
+  e la passa al template. Nuova route POST `/pec-inviate/{id}/invia-email`: estrae body
+  dal `.eml` con Python `email` stdlib, cerca allegati in WinCar per nome, invia via SMTP
+  normale, redirect a `?email_inviata=1`.
+- **`pec_inviata_detail.html`**: pulsante "Invia via email" (visibile solo se compagnia
+  ha email e email non ancora inviata). Banner di conferma `?email_inviata=1`. Riga
+  "Email ordinaria" con badge Inviata/Errore/Dry-run nella card intestazione.
+
+### Regole aggiunte
+
+| Regola | Dove | Dettaglio |
+|--------|------|-----------|
+| Email-only → SMTP normale | `routes_vandalismo.py` | Se `not compagnia.pec`: usa `smtp_*` (Tophost) |
+| Dual send → dopo PEC OK | `routes_vandalismo.py` | Se `compagnia.pec and compagnia.email and esito != KO` |
+| Body eml → `email` stdlib | `routes_pec_log.py` | `_estrai_body_da_eml()`: text/plain senza filename |
+| Allegati retroattivi → WinCar | `routes_pec_log.py` | `_trova_allegati_pratica()`: rglob per nome |
+
+---
+
+## Lavoro svolto in sessioni precedenti (v0.7.6–0.7.10)
 
 ### Collegamento manuale risposta → PEC inviata (v0.7.6)
 - **Problema**: quando il matcher non trova corrispondenza automatica (nessun
@@ -335,7 +375,7 @@ versione editata dall'operatore si usa `dataclasses.replace(params, body=edited_
 
 ## Pending / TODO
 
-- Aggiornamento produzione (`C:\LYSApp\lys-workflow-hub`) a v0.7.10 — da eseguire
+- Aggiornamento produzione (`C:\LYSApp\lys-workflow-hub`) a v0.8.0 — da eseguire
   con `scripts/update_lys.bat` (preserva `lys_hub.db`).
 - Prossimo: rilascio 1.0.
 - Feature candidate discusse ma non implementate: timeline pratica, storico
