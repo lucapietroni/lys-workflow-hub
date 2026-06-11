@@ -7,7 +7,7 @@ vandalico, ecc.), monitora le risposte delle compagnie assicurative via PEC ed e
 ordinaria, classifica le risposte con un modello AI, produce bozze di replica e genera
 alert mirati.
 
-> Versione attuale: **0.7.9**
+> Versione attuale: **0.7.10**
 
 ## Stato del progetto
 
@@ -34,8 +34,17 @@ alert mirati.
 | **M7.7** | Scollegamento PEC da risposta + fix crash cerca_pratica vuota | ✅ completata |
 | **M7.8** | Lista compagnie: colonna PEC/Email con fallback a email ordinaria | ✅ completata |
 | **M7.9** | Tab "Da collegare" in /risposte con badge contatore mail non matchate | ✅ completata |
+| **M7.10** | Ignora singola / Ignora tutte nel tab "Da collegare" | ✅ completata |
 
 ---
+
+### Cosa fa M7.10 oggi
+
+- **Ignora singola**: pulsante "Ignora" per ogni riga nel tab "Da collegare".
+  Soft-delete (`ignorata=1`) della mail singola con confirm; redirect al tab.
+- **Ignora tutte**: pulsante "Ignora tutte (N)" in cima al tab, bulk soft-delete
+  di tutte le mail non matchate con confirm. Badge → 0. Nuovi arrivi futuri
+  ricompaiono normalmente.
 
 ### Cosa fa M7.9 oggi
 

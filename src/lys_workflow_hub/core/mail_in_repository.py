@@ -593,6 +593,33 @@ class MailRepository:
             )
             return cur.rowcount > 0
 
+    def ignora_non_matchate(self) -> int:
+        """Soft-delete bulk di tutte le mail non matchate (escluse ricevute sistema).
+
+        Ritorna il numero di mail ignorate.
+        """
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT mi.id FROM mail_in mi "
+                "JOIN mail_classificate mc ON mc.mail_in_id = mi.id "
+                "WHERE mc.pec_inviata_id IS NULL "
+                "AND mc.ai_model != '(skip)' "
+                "AND mi.ignorata = 0"
+            ).fetchall()
+            ids = [int(r["id"]) for r in rows]
+            if not ids:
+                return 0
+            placeholders = ",".join("?" * len(ids))
+            conn.execute(
+                f"DELETE FROM mail_classificate WHERE mail_in_id IN ({placeholders})",
+                ids,
+            )
+            conn.execute(
+                f"UPDATE mail_in SET ignorata = 1 WHERE id IN ({placeholders})",
+                ids,
+            )
+            return len(ids)
+
     def delete_mail(self, mail_id: int) -> bool:
         """Soft-delete: imposta ignorata=1 su mail_in e cancella mail_classificate.
 

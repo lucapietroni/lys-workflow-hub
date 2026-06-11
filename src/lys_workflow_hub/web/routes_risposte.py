@@ -7,6 +7,8 @@ Route esposte:
     POST /risposte/{mail_id}/riclassifica   Re-estrae body+PDF e riclassifica con AI
     POST /risposte/{mail_id}/collega        Collega manualmente a una PEC inviata
     POST /risposte/{mail_id}/scollega       Rimuove collegamento PEC (torna a non matchata)
+    POST /risposte/{mail_id}/ignora         Ignora mail singola dal tab "Da collegare"
+    POST /risposte/ignora-non-matchate      Ignora tutte le mail non matchate (bulk)
     POST /risposte/{mail_id}/elimina        Elimina mail_in + classificazione dal DB
 """
 from __future__ import annotations
@@ -313,6 +315,35 @@ def risposta_collega(
     return RedirectResponse(
         url=f"/risposte/{mail_id}?collegata=1", status_code=303
     )
+
+
+# --------------------------------------------------------------------------- #
+#  Ignora (dal tab "Da collegare")
+# --------------------------------------------------------------------------- #
+
+
+@router.post("/risposte/ignora-non-matchate")
+def risposte_ignora_tutte(
+    mail_repo: MailRepository = Depends(get_mail_repo),
+) -> RedirectResponse:
+    """Soft-delete bulk di tutte le mail non matchate."""
+    n = mail_repo.ignora_non_matchate()
+    logger.info("Ignorate %d mail non matchate (bulk).", n)
+    return RedirectResponse(url="/risposte?tab=non_matchate", status_code=303)
+
+
+@router.post("/risposte/{mail_id}/ignora")
+def risposta_ignora(
+    mail_id: int,
+    mail_repo: MailRepository = Depends(get_mail_repo),
+) -> RedirectResponse:
+    """Soft-delete singola dal tab 'Da collegare'. Redirect al tab non_matchate."""
+    mail = mail_repo.get_mail(mail_id)
+    if mail is None:
+        raise HTTPException(404, f"Mail id={mail_id} non trovata.")
+    mail_repo.delete_mail(mail_id)
+    logger.info("Mail %s ignorata dal tab non matchate.", mail_id)
+    return RedirectResponse(url="/risposte?tab=non_matchate", status_code=303)
 
 
 # --------------------------------------------------------------------------- #

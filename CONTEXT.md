@@ -1,6 +1,6 @@
 # LYS Workflow Hub — Contesto di sviluppo
 
-> Aggiornato automaticamente ad ogni commit. Versione corrente: **0.7.9**
+> Aggiornato automaticamente ad ogni commit. Versione corrente: **0.7.10**
 
 ---
 
@@ -158,10 +158,11 @@ versione editata dall'operatore si usa `dataclasses.replace(params, body=edited_
 | 0.7.7 | M7.7 | Scollegamento PEC da risposta + fix crash cerca_pratica vuota |
 | 0.7.8 | M7.8 | Lista compagnie: colonna PEC/Email con fallback a email ordinaria |
 | 0.7.9 | M7.9 | Tab "Da collegare" in /risposte con badge contatore mail non matchate |
+| 0.7.10 | M7.10 | Ignora singola / Ignora tutte nel tab "Da collegare" |
 
 ---
 
-## Lavoro svolto in questa sessione (v0.7.6–0.7.9)
+## Lavoro svolto in questa sessione (v0.7.6–0.7.10)
 
 ### Collegamento manuale risposta → PEC inviata (v0.7.6)
 - **Problema**: quando il matcher non trova corrispondenza automatica (nessun
@@ -179,6 +180,14 @@ versione editata dall'operatore si usa `dataclasses.replace(params, body=edited_
   `pec_inviata IS NULL`. Step 1: input numero pratica + "Cerca PEC →". Step 2: dropdown
   con PEC trovate (id, data, destinatario, esito) + bottone "Collega".
   Banner di conferma `?collegata=1` dopo il salvataggio.
+
+### Ignora singola / Ignora tutte nel tab "Da collegare" (v0.7.10)
+- **`mail_in_repository.py`**: `ignora_non_matchate()` — bulk soft-delete su tutti
+  i mail_in con `pec_inviata_id IS NULL AND ai_model != '(skip)'`.
+- **`routes_risposte.py`**: POST `/risposte/ignora-non-matchate` (bulk) +
+  POST `/risposte/{id}/ignora` (singola, redirect a `tab=non_matchate`).
+- **`risposte_list.html`**: pulsante "Ignora tutte (N)" con confirm in cima al tab;
+  pulsante "Ignora" per riga con confirm.
 
 ### Tab "Da collegare" in /risposte (v0.7.9)
 - **`mail_in_repository.py`**: `list_con_classificazione` aggiunto param
@@ -326,9 +335,9 @@ versione editata dall'operatore si usa `dataclasses.replace(params, body=edited_
 
 ## Pending / TODO
 
-- Aggiornamento produzione (`C:\LYSApp\lys-workflow-hub`) a v0.7.9 — da eseguire
+- Aggiornamento produzione (`C:\LYSApp\lys-workflow-hub`) a v0.7.10 — da eseguire
   con `scripts/update_lys.bat` (preserva `lys_hub.db`).
-- Prossimo: rilascio 1.0 dopo validazione in produzione.
+- Prossimo: rilascio 1.0.
 - Feature candidate discusse ma non implementate: timeline pratica, storico
   comunicazioni unificato, filtri cruscotto, notifica push su risposta ricevuta,
   matching ricevute PEC InfoCert, export CSV/Excel, backup DB automatico notturno.

@@ -60,10 +60,20 @@
     </span>
   </form>
   {% else %}
-  <p class="meta" style="margin:0 0 16px;">
-    Mail ricevute che il sistema non ha saputo collegare a nessuna pratica.
-    Aprile il dettaglio per collegarle manualmente e fermare l'escalation SLA.
-  </p>
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:8px;">
+    <p class="meta" style="margin:0;">
+      Mail ricevute che il sistema non ha saputo collegare a nessuna pratica.
+      Aprile il dettaglio per collegarle manualmente, oppure ignorale se non pertinenti.
+    </p>
+    {% if records %}
+    <form method="post" action="/risposte/ignora-non-matchate"
+          onsubmit="return confirm('Ignorare tutte le {{ totale }} mail non collegate? Non verranno più mostrate.')">
+      <button type="submit" class="btn btn-danger-outline" style="white-space:nowrap;">
+        Ignora tutte ({{ totale }})
+      </button>
+    </form>
+    {% endif %}
+  </div>
   {% endif %}
 
   {% if not records %}
@@ -127,6 +137,13 @@
             <a class="btn btn-sm" href="/risposte/{{ r.mail.id }}">
               {% if tab == 'non_matchate' %}Collega{% else %}Dettaglio{% endif %}
             </a>
+            {% if tab == 'non_matchate' %}
+            <form method="post" action="/risposte/{{ r.mail.id }}/ignora"
+                  style="display:inline;"
+                  onsubmit="return confirm('Ignorare questa mail? Non verrà più mostrata.')">
+              <button type="submit" class="btn btn-sm btn-danger-outline">Ignora</button>
+            </form>
+            {% endif %}
           </td>
         </tr>
         {% endfor %}
