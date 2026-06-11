@@ -1,6 +1,6 @@
 # LYS Workflow Hub — Contesto di sviluppo
 
-> Aggiornato automaticamente ad ogni commit. Versione corrente: **0.8.4**
+> Aggiornato automaticamente ad ogni commit. Versione corrente: **1.0.0**
 
 ---
 
@@ -171,6 +171,36 @@ versione editata dall'operatore si usa `dataclasses.replace(params, body=edited_
 | 0.8.2 | M8.2 | Fix tab "Da collegare": Ignora rimuove badge senza nascondere mail; MailIn.ignorata |
 | 0.8.3 | M8.3 | IMAP APPEND posta inviata anche per PEC InfoCert (ParametriInvio + imap_*) |
 | 0.8.4 | M8.4 | Fix mail ignorata visibile nel tab: delete_mail non cancella mail_classificate |
+| **1.0.0** | **v1.0** | **Redesign UI dark glass + logo LYS Auto in topbar** |
+
+---
+
+## Lavoro svolto in questa sessione (v1.0.0)
+
+### Redesign UI Dark Glass
+
+- **`style.css`**: riscrittura completa. Tema dark navy (`--page-bg: #0B1525`). Carte glass
+  (`background: rgba(255,255,255,0.04); backdrop-filter: blur(10px)`). Tutti i CSS var
+  `--lys-grey-*` riassegnati a colori light-on-dark (es. `--lys-grey-900: #E8EDF5`).
+  Topbar con `backdrop-filter: blur(20px)` + linea oro animata `::after`. Nuove animazioni:
+  `fade-up` su hero/card/results; `ping-dot` per alert dot in nav; hero-stats come glass strip.
+  Bottoni dark con hover oro. Input/select dark `background: rgba(255,255,255,0.06)`.
+- **`base.html`**: `brand-mark + brand-name` sostituiti con `<img class="brand-logo">` +
+  `<div class="brand-text">` (titolo + sottotitolo). Logo `logo-lys.jpg` in `static/`
+  con `mix-blend-mode: screen` per fondere il fondo nero del JPEG col topbar scuro.
+- **`risposte_list.html`**: `background: #FFF8E5` (action_required row) → `rgba(201,152,26,0.07)`.
+- **`pec_inviata_detail.html`**: alert info hard-coded blue → classe `.alert-info`.
+- **`__init__.py` + `pyproject.toml`**: versione `0.8.4` → `1.0.0`.
+
+### Design System v3 — regole chiave
+
+| Regola | Dettaglio |
+|--------|-----------|
+| Glass surface | `background: rgba(255,255,255,0.04); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.09)` |
+| Logo topbar | `mix-blend-mode: screen` su JPEG con fondo nero → fondo scompare sul nav scuro |
+| CSS vars dark | `--lys-grey-900` = testo chiaro; `--lys-grey-300` = border glass; `--lys-gold-glow` = `#F0C040` |
+| Animazioni | `fade-up` 0.4s ease; `ping-dot` per alert; no motion su elementi funzionali |
+| Inline styles | Sostituire hex chiari con `rgba(201,152,26,...)` o classi semantiche (`.alert-info`, etc.) |
 
 ---
 
@@ -431,9 +461,9 @@ versione editata dall'operatore si usa `dataclasses.replace(params, body=edited_
 
 ## Pending / TODO
 
-- Aggiornamento produzione (`C:\LYSApp\lys-workflow-hub`) a v0.8.4 — da eseguire
+- Aggiornamento produzione (`C:\LYSApp\lys-workflow-hub`) a v1.0.0 — da eseguire
   con `scripts/update_lys.bat` (preserva `lys_hub.db`).
-- Prossimo: rilascio 1.0.
+  **Nota**: copiare anche `src/lys_workflow_hub/web/static/logo-lys.jpg` (nuovo asset).
 - Feature candidate discusse ma non implementate: timeline pratica, storico
   comunicazioni unificato, filtri cruscotto, notifica push su risposta ricevuta,
   matching ricevute PEC InfoCert, export CSV/Excel, backup DB automatico notturno.

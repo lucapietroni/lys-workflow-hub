@@ -7,7 +7,7 @@ vandalico, ecc.), monitora le risposte delle compagnie assicurative via PEC ed e
 ordinaria, classifica le risposte con un modello AI, produce bozze di replica e genera
 alert mirati.
 
-> Versione attuale: **0.8.4**
+> Versione attuale: **1.0.0**
 
 ## Stato del progetto
 
@@ -40,6 +40,22 @@ alert mirati.
 | **M8.2** | Fix tab "Da collegare": Ignora rimuove badge senza nascondere le mail | ✅ completata |
 | **M8.3** | IMAP APPEND posta inviata anche per PEC InfoCert (+ email-only) | ✅ completata |
 | **M8.4** | Fix mail ignorata rimane visibile nel tab dopo soft-delete | ✅ completata |
+| **v1.0** | Redesign UI dark glass, logo LYS Auto in topbar | ✅ completata |
+
+---
+
+### Cosa fa v1.0 oggi
+
+- **Redesign UI completo — Dark Glass**: interfaccia completamente ridisegnata con tema
+  scuro navy (`#0B1525`), carte glassmorphism con backdrop-filter blur, gradiente ambientale
+  animato in background. Palette invariata (blu LYS + oro LYS), reinterpretata in chiave dark.
+- **Logo LYS Auto in topbar**: logo ufficiale Carrozzeria LYS Auto (silhouette auto oro)
+  visualizzato nella barra di navigazione con `mix-blend-mode: screen` per integrazione
+  trasparente sul fondo scuro.
+- **Microanimazioni**: fade-up entrance su hero, card, table; pulse dot rosso per
+  notifiche Risposte/Bozze in nav; KPI strip con hover effect.
+- **Nessuna modifica funzionale**: solo CSS e template strutturali, zero cambiamenti a
+  routes, DB, logica di business.
 
 ---
 

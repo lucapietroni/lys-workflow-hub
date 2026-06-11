@@ -100,7 +100,7 @@
       </thead>
       <tbody>
         {% for r in records %}
-        <tr {% if r.action_required %}style="background: #FFF8E5;"{% endif %}>
+        <tr {% if r.action_required %}style="background: rgba(201,152,26,0.07);"{% endif %}>
           <td>{{ r.mail.ricevuto_at.strftime("%d/%m/%Y %H:%M") }}</td>
           <td>
             {% if r.classificazione %}
