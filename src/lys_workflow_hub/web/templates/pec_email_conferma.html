@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Invia via email — PEC #{{ record.id }} · LYS Workflow Hub{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb">
+  <a href="/pec-inviate/{{ record.id }}">← Torna al dettaglio PEC #{{ record.id }}</a>
+</nav>
+
+<header class="pratica-header">
+  <div>
+    <span class="badge">Email ordinaria</span>
+    <h1>Anteprima invio via email</h1>
+    <p class="meta">
+      PEC #{{ record.id }} · Pratica
+      <a href="/pratiche/{{ record.numero_pratica }}">{{ record.numero_pratica }}</a>
+      · {{ record.compagnia_nome or "—" }}
+    </p>
+  </div>
+</header>
+
+{% if dry_run %}
+  <div class="alert alert-warn">
+    Modalità <strong>dry-run</strong> attiva: l'email non verrà spedita ma il record verrà aggiornato.
+  </div>
+{% endif %}
+
+<form method="post" action="/pec-inviate/{{ record.id }}/invia-email">
+
+  <section class="card">
+    <h2>Intestazione</h2>
+    <div class="grid">
+      <div class="field">
+        <span class="field-label">Da</span>
+        <span class="field-value"><code>{{ record.mittente_pec or "—" }}</code></span>
+      </div>
+      <div class="field">
+        <span class="field-label">A (email ordinaria)</span>
+        <span class="field-value"><code>{{ compagnia.email }}</code></span>
+      </div>
+    </div>
+    <h3 class="card-subhead">Oggetto</h3>
+    <p style="margin:0; color:var(--lys-grey-900);">{{ record.oggetto }}</p>
+  </section>
+
+  <section class="card">
+    <h2>Corpo del messaggio</h2>
+    <p class="meta" style="margin-bottom:8px;">
+      Estratto dal file <code>.eml</code> archiviato. Modificabile prima dell'invio.
+    </p>
+    <textarea name="body" rows="20"
+      style="width:100%; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.88rem;
+             border:1px solid var(--lys-grey-200); border-radius:6px; padding:12px;
+             color:var(--lys-grey-900); resize:vertical; box-sizing:border-box;">{{ body }}</textarea>
+  </section>
+
+  <section class="card">
+    <h2>Allegati</h2>
+    {% if allegati_info %}
+      <p class="meta" style="margin-bottom:12px;">
+        Deseleziona allegati che non vuoi includere. I file non trovati nella cartella WinCar non possono essere allegati.
+      </p>
+      <ul class="allegati-list" style="list-style:none; padding:0; margin:0;">
+        {% for a in allegati_info %}
+        <li class="allegato-row" style="display:flex; align-items:center; gap:10px; padding:6px 0; border-bottom:1px solid var(--lys-grey-100);">
+          {% if a.trovato %}
+            <input type="checkbox" name="allegati_selezionati" value="{{ a.nome }}"
+                   id="all_{{ loop.index }}" checked />
+            <label for="all_{{ loop.index }}" style="cursor:pointer;">
+              <span class="allegato-name">{{ a.nome }}</span>
+            </label>
+          {% else %}
+            <input type="checkbox" disabled />
+            <span class="allegato-name" style="color:var(--lys-grey-400);">{{ a.nome }}</span>
+            <span class="meta" style="color:#E53E3E; font-size:0.8rem;">non trovato in WinCar</span>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="meta">Nessun allegato originale registrato per questa PEC.</p>
+    {% endif %}
+  </section>
+
+  <div class="form-actions">
+    <a href="/pec-inviate/{{ record.id }}" class="btn">Annulla</a>
+    <button type="submit" class="btn btn-primary">
+      {% if dry_run %}Simula invio (dry-run){% else %}Invia via email{% endif %}
+    </button>
+  </div>
+
+</form>
+{% endblock %}

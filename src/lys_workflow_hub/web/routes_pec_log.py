@@ -4,7 +4,8 @@ Route esposte:
     GET  /pec-inviate                       Lista cronologica
     GET  /pec-inviate/{id}                  Dettaglio di un invio
     GET  /pec-inviate/{id}/scarica          Download del file .eml archiviato
-    POST /pec-inviate/{id}/invia-email      Invio retroattivo via email ordinaria
+    GET  /pec-inviate/{id}/invia-email      Anteprima email (corpo editabile + allegati)
+    POST /pec-inviate/{id}/invia-email      Esegue invio via email ordinaria
 """
 from __future__ import annotations
 
@@ -115,14 +116,13 @@ def pec_detail(
     )
 
 
-@router.post("/pec-inviate/{pec_id}/invia-email")
-def pec_invia_email(
+def _load_email_context(
     pec_id: int,
-    pec_log: PecLogRepository = Depends(get_pec_log_repo),
-    compagnie_repo: CompagnieRepository = Depends(get_compagnie_repo),
-    settings: Settings = Depends(get_settings),
-) -> RedirectResponse:
-    """Invia (o ri-invia) il corpo della PEC via email ordinaria (SMTP normale)."""
+    pec_log: PecLogRepository,
+    compagnie_repo: CompagnieRepository,
+    settings: Settings,
+):
+    """Carica record + compagnia + body + allegati_info. Usato da GET e POST."""
     record = pec_log.get(pec_id)
     if record is None:
         raise HTTPException(404, f"PEC id={pec_id} non trovata.")
@@ -132,21 +132,74 @@ def pec_invia_email(
     if not compagnia or not compagnia.email:
         raise HTTPException(400, "Compagnia senza email ordinaria configurata.")
 
-    # Estrai il corpo testuale dal file .eml archiviato.
     body = ""
     if record.path_eml:
         eml_path = Path(record.path_eml)
         if eml_path.exists():
             body = _estrai_body_da_eml(eml_path)
     if not body:
-        body = record.body_excerpt  # fallback: estratto 300 char
+        body = record.body_excerpt
 
-    # Cerca i file allegati originali nella cartella WinCar.
-    allegati_paths: list[Path] = []
+    # Lista allegati con flag trovato/non trovato.
+    allegati_info: list[dict] = []
     if record.allegati:
-        allegati_paths = _trova_allegati_pratica(
-            record.numero_pratica, record.allegati, settings.wincar_archivio
-        )
+        cartella = settings.wincar_archivio / "Pratiche" / str(record.numero_pratica)
+        for nome in record.allegati:
+            trovato = cartella.exists() and bool(list(cartella.rglob(nome)))
+            allegati_info.append({"nome": nome, "trovato": trovato})
+
+    return record, compagnia, body, allegati_info
+
+
+@router.get("/pec-inviate/{pec_id}/invia-email", response_class=HTMLResponse)
+def pec_invia_email_form(
+    pec_id: int,
+    request: Request,
+    pec_log: PecLogRepository = Depends(get_pec_log_repo),
+    compagnie_repo: CompagnieRepository = Depends(get_compagnie_repo),
+    settings: Settings = Depends(get_settings),
+) -> HTMLResponse:
+    """Pagina di anteprima: corpo editabile + selezione allegati."""
+    record, compagnia, body, allegati_info = _load_email_context(
+        pec_id, pec_log, compagnie_repo, settings
+    )
+    return templates.TemplateResponse(
+        request,
+        "pec_email_conferma.html",
+        {
+            "version": __version__,
+            "record": record,
+            "compagnia": compagnia,
+            "body": body,
+            "allegati_info": allegati_info,
+            "dry_run": bool(settings.pec_dry_run),
+        },
+    )
+
+
+@router.post("/pec-inviate/{pec_id}/invia-email")
+async def pec_invia_email(
+    pec_id: int,
+    request: Request,
+    pec_log: PecLogRepository = Depends(get_pec_log_repo),
+    compagnie_repo: CompagnieRepository = Depends(get_compagnie_repo),
+    settings: Settings = Depends(get_settings),
+) -> RedirectResponse:
+    """Esegue l'invio via SMTP normale con il corpo e gli allegati scelti dall'operatore."""
+    record, compagnia, _body_default, _allegati_info = _load_email_context(
+        pec_id, pec_log, compagnie_repo, settings
+    )
+
+    form = await request.form()
+    body = (form.get("body") or "").strip() or _body_default
+    try:
+        allegati_selezionati = form.getlist("allegati_selezionati")
+    except AttributeError:
+        allegati_selezionati = []
+
+    allegati_paths = _trova_allegati_pratica(
+        record.numero_pratica, allegati_selezionati, settings.wincar_archivio
+    )
 
     sender_email = settings.smtp_from or settings.smtp_user
     sender_display = settings.carrozzeria_pec_alias or VAND_CARROZZERIA_NOME

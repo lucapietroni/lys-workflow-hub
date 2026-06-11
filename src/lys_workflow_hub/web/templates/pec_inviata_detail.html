@@ -20,11 +20,7 @@
       <a class="btn" href="/pec-inviate/{{ record.id }}/scarica">Scarica .eml</a>
     {% endif %}
     {% if compagnia and compagnia.email and record.esito == 'OK' and not record.email_esito %}
-      <form method="post" action="/pec-inviate/{{ record.id }}/invia-email"
-            style="display:inline;"
-            onsubmit="return confirm('Inviare via email a {{ compagnia.email }}?')">
-        <button type="submit" class="btn">Invia via email</button>
-      </form>
+      <a class="btn" href="/pec-inviate/{{ record.id }}/invia-email">Invia via email</a>
     {% endif %}
   </div>
 </header>
