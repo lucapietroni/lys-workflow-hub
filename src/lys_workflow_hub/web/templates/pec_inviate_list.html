@@ -47,12 +47,7 @@
         <tr class="{% if is_sla %}row-sla-breach{% endif %}">
           <td>{{ r.data_invio.strftime("%d/%m/%Y %H:%M") }}</td>
           <td><a href="/pratiche/{{ r.numero_pratica }}">{{ r.numero_pratica }}</a></td>
-          <td>
-            {{ r.compagnia_nome or "—" }}
-            {% if is_sla %}
-              <span class="badge-sla-tag">SLA scaduto</span>
-            {% endif %}
-          </td>
+          <td>{{ r.compagnia_nome or "—" }}</td>
           <td><code>{{ r.destinatario_pec }}</code></td>
           <td>
             {% if r.esito == "OK" %}
