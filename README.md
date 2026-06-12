@@ -7,7 +7,7 @@ vandalico, ecc.), monitora le risposte delle compagnie assicurative via PEC ed e
 ordinaria, classifica le risposte con un modello AI, produce bozze di replica e genera
 alert mirati.
 
-> Versione attuale: **1.0.0**
+> Versione attuale: **1.0.2**
 
 ## Stato del progetto
 
@@ -41,6 +41,39 @@ alert mirati.
 | **M8.3** | IMAP APPEND posta inviata anche per PEC InfoCert (+ email-only) | ✅ completata |
 | **M8.4** | Fix mail ignorata rimane visibile nel tab dopo soft-delete | ✅ completata |
 | **v1.0** | Redesign UI dark glass, logo LYS Auto in topbar | ✅ completata |
+| **v1.0.1** | Header uniformi, KPI cliccabili, SLA highlight permanente in /pec-inviate | ✅ completata |
+| **v1.0.2** | Colonna risposta PEC, stato pratica in /risposte, fix tab nav e CSS vars | ✅ completata |
+
+---
+
+### Cosa fa v1.0.2 oggi
+
+- **Colonna "Risposta" in `/pec-inviate`**: ogni riga mostra se la compagnia ha già
+  risposto (✓ Ricevuta) o se lo SLA è scaduto senza risposta. Riduce i falsi positivi
+  nell'alert SLA quando la risposta c'è ma non è stata classificata automaticamente.
+- **Colonna "Stato pratica" in `/risposte`**: nel tab "Collegate a pratica", affianco
+  al numero pratica compare il badge colorato con lo stato corrente (aperta, in gestione,
+  perito nominato, in liquidazione, chiusa). Visibile a colpo d'occhio senza aprire
+  la pratica.
+- **Fix tab nav**: il tab attivo in `/risposte` ora usa `var(--lys-gold-glow)` invece
+  di `var(--lys-blue)` (navy invisibile su sfondo scuro). Classi `.tab-nav` /
+  `.tab-nav-item` al posto degli stili inline.
+- **Fix CSS vars**: aggiunte `--lys-grey-200` e `--lys-grey-600` mancanti nel
+  dark theme CSS, usate da inline styles in alcuni template.
+
+---
+
+### Cosa fa v1.0.1 oggi
+
+- **Header uniformi**: tutte le pagine usano lo stesso pattern
+  `<header class="pratica-header">` + `<div class="hero-eyebrow">` + `<h1>`.
+  Rimossi i vecchi badge milestone (M4, ecc.) e i breadcrumb link alla home.
+- **KPI cliccabili**: i tre contatori nella hero strip (Risposte da gestire, Bozze
+  in attesa, SLA scaduti) sono ora link cliccabili che portano direttamente alla
+  sezione pertinente con filtro applicato.
+- **SLA highlight permanente**: in `/pec-inviate` le righe con SLA scaduto sono
+  sempre evidenziate (sfondo ambrato + badge "SLA scaduto"), senza bisogno di
+  navigare dalla home. Banner in cima alla pagina quando ci sono breach attivi.
 
 ---
 

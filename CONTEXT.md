@@ -1,6 +1,6 @@
 # LYS Workflow Hub — Contesto di sviluppo
 
-> Aggiornato automaticamente ad ogni commit. Versione corrente: **1.0.0**
+> Aggiornato automaticamente ad ogni commit. Versione corrente: **1.0.2**
 
 ---
 
@@ -172,10 +172,23 @@ versione editata dall'operatore si usa `dataclasses.replace(params, body=edited_
 | 0.8.3 | M8.3 | IMAP APPEND posta inviata anche per PEC InfoCert (ParametriInvio + imap_*) |
 | 0.8.4 | M8.4 | Fix mail ignorata visibile nel tab: delete_mail non cancella mail_classificate |
 | **1.0.0** | **v1.0** | **Redesign UI dark glass + logo LYS Auto in topbar** |
+| **1.0.1** | **v1.0.1** | Header uniformi, KPI cliccabili, SLA highlight in /pec-inviate |
+| **1.0.2** | **v1.0.2** | Colonna risposta PEC, stato pratica in /risposte, fix tab nav e CSS vars |
 
 ---
 
 ## Lavoro svolto in questa sessione (v1.0.0)
+
+### Fix UI post-v1.0 (v1.0.1 – v1.0.2)
+
+- **Container top padding**: `padding-top: 0 → 28px` — titoli uniformemente distanziati dal header su tutte le pagine.
+- **Header uniformi**: tutti i badge milestone (`M4`, `Audit`, `Anagrafica`, `Posta in entrata`) sostituiti con `<div class="hero-eyebrow">`. Statistiche e Impostazioni: rimosso breadcrumb `← Home`, aggiunto `pratica-header`.
+- **KPI home cliccabili**: "Risposte da gestire" → `/risposte`, "Bozze in attesa" → `/bozze`, "SLA scaduti" → `/pec-inviate`.
+- **SLA breach highlight in `/pec-inviate`**: banner arancione + bordo sinistro + badge "SLA scaduto" sempre visibili quando ci sono PEC in breach (senza query param).
+- **Colonna "Risposta" in `/pec-inviate`**: `pec_ids_con_risposta()` in `pec_log_repository` — badge verde "✓ Ricevuta" / arancione "SLA scaduto" / — per ogni riga.
+- **Colonna "Stato" in `/risposte` tab matchate**: `stati_pratiche` dict (batch load da `PraticaStatoRepository`) — badge colorato stato pratica per ogni risposta collegata.
+- **Fix tab nav `/risposte`**: inline styles con `var(--lys-blue)` (#1F3A5F, invisibile su dark) → classi `.tab-nav`/`.tab-nav-item`/`.tab-badge`, colore attivo oro.
+- **CSS vars mancanti**: aggiunti `--lys-grey-200: rgba(255,255,255,0.08)` e `--lys-grey-600: #8A9DB8` usati da alcuni template.
 
 ### Redesign UI Dark Glass
 
