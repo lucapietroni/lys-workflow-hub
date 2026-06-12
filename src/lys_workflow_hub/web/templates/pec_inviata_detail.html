@@ -89,12 +89,13 @@
 </section>
 
 <section class="card">
-  <h2>Estratto del corpo (primi 300 caratteri)</h2>
-  <pre style="white-space:pre-wrap; font-family: 'SF Mono', Menlo, Consolas, monospace; font-size:0.88rem; color:var(--lys-grey-900); margin:0;">{{ record.body_excerpt or "(corpo non registrato)" }}</pre>
+  <h2>Corpo della PEC</h2>
+  <pre style="white-space:pre-wrap; font-family: 'SF Mono', Menlo, Consolas, monospace; font-size:0.88rem; color:var(--lys-grey-900); margin:0;">{{ body_completo or record.body_excerpt or "(corpo non disponibile)" }}</pre>
+  {% if not body_completo %}
   <p class="meta" style="margin-top:12px;">
-    Per leggere il corpo completo della PEC apri il file <code>.eml</code> con un client email
-    (es. Thunderbird, Outlook) usando il pulsante "Scarica .eml" in alto.
+    File .eml non trovato sul filesystem. Per il testo completo usa il pulsante "Scarica .eml" se disponibile.
   </p>
+  {% endif %}
 </section>
 
 <section class="card">

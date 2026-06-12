@@ -114,6 +114,11 @@ def pec_detail(
     compagnia = None
     if record.compagnia_id:
         compagnia = compagnie_repo.get(record.compagnia_id)
+    body_completo = ""
+    if record.path_eml:
+        eml_path = Path(record.path_eml)
+        if eml_path.exists():
+            body_completo = _estrai_body_da_eml(eml_path)
     return templates.TemplateResponse(
         request,
         "pec_inviata_detail.html",
@@ -122,6 +127,7 @@ def pec_detail(
             "record": record,
             "compagnia": compagnia,
             "email_inviata": request.query_params.get("email_inviata") == "1",
+            "body_completo": body_completo,
         },
     )
 
