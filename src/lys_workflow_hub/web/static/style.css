@@ -321,6 +321,23 @@ code {
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
+/* KPI stat clickable */
+.hero-stat-link {
+  text-decoration: none;
+  cursor: pointer;
+}
+.hero-stat-link:hover { text-decoration: none; }
+.hero-stat-link:hover .stat-n { opacity: 0.85; }
+.hero-stat-link:hover { background: rgba(255,255,255,0.09); }
+
+.stat-hint {
+  font-size: 0.68rem;
+  color: var(--lys-gold);
+  letter-spacing: 0.04em;
+  margin-top: 2px;
+  opacity: 0.85;
+}
+
 /* Pulse dot per KPI alert */
 .hero-stat .stat-dot {
   position: absolute;

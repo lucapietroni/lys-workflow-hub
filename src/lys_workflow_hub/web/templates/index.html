@@ -23,18 +23,22 @@
 
   {% if kpi_bozze is defined or kpi_risposte_ar is defined %}
   <div class="hero-stats">
-    <div class="hero-stat">
+    <a class="hero-stat hero-stat-link" href="/risposte?tab=matchate&only_action=1">
       <span class="stat-n{% if kpi_risposte_ar %} stat-alert{% endif %}">{{ kpi_risposte_ar }}</span>
       <span class="stat-l">Risposte da gestire</span>
-    </div>
-    <div class="hero-stat">
+    </a>
+    <a class="hero-stat hero-stat-link" href="/bozze">
       <span class="stat-n{% if kpi_bozze %} stat-alert{% endif %}">{{ kpi_bozze }}</span>
       <span class="stat-l">Bozze in attesa</span>
-    </div>
-    <div class="hero-stat">
+    </a>
+    <a class="hero-stat hero-stat-link" href="/pec-inviate"
+       title="PEC inviate da più di 15 giorni senza risposta ricevuta">
       <span class="stat-n{% if kpi_sla_breach %} stat-alert{% endif %}">{{ kpi_sla_breach }}</span>
       <span class="stat-l">SLA scaduti</span>
-    </div>
+      {% if kpi_sla_breach %}
+      <span class="stat-hint">Vedi PEC inviate →</span>
+      {% endif %}
+    </a>
   </div>
   {% endif %}
 </section>
