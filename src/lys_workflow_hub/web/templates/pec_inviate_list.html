@@ -13,7 +13,17 @@
   </div>
 </header>
 
-<section class="card">
+{% if show_sla and sla_ids %}
+<div class="alert alert-sla" style="display:flex; align-items:center; gap:10px; margin-bottom:4px;">
+  <span style="font-size:1.1rem;">⚠️</span>
+  <span>
+    <strong>{{ sla_ids|length }} PEC con SLA scaduto</strong> — nessuna risposta ricevuta da oltre 15 giorni.
+    Le righe sono evidenziate in arancione.
+  </span>
+</div>
+{% endif %}
+
+<section class="card" style="{% if show_sla and sla_ids %}padding-top:14px;{% endif %}">
   {% if not records %}
     <p class="meta" style="margin-top:0">
       Nessuna PEC ancora inviata. Quando invii una richiesta di risarcimento
@@ -33,10 +43,16 @@
       </thead>
       <tbody>
         {% for r in records %}
-        <tr>
+        {% set is_sla = r.id in sla_ids %}
+        <tr class="{% if is_sla %}row-sla-breach{% endif %}">
           <td>{{ r.data_invio.strftime("%d/%m/%Y %H:%M") }}</td>
           <td><a href="/pratiche/{{ r.numero_pratica }}">{{ r.numero_pratica }}</a></td>
-          <td>{{ r.compagnia_nome or "—" }}</td>
+          <td>
+            {{ r.compagnia_nome or "—" }}
+            {% if is_sla %}
+              <span class="badge-sla-tag">SLA scaduto</span>
+            {% endif %}
+          </td>
           <td><code>{{ r.destinatario_pec }}</code></td>
           <td>
             {% if r.esito == "OK" %}
@@ -48,11 +64,11 @@
             {% elif r.esito == "DRY_RUN" %}
               <span style="color: var(--lys-warn);">{{ r.esito_label }}</span>
             {% else %}
-              <strong style="color: #C24545;">{{ r.esito_label }}</strong>
+              <strong style="color: var(--lys-danger);">{{ r.esito_label }}</strong>
             {% endif %}
           </td>
           <td class="col-actions">
-            <a class="btn btn-sm" href="/pec-inviate/{{ r.id }}">Dettaglio</a>
+            <a class="btn btn-sm {% if is_sla %}btn-sla{% endif %}" href="/pec-inviate/{{ r.id }}">Dettaglio</a>
           </td>
         </tr>
         {% endfor %}

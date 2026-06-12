@@ -21,6 +21,7 @@ from lys_workflow_hub import __version__
 from lys_workflow_hub.config import Settings, get_settings
 from lys_workflow_hub.core.compagnie_repository import CompagnieRepository
 from lys_workflow_hub.core.pec_log_repository import PecLogRepository
+from lys_workflow_hub.core.pratica_stato_repository import PraticaStatoRepository
 from lys_workflow_hub.workflows.risarcimento_vandalismo.invio_pec import (
     invia_email_ordinaria,
 )
@@ -47,6 +48,12 @@ def get_compagnie_repo(
     settings: Settings = Depends(get_settings),
 ) -> CompagnieRepository:
     return CompagnieRepository(db_path=settings.app_db_path)
+
+
+def get_stato_repo(
+    settings: Settings = Depends(get_settings),
+) -> PraticaStatoRepository:
+    return PraticaStatoRepository(db_path=settings.app_db_path)
 
 
 def _estrai_body_da_eml(eml_path: Path) -> str:
@@ -81,13 +88,18 @@ def _trova_allegati_pratica(
 @router.get("/pec-inviate", response_class=HTMLResponse)
 def pec_list(
     request: Request,
+    sla: int = 0,
     pec_log: PecLogRepository = Depends(get_pec_log_repo),
+    stato_repo: PraticaStatoRepository = Depends(get_stato_repo),
 ) -> HTMLResponse:
     records = pec_log.list_all(limit=200)
+    sla_ids: set[int] = set()
+    if sla:
+        sla_ids = {a.pec_inviata_id for a in stato_repo.lista_sla_alerts()}
     return templates.TemplateResponse(
         request,
         "pec_inviate_list.html",
-        {"version": __version__, "records": records},
+        {"version": __version__, "records": records, "sla_ids": sla_ids, "show_sla": bool(sla)},
     )
 
 
