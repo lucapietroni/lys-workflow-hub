@@ -37,6 +37,7 @@
           <th>Compagnia</th>
           <th>Destinatario</th>
           <th>Esito</th>
+          <th>Risposta</th>
           <th class="col-actions"></th>
         </tr>
       </thead>
@@ -66,8 +67,17 @@
               <strong style="color: var(--lys-danger);">{{ r.esito_label }}</strong>
             {% endif %}
           </td>
+          <td>
+            {% if r.id in response_ids %}
+              <span class="badge-risposta-ok">✓ Ricevuta</span>
+            {% elif is_sla %}
+              <span class="badge-risposta-sla">SLA scaduto</span>
+            {% else %}
+              <span class="meta">—</span>
+            {% endif %}
+          </td>
           <td class="col-actions">
-            <a class="btn btn-sm {% if is_sla %}btn-sla{% endif %}" href="/pec-inviate/{{ r.id }}">Dettaglio</a>
+            <a class="btn btn-sm {% if is_sla and r.id not in response_ids %}btn-sla{% endif %}" href="/pec-inviate/{{ r.id }}">Dettaglio</a>
           </td>
         </tr>
         {% endfor %}

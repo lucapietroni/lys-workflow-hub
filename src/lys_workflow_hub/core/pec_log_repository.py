@@ -279,3 +279,15 @@ class PecLogRepository:
                 "UPDATE pec_inviate SET email_destinatario = ?, email_esito = ? WHERE id = ?",
                 (email_destinatario, email_esito, int(pec_id)),
             )
+
+    def pec_ids_con_risposta(self) -> set[int]:
+        """IDs delle PEC che hanno ricevuto almeno una risposta classificata."""
+        try:
+            with self._connect() as conn:
+                rows = conn.execute(
+                    "SELECT DISTINCT pec_inviata_id FROM mail_classificate "
+                    "WHERE pec_inviata_id IS NOT NULL"
+                ).fetchall()
+            return {r[0] for r in rows}
+        except Exception:
+            return set()

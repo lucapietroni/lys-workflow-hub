@@ -29,6 +29,7 @@ from lys_workflow_hub.core.mail_in_repository import (
     MailRepository,
 )
 from lys_workflow_hub.core.pec_log_repository import PecLogRepository
+from lys_workflow_hub.core.pratica_stato_repository import PraticaStatoRepository
 from lys_workflow_hub.integrations.ai_classifier import classify
 from lys_workflow_hub.integrations.imap_fetcher import reextract_body
 from lys_workflow_hub.workflows.risposte.matcher import match_mail
@@ -54,6 +55,12 @@ def get_pec_log_repo(
     return PecLogRepository(db_path=settings.app_db_path)
 
 
+def get_stato_repo(
+    settings: Settings = Depends(get_settings),
+) -> PraticaStatoRepository:
+    return PraticaStatoRepository(db_path=settings.app_db_path)
+
+
 # --------------------------------------------------------------------------- #
 #  Lista
 # --------------------------------------------------------------------------- #
@@ -66,6 +73,7 @@ def risposte_list(
     categoria: str | None = None,
     only_action: bool = False,
     mail_repo: MailRepository = Depends(get_mail_repo),
+    stato_repo: PraticaStatoRepository = Depends(get_stato_repo),
 ) -> HTMLResponse:
     non_matchate = tab == "non_matchate"
     records = mail_repo.list_con_classificazione(
@@ -78,6 +86,14 @@ def risposte_list(
     if only_action and not non_matchate:
         records = [r for r in records if r.action_required]
     count_nm = mail_repo.count_non_matchate()
+    # Batch-load stato corrente per ogni pratica unica nel tab matchate
+    stati_pratiche: dict[int, object] = {}
+    if not non_matchate:
+        numeri = {r.pratica_numero for r in records if r.pratica_numero}
+        for n in numeri:
+            s = stato_repo.get_stato(n)
+            if s:
+                stati_pratiche[n] = s
     return templates.TemplateResponse(
         request,
         "risposte_list.html",
@@ -91,6 +107,7 @@ def risposte_list(
             "categorie_labels": CATEGORIA_LABELS,
             "totale": len(records),
             "count_non_matchate": count_nm,
+            "stati_pratiche": stati_pratiche,
         },
     )
 

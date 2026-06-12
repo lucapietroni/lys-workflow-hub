@@ -38,8 +38,10 @@
   --glass-border: rgba(255,255,255,0.09);
   --glass-border-focus: rgba(201,152,26,0.45);
 
-  /* Legacy alias (usato in qualche template) */
-  --border: rgba(255,255,255,0.10);
+  /* Legacy aliases (usato in template con inline styles) */
+  --border:        rgba(255,255,255,0.10);
+  --lys-grey-200:  rgba(255,255,255,0.08);
+  --lys-grey-600:  #8A9DB8;
 
   /* Elevazione */
   --shadow:    0 1px 3px rgba(0,0,0,0.25), 0 4px 12px rgba(0,0,0,0.20);
@@ -1048,6 +1050,54 @@ code {
   align-items: center;
 }
 .pdf-preview-btn:hover { opacity: 1; transform: scale(1.15); }
+
+/* ====== Tab nav (risposte, generico) ====== */
+.tab-nav {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--glass-border);
+  margin-bottom: 0;
+}
+.tab-nav-item {
+  padding: 11px 20px;
+  font-weight: 600;
+  font-size: 0.88rem;
+  text-decoration: none;
+  color: var(--lys-grey-600);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  transition: color 0.15s, border-color 0.15s;
+}
+.tab-nav-item:hover { color: var(--lys-grey-900); text-decoration: none; }
+.tab-nav-item.active { color: var(--lys-gold-glow); border-bottom-color: var(--lys-gold); }
+
+.tab-badge {
+  background: #E53E3E; color: #fff;
+  border-radius: 999px; padding: 1px 7px;
+  font-size: 0.72rem; font-weight: 700;
+}
+.tab-badge-active { background: var(--lys-gold); color: #000; }
+
+/* ====== Badge risposta PEC ====== */
+.badge-risposta-ok {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 0.75rem; font-weight: 700;
+  padding: 2px 9px; border-radius: 999px;
+  background: rgba(74,222,128,0.12);
+  color: var(--lys-success);
+  border: 1px solid rgba(74,222,128,0.20);
+}
+.badge-risposta-sla {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 0.72rem; font-weight: 700;
+  padding: 2px 9px; border-radius: 999px;
+  background: rgba(249,115,22,0.12);
+  color: #FB923C;
+  border: 1px solid rgba(249,115,22,0.22);
+}
 
 /* ====== SLA breach highlight ====== */
 .alert-sla {

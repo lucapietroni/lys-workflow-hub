@@ -93,10 +93,11 @@ def pec_list(
 ) -> HTMLResponse:
     records = pec_log.list_all(limit=200)
     sla_ids: set[int] = {a.pec_inviata_id for a in stato_repo.lista_sla_alerts()}
+    response_ids: set[int] = pec_log.pec_ids_con_risposta()
     return templates.TemplateResponse(
         request,
         "pec_inviate_list.html",
-        {"version": __version__, "records": records, "sla_ids": sla_ids},
+        {"version": __version__, "records": records, "sla_ids": sla_ids, "response_ids": response_ids},
     )
 
 

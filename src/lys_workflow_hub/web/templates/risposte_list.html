@@ -13,22 +13,14 @@
   </div>
 </header>
 
-<div style="display:flex; gap:0; border-bottom:2px solid var(--lys-grey-200); margin-bottom:0;">
-  <a href="/risposte?tab=matchate"
-     style="padding:10px 20px; font-weight:600; text-decoration:none;
-            border-bottom: {% if tab == 'matchate' %}3px solid var(--lys-blue); color:var(--lys-blue);{% else %}3px solid transparent; color:var(--lys-grey-600);{% endif %}
-            margin-bottom:-2px;">
+<div class="tab-nav">
+  <a href="/risposte?tab=matchate" class="tab-nav-item {% if tab == 'matchate' %}active{% endif %}">
     Collegate a pratica
   </a>
-  <a href="/risposte?tab=non_matchate"
-     style="padding:10px 20px; font-weight:600; text-decoration:none;
-            border-bottom: {% if tab == 'non_matchate' %}3px solid var(--lys-blue); color:var(--lys-blue);{% else %}3px solid transparent; color:var(--lys-grey-600);{% endif %}
-            margin-bottom:-2px; display:flex; align-items:center; gap:6px;">
+  <a href="/risposte?tab=non_matchate" class="tab-nav-item {% if tab == 'non_matchate' %}active{% endif %}">
     Da collegare
     {% if count_non_matchate > 0 %}
-      <span style="background:{% if tab == 'non_matchate' %}var(--lys-blue){% else %}#E53E3E{% endif %}; color:#fff; border-radius:10px; padding:1px 7px; font-size:0.78rem; font-weight:700;">
-        {{ count_non_matchate }}
-      </span>
+      <span class="tab-badge {% if tab == 'non_matchate' %}tab-badge-active{% endif %}">{{ count_non_matchate }}</span>
     {% endif %}
   </a>
 </div>
@@ -92,7 +84,7 @@
         <tr>
           <th>Ricevuta</th>
           <th>Categoria</th>
-          {% if tab != 'non_matchate' %}<th>Pratica</th>{% endif %}
+          {% if tab != 'non_matchate' %}<th>Pratica</th><th>Stato</th>{% endif %}
           <th>Mittente / Oggetto</th>
           <th>Sommario</th>
           <th class="col-actions"></th>
@@ -117,6 +109,14 @@
           <td>
             {% if r.pratica_numero %}
               <a href="/pratiche/{{ r.pratica_numero }}">{{ r.pratica_numero }}</a>
+            {% else %}
+              <span class="meta">—</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if r.pratica_numero and r.pratica_numero in stati_pratiche %}
+              {% set s = stati_pratiche[r.pratica_numero] %}
+              <span class="badge {{ s.badge_class }} badge-stato">{{ s.stato_label }}</span>
             {% else %}
               <span class="meta">—</span>
             {% endif %}
