@@ -13,17 +13,16 @@
   </div>
 </header>
 
-{% if show_sla and sla_ids %}
+{% if sla_ids %}
 <div class="alert alert-sla" style="display:flex; align-items:center; gap:10px; margin-bottom:4px;">
   <span style="font-size:1.1rem;">⚠️</span>
   <span>
     <strong>{{ sla_ids|length }} PEC con SLA scaduto</strong> — nessuna risposta ricevuta da oltre 15 giorni.
-    Le righe sono evidenziate in arancione.
   </span>
 </div>
 {% endif %}
 
-<section class="card" style="{% if show_sla and sla_ids %}padding-top:14px;{% endif %}">
+<section class="card" style="{% if sla_ids %}padding-top:14px;{% endif %}">
   {% if not records %}
     <p class="meta" style="margin-top:0">
       Nessuna PEC ancora inviata. Quando invii una richiesta di risarcimento
