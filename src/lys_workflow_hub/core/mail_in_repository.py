@@ -630,3 +630,21 @@ class MailRepository:
                 (int(mail_id),),
             )
             return cur.rowcount > 0
+
+    def hard_delete_mail(self, mail_id: int) -> bool:
+        """Hard DELETE da DB di mail_in + mail_classificate.
+
+        Usato da "Elimina" nel tab non_matchate. La mail potrebbe essere
+        riscaricata al prossimo polling se il suo UID IMAP non era il massimo;
+        accettabile per mail di spam/rumore senza Message-ID rilevante.
+        """
+        with self._connect() as conn:
+            conn.execute(
+                "DELETE FROM mail_classificate WHERE mail_in_id = ?",
+                (int(mail_id),),
+            )
+            cur = conn.execute(
+                "DELETE FROM mail_in WHERE id = ?",
+                (int(mail_id),),
+            )
+            return cur.rowcount > 0

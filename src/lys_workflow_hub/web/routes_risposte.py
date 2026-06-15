@@ -381,6 +381,6 @@ def risposta_elimina(
     mail = mail_repo.get_mail(mail_id)
     if mail is None:
         raise HTTPException(404, f"Mail id={mail_id} non trovata.")
-    mail_repo.delete_mail(mail_id)
-    logger.info("Mail %s eliminata dal cruscotto.", mail_id)
-    return RedirectResponse(url="/risposte", status_code=303)
+    mail_repo.hard_delete_mail(mail_id)
+    logger.info("Mail %s eliminata dal DB.", mail_id)
+    return RedirectResponse(url="/risposte?tab=non_matchate", status_code=303)
