@@ -63,6 +63,18 @@ class VerbaleData:
     note: str = ""
     data_ora: str = ""  # "DD/MM/YYYY HH:MM"
 
+    # Dichiarazione necessità auto sostitutiva (pagina 2, solo uscita)
+    # Veicolo CLIENTE (da WinCar pratica, non auto cortesia)
+    cliente_marca: str = ""
+    cliente_modello: str = ""
+    cliente_targa: str = ""
+    # Campi manuali dichiarazione
+    dich_assicurazione: str = ""   # compagnia assicurativa
+    dich_polizza: str = ""         # numero polizza
+    dich_data_sinistro: str = ""   # data sinistro
+    dich_motivazione: str = ""     # "lavoro"|"familiare"|"unico_mezzo"|"altro"
+    dich_luogo: str = "Roma"
+
     @property
     def label_tipo(self) -> str:
         return "Uscita" if self.tipo == TIPO_USCITA else "Rientro"
@@ -119,6 +131,9 @@ def from_pratica(
     else:
         danni = default_danni
 
+    # Data firma dichiarazione = solo parte data di data_ora
+    default_data_firma = datetime.now().strftime("%d/%m/%Y")
+
     return VerbaleData(
         tipo=tipo,
         numero_pratica=pratica.numero,
@@ -150,4 +165,14 @@ def from_pratica(
         danni=danni,
         note=_get("note", ""),
         data_ora=_get("data_ora", default_data_ora),
+        # Dichiarazione: veicolo cliente da WinCar
+        cliente_marca=_get("cliente_marca", pratica.veicolo.marca or ""),
+        cliente_modello=_get("cliente_modello", pratica.veicolo.modello or ""),
+        cliente_targa=_get("cliente_targa", pratica.veicolo.targa or ""),
+        # Dichiarazione: campi manuali
+        dich_assicurazione=_get("dich_assicurazione", ""),
+        dich_polizza=_get("dich_polizza", ""),
+        dich_data_sinistro=_get("dich_data_sinistro", ""),
+        dich_motivazione=_get("dich_motivazione", ""),
+        dich_luogo=_get("dich_luogo", "Roma"),
     )

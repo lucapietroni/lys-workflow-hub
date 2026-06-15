@@ -363,6 +363,101 @@ def _add_firme(doc: Document, data: VerbaleData) -> None:
     _run(p, "........................", size=9.0)
 
 
+MOTIVAZIONI = {
+    "lavoro":      "MOTIVI DI LAVORO",
+    "familiare":   "MOTIVI FAMILIARI",
+    "unico_mezzo": "UNICO MEZZO A DISPOSIZIONE DEL NUCLEO FAMILIARE",
+    "altro":       "ALTRO",
+}
+
+
+def _underline_field(para, value: str, min_width: int = 30) -> None:
+    """Aggiunge valore sottolineato (o spazi se vuoto) come campo compilato."""
+    text = value if value else "_" * min_width
+    r = para.add_run(text)
+    r.underline = True
+    r.font.size = Pt(10.5)
+
+
+def _add_dichiarazione(doc: Document, data: VerbaleData) -> None:
+    """Pagina 2 — Dichiarazione di necessità auto sostitutiva."""
+    doc.add_page_break()
+
+    # Intestazione
+    p = _para(doc, alignment=WD_ALIGN_PARAGRAPH.CENTER, space_before=20, space_after=16)
+    _run(p, "DICHIARAZIONE DI NECESSITA' AUTO SOSTITUTIVA", bold=True, size=13)
+
+    # Riferimento vettura
+    p = _para(doc, space_before=10, space_after=10)
+    _run(p, "Riferimento vettura:  ", bold=True, size=10.5)
+    rif = " ".join(filter(None, [data.cliente_marca, data.cliente_modello, data.cliente_targa]))
+    _underline_field(p, rif, 50)
+
+    # Riga sottoscritto + assicurazione
+    p = _para(doc, space_before=6, space_after=0)
+    _run(p, "Spett.le LYS AUTO S.r.l  il sottoscritto  ", size=10.5)
+    _underline_field(p, data.locatario_nome, 35)
+    _run(p, "  assicurato con", size=10.5)
+
+    p = _para(doc, space_before=0, space_after=6)
+    _underline_field(p, data.dich_assicurazione, 30)
+    _run(p, "    Polizza n°  ", size=10.5)
+    _underline_field(p, data.dich_polizza, 30)
+
+    # Proprietario del veicolo
+    p = _para(doc, space_before=10, space_after=4)
+    _run(p, "Proprietario del veicolo:", bold=True, size=10.5)
+
+    for label, value in [
+        ("Marca",    data.cliente_marca),
+        ("Modello",  data.cliente_modello),
+        ("Targa",    data.cliente_targa),
+    ]:
+        p = _para(doc, space_before=4, space_after=4)
+        _run(p, f"{label}:  ", size=10.5)
+        _underline_field(p, value, 28)
+
+    # Dichiara che
+    p = _para(doc, alignment=WD_ALIGN_PARAGRAPH.CENTER, space_before=14, space_after=10)
+    _run(p, "DICHIARA CHE", bold=True, size=11)
+
+    p = _para(doc, space_before=0, space_after=8)
+    _run(p, "In conseguenza del sinistro avvenuto il  ", size=10.5)
+    _underline_field(p, data.dich_data_sinistro, 18)
+    _run(p, ",  il mezzo di sua proprietà risulta inutilizzabile e che necessita "
+            "di veicolo sostitutivo per la seguente motivazione:", size=10.5)
+
+    # Checkbox motivazioni
+    for key, label in MOTIVAZIONI.items():
+        p = _para(doc, space_before=3, space_after=3)
+        p.paragraph_format.left_indent = Cm(1.5)
+        selected = (data.dich_motivazione == key)
+        mark = "●" if selected else "○"
+        _run(p, f"{mark}  {label}", bold=selected, size=10.5)
+
+    # Testo fisso
+    p = _para(doc, space_before=14, space_after=0)
+    _run(p, "Dichiara altresì che il mezzo fornito dalla LYS AUTO S.r.l verrà utilizzato "
+            "per il tempo strettamente necessario per l'esecuzione delle riparazioni.",
+         size=10.5)
+
+    # Luogo e data
+    p = _para(doc, space_before=32, space_after=8)
+    _run(p, "Luogo  ", size=10.5)
+    _underline_field(p, data.dich_luogo, 18)
+    _run(p, "    data  ", size=10.5)
+    # Data dalla data_ora (solo parte data)
+    data_firma = data.data_ora.split(" ")[0] if data.data_ora else ""
+    _underline_field(p, data_firma, 16)
+
+    # In fede + firma
+    p = _para(doc, space_before=20, space_after=6)
+    _run(p, "In fede", size=10.5)
+
+    p = _para(doc, space_before=8, space_after=0)
+    _run(p, "_" * 42, size=10.5)
+
+
 def _add_footer(doc: Document) -> None:
     section = doc.sections[0]
     footer = section.footer
@@ -398,6 +493,10 @@ def generate(data: VerbaleData, out: BinaryIO | None = None) -> bytes:
     _add_danni(doc, data)
     _add_note(doc, data)
     _add_firme(doc, data)
+
+    if data.tipo == TIPO_USCITA:
+        _add_dichiarazione(doc, data)
+
     _add_footer(doc)
 
     buf = BytesIO()

@@ -149,6 +149,42 @@
     {{ field("Note", "note", data.note, type="textarea") }}
   </section>
 
+  <section class="card">
+    <h2>Dichiarazione di necessità <span class="tag">pagina 2</span></h2>
+    <p class="meta" style="margin-bottom: 12px;">
+      Veicolo cliente pre-compilato da WinCar. Compagnia, polizza, data sinistro e motivazione vanno inseriti manualmente.
+    </p>
+    <div class="form-grid">
+      {{ field("Assicurato con (compagnia)", "dich_assicurazione", data.dich_assicurazione) }}
+      {{ field("Polizza n°", "dich_polizza", data.dich_polizza) }}
+      {{ field("Data sinistro", "dich_data_sinistro", data.dich_data_sinistro,
+               hint="es. 10/06/2026") }}
+      {{ field("Luogo firma", "dich_luogo", data.dich_luogo) }}
+    </div>
+    <div class="form-grid">
+      {{ field("Marca veicolo cliente", "cliente_marca", data.cliente_marca, hint="Da WinCar") }}
+      {{ field("Modello veicolo cliente", "cliente_modello", data.cliente_modello, hint="Da WinCar") }}
+      {{ field("Targa veicolo cliente", "cliente_targa", data.cliente_targa, hint="Da WinCar") }}
+    </div>
+    <div class="form-field">
+      <label>Motivazione necessità</label>
+      <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 4px;">
+        {% for val, label in [
+          ("lavoro",      "Motivi di lavoro"),
+          ("familiare",   "Motivi familiari"),
+          ("unico_mezzo", "Unico mezzo a disposizione del nucleo familiare"),
+          ("altro",       "Altro"),
+        ] %}
+        <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; cursor: pointer;">
+          <input type="radio" name="dich_motivazione" value="{{ val }}"
+                 {% if data.dich_motivazione == val %}checked{% endif %} />
+          {{ label }}
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
   <div class="form-actions">
     <a href="/pratiche/{{ pratica.numero }}" class="btn">Annulla</a>
     <button type="submit"
