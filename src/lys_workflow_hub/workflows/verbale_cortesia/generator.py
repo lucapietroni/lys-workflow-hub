@@ -310,7 +310,7 @@ def _add_firme(doc: Document, data: VerbaleData) -> None:
         "Il Locatore  —  Timbro e firma",
     ], row_height=330)
 
-    _set_row_height(table, 1, 1200)
+    _set_row_height(table, 1, 1600)
 
     date_cell = table.rows[1].cells[0]
     _set_cell_margins(date_cell)
@@ -321,12 +321,12 @@ def _add_firme(doc: Document, data: VerbaleData) -> None:
 
     # Il Locatario — timbro LYS Auto
     loc_cell = table.rows[1].cells[1]
-    _set_cell_margins(loc_cell)
+    _set_cell_margins(loc_cell, top=20, bottom=20, left=20, right=20)
     loc_cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
     p = loc_cell.paragraphs[0]
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     if _TIMBRO_PNG.exists():
-        p.add_run().add_picture(str(_TIMBRO_PNG), width=Cm(4.0))
+        p.add_run().add_picture(str(_TIMBRO_PNG), width=Cm(5.5))
     else:
         _run(p, "........................", size=9.0)
 
