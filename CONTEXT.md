@@ -1,6 +1,6 @@
 # LYS Workflow Hub — Contesto di sviluppo
 
-> Aggiornato automaticamente ad ogni commit. Versione corrente: **1.0.2**
+> Aggiornato automaticamente ad ogni commit. Versione corrente: **1.0.3**
 
 ---
 
@@ -174,6 +174,16 @@ versione editata dall'operatore si usa `dataclasses.replace(params, body=edited_
 | **1.0.0** | **v1.0** | **Redesign UI dark glass + logo LYS Auto in topbar** |
 | **1.0.1** | **v1.0.1** | Header uniformi, KPI cliccabili, SLA highlight in /pec-inviate |
 | **1.0.2** | **v1.0.2** | Colonna risposta PEC, stato pratica in /risposte, fix tab nav e CSS vars |
+| **1.0.3** | **v1.0.3** | Corpo completo PEC nel dettaglio, Elimina hard-delete non_matchate, KPI bozze include solleciti SLA |
+
+---
+
+## Fix e funzionalità v1.0.3
+
+- **Corpo completo PEC in `/pec-inviate/{id}`**: route legge `.eml` archiviato via `_estrai_body_da_eml()`, passa `body_completo` al template. Fallback su `body_excerpt` se file assente.
+- **Elimina hard-delete tab non_matchate**: `hard_delete_mail()` in `mail_in_repository` (DELETE fisico `mail_classificate` + `mail_in`). Route `POST /risposte/{id}/elimina` usa `hard_delete_mail`, redirige a `?tab=non_matchate`. Pulsante "Elimina" su tutte le righe del tab. Pulsante rinominato "Apri" (era "Collega") per chiarezza.
+- **KPI bozze home include solleciti SLA**: `SollecitoRepository.conta_pending()` sommato a `draft_pending + draft_ready`.
+- **SLA badge deduplicato in `/pec-inviate`**: rimosso badge "SLA scaduto" dalla colonna Compagnia (resta solo in colonna Risposta + highlight riga).
 
 ---
 

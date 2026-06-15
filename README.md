@@ -7,7 +7,7 @@ vandalico, ecc.), monitora le risposte delle compagnie assicurative via PEC ed e
 ordinaria, classifica le risposte con un modello AI, produce bozze di replica e genera
 alert mirati.
 
-> Versione attuale: **1.0.2**
+> Versione attuale: **1.0.3**
 
 ## Stato del progetto
 
@@ -43,6 +43,7 @@ alert mirati.
 | **v1.0** | Redesign UI dark glass, logo LYS Auto in topbar | ✅ completata |
 | **v1.0.1** | Header uniformi, KPI cliccabili, SLA highlight permanente in /pec-inviate | ✅ completata |
 | **v1.0.2** | Colonna risposta PEC, stato pratica in /risposte, fix tab nav e CSS vars | ✅ completata |
+| **v1.0.3** | Corpo completo PEC nel dettaglio, Elimina hard-delete, KPI bozze include solleciti SLA | ✅ completata |
 
 ---
 
