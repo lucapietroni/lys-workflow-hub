@@ -319,22 +319,24 @@ def _add_firme(doc: Document, data: VerbaleData) -> None:
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     _run(p, data.data_ora, size=10.0)
 
+    # Il Locatario — timbro + firma LYS Auto
     loc_cell = table.rows[1].cells[1]
     _set_cell_margins(loc_cell)
-    loc_cell.vertical_alignment = WD_ALIGN_VERTICAL.BOTTOM
+    loc_cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
     p = loc_cell.paragraphs[0]
-    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    _run(p, "........................", size=9.0)
-
-    lys_cell = table.rows[1].cells[2]
-    _set_cell_margins(lys_cell)
-    lys_cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-    p = lys_cell.paragraphs[0]
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     if _TIMBRO_PNG.exists():
         p.add_run().add_picture(str(_TIMBRO_PNG), width=Cm(4.0))
     else:
         _run(p, "........................", size=9.0)
+
+    # Il Locatore — firma manuale cliente
+    lys_cell = table.rows[1].cells[2]
+    _set_cell_margins(lys_cell)
+    lys_cell.vertical_alignment = WD_ALIGN_VERTICAL.BOTTOM
+    p = lys_cell.paragraphs[0]
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    _run(p, "........................", size=9.0)
 
 
 def _add_footer(doc: Document) -> None:
