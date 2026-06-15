@@ -169,10 +169,22 @@ def from_pratica(
         cliente_marca=_get("cliente_marca", pratica.veicolo.marca or ""),
         cliente_modello=_get("cliente_modello", pratica.veicolo.modello or ""),
         cliente_targa=_get("cliente_targa", pratica.veicolo.targa or ""),
-        # Dichiarazione: campi manuali
-        dich_assicurazione=_get("dich_assicurazione", ""),
-        dich_polizza=_get("dich_polizza", ""),
-        dich_data_sinistro=_get("dich_data_sinistro", ""),
+        # Dichiarazione: da WinCar dove disponibile
+        dich_assicurazione=_get(
+            "dich_assicurazione",
+            pratica.assicurazione_cliente.nome or "",
+        ),
+        dich_polizza=_get(
+            "dich_polizza",
+            pratica.assicurazione_cliente.numero_polizza or "",
+        ),
+        dich_data_sinistro=_get(
+            "dich_data_sinistro",
+            pratica.sinistro.data.strftime("%d/%m/%Y") if pratica.sinistro.data else "",
+        ),
         dich_motivazione=_get("dich_motivazione", ""),
-        dich_luogo=_get("dich_luogo", "Roma"),
+        dich_luogo=_get(
+            "dich_luogo",
+            pratica.sinistro.comune or pratica.cliente.citta or "Roma",
+        ),
     )

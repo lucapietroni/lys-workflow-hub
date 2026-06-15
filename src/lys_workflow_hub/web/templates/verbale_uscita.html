@@ -152,14 +152,15 @@
   <section class="card">
     <h2>Dichiarazione di necessità <span class="tag">pagina 2</span></h2>
     <p class="meta" style="margin-bottom: 12px;">
-      Veicolo cliente pre-compilato da WinCar. Compagnia, polizza, data sinistro e motivazione vanno inseriti manualmente.
+      Campi pre-compilati da WinCar (modificabili). Solo la motivazione va selezionata manualmente.
     </p>
     <div class="form-grid">
-      {{ field("Assicurato con (compagnia)", "dich_assicurazione", data.dich_assicurazione) }}
-      {{ field("Polizza n°", "dich_polizza", data.dich_polizza) }}
+      {{ field("Assicurato con (compagnia)", "dich_assicurazione", data.dich_assicurazione,
+               hint="Da WinCar") }}
+      {{ field("Polizza n°", "dich_polizza", data.dich_polizza, hint="Da WinCar") }}
       {{ field("Data sinistro", "dich_data_sinistro", data.dich_data_sinistro,
-               hint="es. 10/06/2026") }}
-      {{ field("Luogo firma", "dich_luogo", data.dich_luogo) }}
+               hint="Da WinCar") }}
+      {{ field("Luogo firma", "dich_luogo", data.dich_luogo, hint="Da WinCar") }}
     </div>
     <div class="form-grid">
       {{ field("Marca veicolo cliente", "cliente_marca", data.cliente_marca, hint="Da WinCar") }}
