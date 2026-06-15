@@ -59,11 +59,33 @@
   </section>
 
   <section class="card">
-    <h2>Veicolo</h2>
+    <h2>Veicolo di cortesia</h2>
+    {% if autos %}
+    <div class="form-field" style="max-width:340px; margin-bottom:16px;">
+      <label for="f_auto_id">Auto di cortesia</label>
+      <select id="f_auto_id" name="auto_id" onchange="onAutoCortesiaChange(this.value)">
+        <option value="">— seleziona auto —</option>
+        {% for a in autos %}
+          <option value="{{ a.id }}"
+                  data-targa="{{ a.targa }}"
+                  data-marca="{{ a.marca_modello }}"
+                  data-telaio="{{ a.telaio }}"
+                  {% if data.auto_id == a.id %}selected{% endif %}>
+            {{ a.targa }} — {{ a.marca_modello }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+    {% else %}
+    <p class="meta" style="margin-bottom:12px;">
+      Nessuna auto di cortesia configurata.
+      <a href="/impostazioni">Aggiungi in Impostazioni →</a>
+    </p>
+    {% endif %}
     <div class="form-grid">
-      {{ field("Marca/Modello", "marca_modello", data.marca_modello, hint="Da WinCar") }}
-      {{ field("Telaio", "telaio", data.telaio, hint="Da WinCar") }}
-      {{ field("Targa", "targa", data.targa, hint="Da WinCar") }}
+      {{ field("Marca/Modello", "marca_modello", data.marca_modello) }}
+      {{ field("Telaio", "telaio", data.telaio) }}
+      {{ field("Targa", "targa", data.targa) }}
     </div>
     <div class="form-grid">
       {{ field("Km alla riconsegna", "km", data.km) }}
@@ -123,4 +145,14 @@
     </button>
   </div>
 </form>
+
+<script>
+function onAutoCortesiaChange(autoId) {
+  const sel = document.getElementById('f_auto_id');
+  const opt = sel.options[sel.selectedIndex];
+  document.querySelector('[name="targa"]').value         = opt.dataset.targa  || '';
+  document.querySelector('[name="marca_modello"]').value = opt.dataset.marca  || '';
+  document.querySelector('[name="telaio"]').value        = opt.dataset.telaio || '';
+}
+</script>
 {% endblock %}

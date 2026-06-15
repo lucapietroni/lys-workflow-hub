@@ -23,6 +23,7 @@ from fastapi.templating import Jinja2Templates
 
 from lys_workflow_hub import __version__
 from lys_workflow_hub.config import Settings, get_settings
+from lys_workflow_hub.core.auto_cortesia_repository import AutoCortesiaRepository
 from lys_workflow_hub.core.categoria_policy_repository import (
     POLICIES,
     POLICY_LABELS,
@@ -209,14 +210,16 @@ def impostazioni_get(
     saved: str | None = None,
     settings: Settings = Depends(get_settings_dep),
 ) -> HTMLResponse:
-    """Editor policy bozze per categoria AI."""
+    """Editor policy bozze per categoria AI + gestione auto di cortesia."""
     policy_repo = CategoriaPolicyRepository(db_path=settings.app_db_path)
+    auto_repo = AutoCortesiaRepository(db_path=settings.app_db_path)
     policies = policy_repo.get_all()
     context = _common_context()
     context["policies"] = policies
     context["policy_options"] = POLICIES
     context["policy_labels"] = POLICY_LABELS
     context["saved"] = saved
+    context["autos"] = auto_repo.list_auto()
     return templates.TemplateResponse(request, "impostazioni.html", context)
 
 
@@ -239,6 +242,72 @@ async def impostazioni_post(
     if errori:
         logger.warning("Impostazioni: errori salvataggio: %s", errori)
     return RedirectResponse(url="/impostazioni?saved=1", status_code=303)
+
+
+# --------------------------------------------------------------------------- #
+#  Route CRUD auto di cortesia
+# --------------------------------------------------------------------------- #
+
+
+@router.post("/impostazioni/auto-cortesia")
+async def auto_cortesia_crea(
+    request: Request,
+    settings: Settings = Depends(get_settings_dep),
+) -> RedirectResponse:
+    """Crea nuova auto di cortesia."""
+    form = await request.form()
+    targa = str(form.get("targa", "")).strip()
+    marca_modello = str(form.get("marca_modello", "")).strip()
+    telaio = str(form.get("telaio", "")).strip()
+    note = str(form.get("note", "")).strip()
+    if targa and marca_modello:
+        auto_repo = AutoCortesiaRepository(db_path=settings.app_db_path)
+        try:
+            auto_repo.create_auto(
+                targa=targa, marca_modello=marca_modello,
+                telaio=telaio, note=note,
+            )
+        except Exception as exc:
+            logger.warning("Errore creazione auto cortesia: %s", exc)
+    return RedirectResponse(url="/impostazioni?saved=auto", status_code=303)
+
+
+@router.post("/impostazioni/auto-cortesia/{auto_id}/modifica")
+async def auto_cortesia_modifica(
+    auto_id: int,
+    request: Request,
+    settings: Settings = Depends(get_settings_dep),
+) -> RedirectResponse:
+    """Aggiorna auto di cortesia."""
+    form = await request.form()
+    targa = str(form.get("targa", "")).strip()
+    marca_modello = str(form.get("marca_modello", "")).strip()
+    telaio = str(form.get("telaio", "")).strip()
+    note = str(form.get("note", "")).strip()
+    if targa and marca_modello:
+        auto_repo = AutoCortesiaRepository(db_path=settings.app_db_path)
+        try:
+            auto_repo.update_auto(
+                auto_id, targa=targa, marca_modello=marca_modello,
+                telaio=telaio, note=note,
+            )
+        except Exception as exc:
+            logger.warning("Errore aggiornamento auto cortesia %s: %s", auto_id, exc)
+    return RedirectResponse(url="/impostazioni?saved=auto", status_code=303)
+
+
+@router.post("/impostazioni/auto-cortesia/{auto_id}/elimina")
+async def auto_cortesia_elimina(
+    auto_id: int,
+    settings: Settings = Depends(get_settings_dep),
+) -> RedirectResponse:
+    """Elimina auto di cortesia."""
+    auto_repo = AutoCortesiaRepository(db_path=settings.app_db_path)
+    try:
+        auto_repo.delete_auto(auto_id)
+    except Exception as exc:
+        logger.warning("Errore eliminazione auto cortesia %s: %s", auto_id, exc)
+    return RedirectResponse(url="/impostazioni?saved=auto", status_code=303)
 
 
 # --------------------------------------------------------------------------- #

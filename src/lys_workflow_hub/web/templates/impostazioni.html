@@ -73,6 +73,112 @@
 </section>
 
 <section class="card">
+  <h2>Auto di cortesia</h2>
+  <p class="meta" style="margin: -4px 0 16px;">
+    Parco auto disponibili per i verbali di consegna/riconsegna.
+    Km e danni dell'ultimo rientro vengono pre-compilati automaticamente nel verbale di uscita successivo.
+  </p>
+
+  {% if autos %}
+  <table class="results-table" style="margin-bottom: 20px;">
+    <thead>
+      <tr>
+        <th>Targa</th>
+        <th>Marca/Modello</th>
+        <th>Telaio</th>
+        <th>Note</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for auto in autos %}
+      <tr id="auto-row-{{ auto.id }}">
+        <td><strong>{{ auto.targa }}</strong></td>
+        <td>{{ auto.marca_modello }}</td>
+        <td class="meta">{{ auto.telaio or "—" }}</td>
+        <td class="meta">{{ auto.note or "—" }}</td>
+        <td style="white-space: nowrap;">
+          <button type="button" class="btn btn-sm"
+                  onclick="toggleEditAuto({{ auto.id }})">Modifica</button>
+          <form method="post"
+                action="/impostazioni/auto-cortesia/{{ auto.id }}/elimina"
+                style="display:inline;"
+                onsubmit="return confirm('Eliminare {{ auto.targa }}?');">
+            <button type="submit" class="btn btn-sm btn-danger">Elimina</button>
+          </form>
+        </td>
+      </tr>
+      <tr id="auto-edit-{{ auto.id }}" style="display:none;">
+        <td colspan="5">
+          <form method="post"
+                action="/impostazioni/auto-cortesia/{{ auto.id }}/modifica"
+                style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end;">
+            <div class="form-field" style="min-width:100px;">
+              <label>Targa</label>
+              <input name="targa" type="text" value="{{ auto.targa }}" required autocomplete="off" />
+            </div>
+            <div class="form-field" style="min-width:160px;">
+              <label>Marca/Modello</label>
+              <input name="marca_modello" type="text" value="{{ auto.marca_modello }}" required autocomplete="off" />
+            </div>
+            <div class="form-field" style="min-width:140px;">
+              <label>Telaio</label>
+              <input name="telaio" type="text" value="{{ auto.telaio }}" autocomplete="off" />
+            </div>
+            <div class="form-field" style="min-width:140px;">
+              <label>Note</label>
+              <input name="note" type="text" value="{{ auto.note }}" autocomplete="off" />
+            </div>
+            <div style="display:flex; gap:6px; margin-bottom:2px;">
+              <button type="submit" class="btn btn-primary btn-sm">Salva</button>
+              <button type="button" class="btn btn-sm"
+                      onclick="toggleEditAuto({{ auto.id }})">Annulla</button>
+            </div>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="meta" style="margin-bottom: 16px;">Nessuna auto di cortesia inserita.</p>
+  {% endif %}
+
+  <details>
+    <summary style="cursor:pointer; font-weight:600; margin-bottom:10px;">+ Aggiungi auto di cortesia</summary>
+    <form method="post" action="/impostazioni/auto-cortesia"
+          style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-top:10px;">
+      <div class="form-field" style="min-width:100px;">
+        <label>Targa *</label>
+        <input name="targa" type="text" required autocomplete="off" placeholder="AB123CD" />
+      </div>
+      <div class="form-field" style="min-width:160px;">
+        <label>Marca/Modello *</label>
+        <input name="marca_modello" type="text" required autocomplete="off" placeholder="Fiat Panda" />
+      </div>
+      <div class="form-field" style="min-width:140px;">
+        <label>Telaio</label>
+        <input name="telaio" type="text" autocomplete="off" />
+      </div>
+      <div class="form-field" style="min-width:140px;">
+        <label>Note</label>
+        <input name="note" type="text" autocomplete="off" placeholder="es. sostitutiva" />
+      </div>
+      <div style="margin-bottom:2px;">
+        <button type="submit" class="btn btn-primary btn-sm">Aggiungi</button>
+      </div>
+    </form>
+  </details>
+</section>
+
+<script>
+function toggleEditAuto(id) {
+  const row = document.getElementById('auto-edit-' + id);
+  row.style.display = row.style.display === 'none' ? '' : 'none';
+}
+</script>
+
+<section class="card">
   <h2>Legenda policy</h2>
   <dl style="display: grid; gap: 8px;">
     <div>

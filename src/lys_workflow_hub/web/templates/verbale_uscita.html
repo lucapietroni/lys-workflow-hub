@@ -59,14 +59,37 @@
   </section>
 
   <section class="card">
-    <h2>Veicolo</h2>
+    <h2>Veicolo di cortesia</h2>
+    {% if autos %}
+    <div class="form-field" style="max-width:340px; margin-bottom:16px;">
+      <label for="f_auto_id">Auto di cortesia</label>
+      <select id="f_auto_id" name="auto_id" onchange="onAutoCortesiaChange(this.value)">
+        <option value="">— seleziona auto —</option>
+        {% for a in autos %}
+          <option value="{{ a.id }}"
+                  data-targa="{{ a.targa }}"
+                  data-marca="{{ a.marca_modello }}"
+                  data-telaio="{{ a.telaio }}"
+                  {% if data.auto_id == a.id %}selected{% endif %}>
+            {{ a.targa }} — {{ a.marca_modello }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+    {% else %}
+    <p class="meta" style="margin-bottom:12px;">
+      Nessuna auto di cortesia configurata.
+      <a href="/impostazioni">Aggiungi in Impostazioni →</a>
+    </p>
+    {% endif %}
     <div class="form-grid">
-      {{ field("Marca/Modello", "marca_modello", data.marca_modello, hint="Da WinCar") }}
-      {{ field("Telaio", "telaio", data.telaio, hint="Da WinCar") }}
-      {{ field("Targa", "targa", data.targa, hint="Da WinCar") }}
+      {{ field("Marca/Modello", "marca_modello", data.marca_modello) }}
+      {{ field("Telaio", "telaio", data.telaio) }}
+      {{ field("Targa", "targa", data.targa) }}
     </div>
     <div class="form-grid">
-      {{ field("Km alla consegna", "km", data.km) }}
+      {{ field("Km alla consegna", "km", data.km,
+               hint="Pre-compilato dall'ultimo rientro per questa auto") }}
       <div class="form-field">
         <label for="f_livello_carburante">Livello carburante</label>
         <select id="f_livello_carburante" name="livello_carburante">
@@ -96,18 +119,22 @@
 
   <section class="card">
     <h2>Danni veicolo <span class="tag">opzionale</span></h2>
-    <p class="meta" style="margin-bottom: 10px;">Inserisci eventuali danni già presenti al momento della consegna.</p>
+    <p class="meta" style="margin-bottom: 10px;">
+      Danni già presenti al momento della consegna.
+      <span class="hint">Pre-compilati dall'ultimo verbale di rientro.</span>
+    </p>
     {% for i in range(1, 4) %}
+    {% set danno = data.danni[loop.index0] if data.danni and loop.index0 < data.danni|length else ("", "") %}
     <div class="form-grid" style="margin-bottom: 6px;">
       <div class="form-field">
         <label for="f_danno_parte_{{ i }}">Parte {{ i }}</label>
         <input id="f_danno_parte_{{ i }}" name="danno_parte_{{ i }}" type="text"
-          value="" autocomplete="off" placeholder="es. paraurti anteriore" />
+          value="{{ danno[0] }}" autocomplete="off" placeholder="es. paraurti anteriore" />
       </div>
       <div class="form-field">
         <label for="f_danno_det_{{ i }}">Dettaglio {{ i }}</label>
         <input id="f_danno_det_{{ i }}" name="danno_det_{{ i }}" type="text"
-          value="" autocomplete="off" placeholder="es. graffio 10 cm" />
+          value="{{ danno[1] }}" autocomplete="off" placeholder="es. graffio 10 cm" />
       </div>
     </div>
     {% endfor %}
@@ -136,4 +163,26 @@
     </button>
   </div>
 </form>
+
+<script>
+const _lastRientroMap = {{ last_rientro_map_json | safe }};
+
+function onAutoCortesiaChange(autoId) {
+  const sel = document.getElementById('f_auto_id');
+  const opt = sel.options[sel.selectedIndex];
+  document.querySelector('[name="targa"]').value     = opt.dataset.targa  || '';
+  document.querySelector('[name="marca_modello"]').value = opt.dataset.marca || '';
+  document.querySelector('[name="telaio"]').value    = opt.dataset.telaio || '';
+
+  // Pre-fill km e danni dall'ultimo rientro
+  const lr = _lastRientroMap[autoId] || {};
+  document.querySelector('[name="km"]').value = lr.km || '';
+  const danni = lr.danni || [];
+  for (let i = 1; i <= 3; i++) {
+    const d = danni[i - 1] || ['', ''];
+    document.getElementById('f_danno_parte_' + i).value = d[0] || '';
+    document.getElementById('f_danno_det_'   + i).value = d[1] || '';
+  }
+}
+</script>
 {% endblock %}
