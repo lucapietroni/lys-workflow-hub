@@ -147,6 +147,11 @@
                   <button type="submit" class="btn btn-sm btn-danger-outline">Ignora</button>
                 </form>
               {% endif %}
+              <form method="post" action="/risposte/{{ r.mail.id }}/elimina"
+                    style="display:inline;"
+                    onsubmit="return confirm('Eliminare definitivamente questa mail dal DB? Azione irreversibile.')">
+                <button type="submit" class="btn btn-sm btn-danger-outline">Elimina</button>
+              </form>
             {% endif %}
           </td>
         </tr>
