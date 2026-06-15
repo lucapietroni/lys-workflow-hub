@@ -85,6 +85,40 @@
   </div>
 </header>
 
+{% if verbali_cortesia %}
+{% set ns = namespace(uscite=[], rientri=[]) %}
+{% for v in verbali_cortesia %}
+  {% if "Uscita" in v.nome_file %}{% set ns.uscite = ns.uscite + [v] %}{% endif %}
+  {% if "Rientro" in v.nome_file %}{% set ns.rientri = ns.rientri + [v] %}{% endif %}
+{% endfor %}
+<div class="alert alert-info" style="margin-bottom: 12px; font-size: 0.88rem;">
+  <strong>Verbali veicolo di cortesia archiviati:</strong>
+  {% if ns.uscite %}
+    <span style="margin-left: 8px;">
+      Uscita:
+      {% for v in ns.uscite %}
+        <code style="font-size:0.82em;">{{ v.nome_file }}</code>
+        <span class="meta">({{ v.data_archiviazione.strftime("%d/%m/%Y") }})</span>{% if not loop.last %},{% endif %}
+      {% endfor %}
+    </span>
+  {% else %}
+    <span class="meta" style="margin-left: 8px;">Uscita: non ancora generato</span>
+  {% endif %}
+  &nbsp;·&nbsp;
+  {% if ns.rientri %}
+    <span>
+      Rientro:
+      {% for v in ns.rientri %}
+        <code style="font-size:0.82em;">{{ v.nome_file }}</code>
+        <span class="meta">({{ v.data_archiviazione.strftime("%d/%m/%Y") }})</span>{% if not loop.last %},{% endif %}
+      {% endfor %}
+    </span>
+  {% else %}
+    <span class="meta">Rientro: non ancora generato</span>
+  {% endif %}
+</div>
+{% endif %}
+
 <section class="card">
   <h2>Cliente</h2>
   <div class="grid">

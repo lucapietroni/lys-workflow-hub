@@ -43,6 +43,7 @@ from lys_workflow_hub.workflows.cessione_credito import (
     list_signed_pdfs,
     save_signed_pdf,
 )
+from lys_workflow_hub.workflows.verbale_cortesia.archive import list_verbali
 
 
 logger = logging.getLogger(__name__)
@@ -187,6 +188,12 @@ def pratica_detail(
         context["sla_breach_questa"] = []
     # Parametro URL per conferma cambio stato
     context["stato_aggiornato"] = bool(request.query_params.get("stato_aggiornato"))
+    # Verbali cortesia già generati per questa pratica
+    try:
+        context["verbali_cortesia"] = list_verbali(settings.wincar_archivio, numero)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Impossibile leggere verbali cortesia per %s: %s", numero, exc)
+        context["verbali_cortesia"] = []
     return templates.TemplateResponse(request, "pratica_detail.html", context)
 
 
