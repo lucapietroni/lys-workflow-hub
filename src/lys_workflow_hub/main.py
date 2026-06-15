@@ -56,6 +56,7 @@ from lys_workflow_hub.web.routes_impostazioni import router as impostazioni_rout
 from lys_workflow_hub.web.routes_pec_log import router as pec_log_router
 from lys_workflow_hub.web.routes_risposte import router as risposte_router
 from lys_workflow_hub.web.routes_vandalismo import router as vandalismo_router
+from lys_workflow_hub.web.routes_verbale import router as verbale_router
 
 
 # -----------------------------------------------------------------------------
@@ -175,6 +176,7 @@ app.include_router(pec_log_router)
 app.include_router(risposte_router)
 app.include_router(bozze_router)
 app.include_router(impostazioni_router)
+app.include_router(verbale_router)
 app.include_router(api_router)
 
 
