@@ -1,6 +1,6 @@
 # LYS Workflow Hub — Contesto di sviluppo
 
-> Aggiornato automaticamente ad ogni commit. Versione corrente: **1.0.3**
+> Branch: **v2** · Versione: **2.0.0-dev** (base: v1.0.3 / main)
 
 ---
 
@@ -8,17 +8,17 @@
 
 Piattaforma di automazione documentale per **Carrozzeria LYS Auto srl** (Roma).
 Legge le pratiche dal gestionale **WinCar** (database Microsoft Access `.mdb`) in
-sola lettura, genera documenti precompilati (cessione del credito, richiesta
-risarcimento per atto vandalico), monitora le risposte delle compagnie assicurative
-via PEC/email, classifica le risposte con AI (Anthropic Claude), produce bozze di
-replica e genera alert mirati.
+sola lettura, genera documenti precompilati, monitora le risposte assicurative
+via PEC/email, classifica con AI (Anthropic Claude), produce bozze di replica,
+genera alert SLA. Branch v2 aggiunge i verbali di consegna/riconsegna veicoli
+di cortesia.
 
-**Stack**: FastAPI + Jinja2 · SQLite `lys_hub.db` · pyodbc → WinCar `.mdb` · InfoCert
-Legalmail (IMAP + SMTP SSL 465) · Anthropic Claude API · `pypdf` (estrazione testo
-PDF allegati) · python-docx (generazione documenti Word)
+**Stack**: FastAPI + Jinja2 · SQLite `lys_hub.db` · pyodbc → WinCar `.mdb` ·
+InfoCert Legalmail (IMAP + SMTP SSL 465) · Anthropic Claude API · `pypdf` ·
+python-docx + docx2pdf (Word COM)
 
-**Deploy**: Windows PC carrozzeria (`C:\LYSApp\lys-workflow-hub`), avviato come
-Task Scheduler. Dev: WSL2 sul portatile di Luca (`/mnt/c/Users/lucap/Documents/...`).
+**Deploy**: `C:\LYSApp\lys-workflow-hub` (Windows, Task Scheduler).
+Dev: WSL2 (`/mnt/c/Users/lucap/Documents/Claude/Projects/Lysauto/lys-workflow-hub`).
 
 ---
 
@@ -27,23 +27,24 @@ Task Scheduler. Dev: WSL2 sul portatile di Luca (`/mnt/c/Users/lucap/Documents/.
 ```
 Web UI (FastAPI + Jinja2)
     │
-    ├── Workflow A — Cessione del credito       → python-docx → PDF via Word COM
-    ├── Workflow B — Richiesta vandalismo        → PEC SMTP
-    └── Workflow C — Lettura risposte            → IMAP fetch → AI classify → bozze
-                                                               → stato pratica
-                                                               → SLA escalation
-Script polling (Task Scheduler Windows)
+    ├── Workflow A — Cessione del credito        → python-docx → PDF via Word COM
+    ├── Workflow B — Richiesta vandalismo         → PEC/email SMTP
+    ├── Workflow C — Lettura risposte             → IMAP → AI → bozze → SLA
+    └── Workflow D — Verbali cortesia [v2]        → python-docx → PDF via Word COM
+
+Script polling (Task Scheduler)
     └── run_polling.py: fetch → match → classify → auto-transition → notify
 ```
 
 **DB SQLite** tabelle principali:
-- `mail_in` — email in arrivo (con colonna `ignorata INTEGER DEFAULT 0`)
+- `mail_in` — email in arrivo (`ignorata INTEGER DEFAULT 0`)
 - `mail_classificate` — risultato AI per ogni mail
 - `pec_inviate` — audit log PEC uscenti
-- `pratica_stato` — storia stati pratica (immutabile, append-only)
+- `pratica_stato` — storia stati pratica (append-only)
 - `bozze_risposta` — bozze generate per risposta alle compagnie
-- `compagnie_assicurative` — anagrafica compagnie + PEC + soglie SLA
+- `compagnie_assicurative` — anagrafica + PEC + soglie SLA personalizzate
 - `categoria_policy` — policy generazione bozze per categoria AI
+- `pec_sla_reminder` — tracking escalation SLA già inviati
 
 ---
 
@@ -54,26 +55,36 @@ src/lys_workflow_hub/
 ├── main.py                         Entry point FastAPI
 ├── config.py                       Caricamento .env (Settings)
 ├── core/
+│   ├── wincar_repository.py        Lettura WinCar (read-only)
 │   ├── mail_in_repository.py       Mail in arrivo + classificazioni
 │   ├── pratica_stato_repository.py Stato pratica + SLA + escalation
 │   ├── pec_log_repository.py       Audit PEC inviate
 │   ├── draft_repository.py         Bozze di risposta
 │   ├── compagnie_repository.py     Anagrafica compagnie
-│   └── categoria_policy_repository.py  Policy bozze
+│   ├── categoria_policy_repository.py  Policy bozze
+│   └── sollecito_repository.py     Solleciti SLA
 ├── integrations/
 │   ├── imap_fetcher.py             Fetch IMAP + estrazione body + PDF
 │   ├── ai_classifier.py            Classificatore Anthropic Claude
 │   ├── pdf_extractor.py            Estrazione testo PDF allegati (pypdf)
+│   ├── pec_mailer.py               SMTP + IMAP append posta inviata
 │   └── notifier.py                 Push ntfy + email
 ├── workflows/
-│   ├── cessione_credito/           Workflow A (data.py, generator.py, cf_parser.py)
+│   ├── cessione_credito/           Workflow A (data.py, generator.py, archive.py)
+│   │   └── assets/                 Firma pre-apposta (PNG)
 │   ├── risarcimento_vandalismo/    Workflow B (data.py, pec_generator.py, invio_pec.py)
-│   └── risposte/                   Workflow C (matcher.py, draft_service.py, ...)
+│   ├── risposte/                   Workflow C (matcher.py, body_generator.py, ...)
+│   └── verbale_cortesia/           Workflow D [v2]
+│       ├── data.py                 VerbaleData dataclass + from_pratica()
+│       ├── generator.py            DOCX uscita/rientro (logo LYS, tabelle bordate)
+│       ├── archive.py              Salva PDF in Pratiche/<n>/Pubblici/Allegati/
+│       └── assets/logo_lys.png     Logo LYS Auto Carrozzeria & Noleggio
 └── web/
-    ├── routes.py                   Pratica + cessione credito
+    ├── routes.py                   Pratica + Workflow A
     ├── routes_vandalismo.py        Workflow B
     ├── routes_risposte.py          Cruscotto risposte
     ├── routes_bozze.py             Cruscotto bozze
+    ├── routes_verbale.py           Workflow D [v2] — 6 route
     ├── routes_compagnie.py         CRUD compagnie
     ├── routes_impostazioni.py      Statistiche + policy editor
     └── templates/ + static/
@@ -83,410 +94,119 @@ scripts/
 
 ---
 
+## Workflow D — Verbali cortesia [v2]
+
+### Flusso utente
+1. Pagina pratica → bottone "Verbale uscita/rientro veicolo cortesia"
+2. Form pre-compilato da WinCar: nome, CF, indirizzo, CAP, telefono, marca/modello,
+   targa, telaio. Campi manuali: patente, km, carburante, accessori, danni (3 righe),
+   note, data/ora (auto-fill con datetime corrente, modificabile).
+3. "Scarica PDF" → download immediato. "Genera e salva in WinCar" → salva in
+   `Pratiche/<n>/Pubblici/Allegati/Verbale_{Uscita|Rientro}_YYYYMMDD.pdf` + redirect.
+
+### Differenze uscita vs rientro
+- Uscita: label "Km alla consegna", sezione Franchigie (editabile), titolo "Verbale di Uscita"
+- Rientro: label "Km alla riconsegna", no Franchigie, titolo "Verbale di Rientro"
+- Generator: funzione `generate(data)` dispatcha su `data.tipo`
+
+### TODO Workflow D
+- Sezione danni con UI grafica (schema auto cliccabile con zone cliccabili)
+- Franchigie: decidere valori default per auto di cortesia LYS
+
+### Route (routes_verbale.py)
+```
+GET  /pratiche/{n}/verbale/uscita          Form uscita pre-filled
+POST /pratiche/{n}/verbale/uscita/pdf      Genera → download PDF
+POST /pratiche/{n}/verbale/uscita/salva    Genera → salva WinCar → redirect
+GET  /pratiche/{n}/verbale/rientro         Form rientro pre-filled
+POST /pratiche/{n}/verbale/rientro/pdf     Genera → download PDF
+POST /pratiche/{n}/verbale/rientro/salva   Genera → salva WinCar → redirect
+```
+
+---
+
 ## Decisioni tecniche chiave
 
 ### PEC InfoCert — struttura messaggi
-Le PEC InfoCert hanno struttura a wrapper: il messaggio esterno è il container
-PEC, il messaggio reale è l'allegato `postacert.eml` (tipo `message/rfc822`).
+Le PEC InfoCert hanno struttura a wrapper: il messaggio esterno è il container,
+il messaggio reale è l'allegato `postacert.eml` (tipo `message/rfc822`).
 
-**Regola**: in `imap_fetcher.py`, chiamare sempre
-`inner_msg = _find_postacert(msg) or msg` una sola volta e passare `inner_msg`
-sia a `_has_attachments()` sia a `augment_body_with_pdf()`. MAI usare `msg`
-direttamente per cercare allegati.
+**Regola**: in `imap_fetcher.py`, `inner_msg = _find_postacert(msg) or msg` calcolato
+**una sola volta** in `fetch_into`, passato sia a `_has_attachments()` sia a
+`augment_body_with_pdf()`. Mai usare `msg` diretto per cercare allegati.
 
 ### PDF allegati — estrazione sempre
-`augment_body_with_pdf()` estrae e appende il testo PDF **sempre**,
-indipendentemente dalla lunghezza del body. La vecchia logica con soglia
-`min_body_len=200` è stata rimossa perché le compagnie possono scrivere qualsiasi
-cosa nel corpo (anche testo lungo generico) e allegare la risposta reale come PDF.
+`augment_body_with_pdf()` estrae e appende il testo PDF **sempre**, indipendentemente
+dalla lunghezza del body. La vecchia logica con soglia `min_body_len=200` è stata rimossa.
 
 ### Classificazione AI — categorie
-5 categorie: `presa_in_carico`, `nomina_perito`, `richiesta_documenti`,
-`liquidazione`, `altro`.
+5 categorie: `presa_in_carico`, `nomina_perito`, `richiesta_documenti`, `liquidazione`, `altro`.
 
-**Regola critica nel prompt**: `liquidazione` richiede un importo concreto o
-conferma di pagamento. I dinieghi ("veicolo non assicurato con noi", "polizza non
-trovata") vanno in `altro` con `action_required=True`. Questa distinzione è
-esplicitata con "I dinieghi NON sono liquidazioni" nel system prompt.
+**Regola critica**: `liquidazione` richiede importo concreto o conferma pagamento.
+I dinieghi ("veicolo non assicurato") → `altro` con `action_required=True`.
+Nel prompt: **"I dinieghi NON sono liquidazioni"**.
 
 ### Auto-transizione stato pratica
-`auto_transition()` in `pratica_stato_repository.py` mappa:
+`auto_transition()` in `pratica_stato_repository.py`:
 - `presa_in_carico` → `in_gestione`
 - `nomina_perito` → `perito_nominato`
 - `liquidazione` → `in_liquidazione`
 
-**Regola**: in `run_polling.py`, la transizione viene eseguita solo se
-`classif_obj.confidence >= 0.70`. Sotto soglia: log + skip. Defense-in-depth
-per evitare transizioni errate da classificazioni incerte.
+**Regola**: eseguita solo se `confidence >= 0.70` (`run_polling.py`).
 
 ### Soft delete mail_in
-`delete_mail()` scrive `UPDATE mail_in SET ignorata=1` invece di DELETE fisico.
-Il motivo: `max_uid()` include anche le righe `ignorata=1`, così l'UID non scende
-mai e il fetcher non riscarica mail già viste.
+`delete_mail()` scrive `UPDATE mail_in SET ignorata=1` (mai DELETE fisico).
+`max_uid()` include `ignorata=1` → UID non scende → fetcher non riscarica.
 
-**Regola critica (v0.8.4)**: `delete_mail()` e `ignora_non_matchate()` NON cancellano
-`mail_classificate`. Se venissero cancellate, la query `solo_non_matchate` (che richiede
-`mc.id IS NOT NULL`) escluderebbe la mail dal tab "Da collegare". Il badge scende a 0
-perché `count_non_matchate()` filtra `ignorata=0`, ma la mail rimane visibile.
+**Regola critica**: `delete_mail()` e `ignora_non_matchate()` NON cancellano
+`mail_classificate`. Se cancellate, `mc.id IS NOT NULL` fallirebbe e la mail
+uscirebbe dal tab "Da collegare". Badge a 0 perché `count_non_matchate()` filtra
+`ignorata=0`.
 
-Query di lista/count: `tab matchate` e `tab tutte` filtrano `ignorata=0`. Il tab
-`solo_non_matchate` non filtra più `ignorata` (per mostrare le mail ignorate).
+### Content-Disposition per allegati
+**Bug Starlette**: `headers={"Content-Disposition": "inline; ..."}` (mixed case) +
+`filename=` produce due header duplicati. Fix: per tipi inline NON passare `filename=`,
+usare chiave lowercase `"content-disposition"`. Applicato in `routes_vandalismo.py` e
+`routes_bozze.py`.
 
-### Content-Disposition per file allegati
-**Bug Starlette**: passare `headers={"Content-Disposition": "inline; ..."}` (mixed
-case) + `filename=nome` a `FileResponse` produce due header duplicati perché Python
-dict è case-sensitive e `setdefault("content-disposition", "attachment; ...")` aggiunge
-una chiave distinta. Chrome usa `attachment` e scarica il file.
+### Generazione DOCX (Workflow A + D)
+python-docx → bytes → docx2pdf (Word COM su Windows) → PDF bytes.
+- Workflow A (cessione): `cessione_credito/generator.py` + `pdf_converter.py`
+- Workflow D (verbali): `verbale_cortesia/generator.py` — riusa `pdf_converter.py`
+  da cessione tramite import diretto nel `__init__.py`
 
-**Fix**: per tipi inline (PDF, immagini, txt) NON passare `filename=` e usare
-chiave lowercase `"content-disposition"` nel dict headers. Applicato in
-`routes_vandalismo.py` e `routes_bozze.py`.
+**Path salvataggio entrambi**: `Pratiche/<n>/Pubblici/Allegati/`
 
-### ParametriInvio frozen — override body
-`ParametriInvio` è `@dataclass(frozen=True)`. Per sovrascrivere il body con la
-versione editata dall'operatore si usa `dataclasses.replace(params, body=edited_body)`.
-
----
-
-## Funzionalità per milestone
-
-| Versione | Milestone | Contenuto |
-|----------|-----------|-----------|
-| 0.1–0.4 | M1–M4.1 | Cessione credito, PEC vandalismo, lettura risposte, bozze risposta |
-| 0.5.0 | M5–M5.3 | Stato pratica, SLA, statistiche, policy editor, estrazione PDF |
-| 0.6.0 | M6.1 | Escalation SLA automatica (sollecito/formale/diffida) |
-| 0.7.0 | M7 | Fix AI dinieghi, fix PDF inner_msg, riclassifica/elimina, PDF preview |
-| 0.7.1 | M7.1 | Fix Content-Disposition inline; bump versione footer |
-| 0.7.2 | M7.2 | Aggiunti CONTEXT.md (documentazione sviluppo) e hook git commit reminder |
-| 0.7.3 | M7.3 | Fix update_lys.bat: preserva lys_hub.db durante aggiornamento produzione |
-| 0.7.4 | M7.4 | Fix prefix matching compagnie bidirezionale + label PEC/email |
-| 0.7.5 | M7.5 | Fix compagnia_pec override non svuotato su cambio dropdown |
-| 0.7.6 | M7.6 | Collegamento manuale risposta → PEC inviata (stop escalation SLA) |
-| 0.7.7 | M7.7 | Scollegamento PEC da risposta + fix crash cerca_pratica vuota |
-| 0.7.8 | M7.8 | Lista compagnie: colonna PEC/Email con fallback a email ordinaria |
-| 0.7.9 | M7.9 | Tab "Da collegare" in /risposte con badge contatore mail non matchate |
-| 0.7.10 | M7.10 | Ignora singola / Ignora tutte nel tab "Da collegare" |
-| 0.8.0 | M8 | Dual send PEC+email, email-only SMTP corretto, invio retroattivo, telefono compagnia |
-| 0.8.1 | M8.1 | Lista PEC: esito_label corretto + IMAP APPEND posta inviata (email ordinaria) |
-| 0.8.2 | M8.2 | Fix tab "Da collegare": Ignora rimuove badge senza nascondere mail; MailIn.ignorata |
-| 0.8.3 | M8.3 | IMAP APPEND posta inviata anche per PEC InfoCert (ParametriInvio + imap_*) |
-| 0.8.4 | M8.4 | Fix mail ignorata visibile nel tab: delete_mail non cancella mail_classificate |
-| **1.0.0** | **v1.0** | **Redesign UI dark glass + logo LYS Auto in topbar** |
-| **1.0.1** | **v1.0.1** | Header uniformi, KPI cliccabili, SLA highlight in /pec-inviate |
-| **1.0.2** | **v1.0.2** | Colonna risposta PEC, stato pratica in /risposte, fix tab nav e CSS vars |
-| **1.0.3** | **v1.0.3** | Corpo completo PEC nel dettaglio, Elimina hard-delete non_matchate, KPI bozze include solleciti SLA |
-
----
-
-## Fix e funzionalità v1.0.3
-
-- **Corpo completo PEC in `/pec-inviate/{id}`**: route legge `.eml` archiviato via `_estrai_body_da_eml()`, passa `body_completo` al template. Fallback su `body_excerpt` se file assente.
-- **Elimina hard-delete tab non_matchate**: `hard_delete_mail()` in `mail_in_repository` (DELETE fisico `mail_classificate` + `mail_in`). Route `POST /risposte/{id}/elimina` usa `hard_delete_mail`, redirige a `?tab=non_matchate`. Pulsante "Elimina" su tutte le righe del tab. Pulsante rinominato "Apri" (era "Collega") per chiarezza.
-- **KPI bozze home include solleciti SLA**: `SollecitoRepository.conta_pending()` sommato a `draft_pending + draft_ready`.
-- **SLA badge deduplicato in `/pec-inviate`**: rimosso badge "SLA scaduto" dalla colonna Compagnia (resta solo in colonna Risposta + highlight riga).
-
----
-
-## Lavoro svolto in questa sessione (v1.0.0)
-
-### Fix UI post-v1.0 (v1.0.1 – v1.0.2)
-
-- **Container top padding**: `padding-top: 0 → 28px` — titoli uniformemente distanziati dal header su tutte le pagine.
-- **Header uniformi**: tutti i badge milestone (`M4`, `Audit`, `Anagrafica`, `Posta in entrata`) sostituiti con `<div class="hero-eyebrow">`. Statistiche e Impostazioni: rimosso breadcrumb `← Home`, aggiunto `pratica-header`.
-- **KPI home cliccabili**: "Risposte da gestire" → `/risposte`, "Bozze in attesa" → `/bozze`, "SLA scaduti" → `/pec-inviate`.
-- **SLA breach highlight in `/pec-inviate`**: banner arancione + bordo sinistro + badge "SLA scaduto" sempre visibili quando ci sono PEC in breach (senza query param).
-- **Colonna "Risposta" in `/pec-inviate`**: `pec_ids_con_risposta()` in `pec_log_repository` — badge verde "✓ Ricevuta" / arancione "SLA scaduto" / — per ogni riga.
-- **Colonna "Stato" in `/risposte` tab matchate**: `stati_pratiche` dict (batch load da `PraticaStatoRepository`) — badge colorato stato pratica per ogni risposta collegata.
-- **Fix tab nav `/risposte`**: inline styles con `var(--lys-blue)` (#1F3A5F, invisibile su dark) → classi `.tab-nav`/`.tab-nav-item`/`.tab-badge`, colore attivo oro.
-- **CSS vars mancanti**: aggiunti `--lys-grey-200: rgba(255,255,255,0.08)` e `--lys-grey-600: #8A9DB8` usati da alcuni template.
-
-### Redesign UI Dark Glass
-
-- **`style.css`**: riscrittura completa. Tema dark navy (`--page-bg: #0B1525`). Carte glass
-  (`background: rgba(255,255,255,0.04); backdrop-filter: blur(10px)`). Tutti i CSS var
-  `--lys-grey-*` riassegnati a colori light-on-dark (es. `--lys-grey-900: #E8EDF5`).
-  Topbar con `backdrop-filter: blur(20px)` + linea oro animata `::after`. Nuove animazioni:
-  `fade-up` su hero/card/results; `ping-dot` per alert dot in nav; hero-stats come glass strip.
-  Bottoni dark con hover oro. Input/select dark `background: rgba(255,255,255,0.06)`.
-- **`base.html`**: `brand-mark + brand-name` sostituiti con `<img class="brand-logo">` +
-  `<div class="brand-text">` (titolo + sottotitolo). Logo `logo-lys.jpg` in `static/`
-  con `mix-blend-mode: screen` per fondere il fondo nero del JPEG col topbar scuro.
-- **`risposte_list.html`**: `background: #FFF8E5` (action_required row) → `rgba(201,152,26,0.07)`.
-- **`pec_inviata_detail.html`**: alert info hard-coded blue → classe `.alert-info`.
-- **`__init__.py` + `pyproject.toml`**: versione `0.8.4` → `1.0.0`.
-
-### Design System v3 — regole chiave
-
-| Regola | Dettaglio |
-|--------|-----------|
-| Glass surface | `background: rgba(255,255,255,0.04); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.09)` |
-| Logo topbar | `mix-blend-mode: screen` su JPEG con fondo nero → fondo scompare sul nav scuro |
-| CSS vars dark | `--lys-grey-900` = testo chiaro; `--lys-grey-300` = border glass; `--lys-gold-glow` = `#F0C040` |
-| Animazioni | `fade-up` 0.4s ease; `ping-dot` per alert; no motion su elementi funzionali |
-| Inline styles | Sostituire hex chiari con `rgba(201,152,26,...)` o classi semantiche (`.alert-info`, etc.) |
-
----
-
-## Lavoro svolto in questa sessione (v0.8.1–0.8.4)
-
-### IMAP APPEND posta inviata (v0.8.1 + v0.8.3)
-
-- **`pec_mailer.py`**: aggiunta `salva_in_posta_inviata(eml_bytes, *, imap_host, imap_port,
-  imap_user, imap_password)` — connessione `IMAP4_SSL`, rileva cartella Sent via attributo
-  `\Sent` nel LIST, fallback su nomi noti ("Sent", "INBOX.Sent", …), APPEND con flag `\Seen`.
-  `_trova_cartella_inviata()` helper interno.
-- **`invio_pec.py`**: `invia_email_ordinaria()` accetta `imap_host/port/user/password`
-  (default `""`); dopo SMTP OK chiama `salva_in_posta_inviata()` (non fatale su errore).
-  `ParametriInvio` esteso con `imap_host/port/user/password`; `invia()` chiama
-  `salva_in_posta_inviata()` dopo send OK.
-- **`routes_vandalismo.py`**: `_build_parametri_invio` popola IMAP: path PEC usa
-  `pec_imap_host + pec_user/pec_password`; path email-only usa `email_imap_host +
-  email_user/email_password`.
-- **`routes_pec_log.py`**: POST `/pec-inviate/{id}/invia-email` passa `email_imap_*` a
-  `invia_email_ordinaria()`.
-
-### Fix lista PEC inviate — esito_label (v0.8.1)
-
-- **`pec_inviate_list.html`**: colonna esito sostituita da `r.esito_label` con colori:
-  verde per OK, arancio per `email_esito == "KO"`, rosso per Errore.
-
-### Fix tab "Da collegare" — Ignora non nasconde (v0.8.2 + v0.8.4)
-
-- **`mail_in_repository.py`**: `list_con_classificazione(solo_non_matchate=True)` non
-  filtra più `ignorata=0` → le mail ignorate restano visibili nel tab.
-  `delete_mail()` e `ignora_non_matchate()` NON cancellano più `mail_classificate`:
-  `mc.id IS NOT NULL` resta soddisfatta dopo ignore → mail visibile nel tab.
-  `count_non_matchate()` filtra ancora `ignorata=0` → badge scende a 0.
-- **`MailIn`**: aggiunto campo `ignorata: bool = False`; `_row_to_mail()` lo popola.
-- **`risposte_list.html`**: "Ignora tutte" visibile solo se `count_non_matchate > 0`;
-  per-row: mail già ignorate mostrano label "ignorata" invece del pulsante Ignora.
-
-### Regole aggiornate
-
-| Regola | Dove | Dettaglio |
-|--------|------|-----------|
-| Soft delete mail | `mail_in_repository.py` | Solo `ignorata=1`; NON cancellare `mail_classificate` (serve per visibilità nel tab) |
-| IMAP APPEND | `pec_mailer.py` | Dopo ogni send OK (PEC e email ordinaria), non fatale su errore |
-| Cartella Sent IMAP | `pec_mailer.py` | Attributo `\Sent` nel LIST; fallback "Sent"/"INBOX.Sent" |
-| IMAP credenziali | `routes_vandalismo.py` | PEC → `pec_imap_host`/`pec_user`; email-only → `email_imap_host`/`email_user` |
-
----
-
-## Lavoro svolto in questa sessione (v0.8.0)
-
-### Dual send PEC + email ordinaria (M8)
-
-- **`compagnie_repository.py`**: aggiunto campo `telefono: str = ""` alla dataclass
-  `Compagnia`, alla tabella SQLite (+ migration `ALTER TABLE`), a `_row_to_compagnia`,
-  `create()`, `update()`.
-- **`compagnia_form.html`**: campo "Telefono" facoltativo nella sezione "Identificazione".
-- **`routes_compagnie.py`**: `telefono` aggiunto a `create()`, `update()`, valori form.
-- **`pec_log_repository.py`**: due nuove colonne in `pec_inviate`:
-  `email_destinatario TEXT DEFAULT ''` e `email_esito TEXT DEFAULT ''` (+ migration).
-  `PecInviata` ha i due campi. `esito_label` aggiornato: "Inviata PEC + email" /
-  "Inviata PEC (email fallita)" / "Inviata PEC". Nuovo metodo `aggiorna_email_esito()`.
-- **`invio_pec.py`**: aggiunta funzione `invia_email_ordinaria()` che costruisce il MIME,
-  invia via SMTP normale e aggiorna `email_destinatario`/`email_esito` nel record DB.
-  Nuovo dataclass `EsitoEmailOrdinaria`.
-- **`routes_vandalismo.py`**: `_build_parametri_invio` ora usa SMTP normale per compagnie
-  email-only (`not compagnia.pec`). `vandalismo_invia` aggiunge dual send se compagnia
-  ha sia PEC che email: chiama `invia_email_ordinaria()` dopo `invia()` e ricarica il
-  record aggiornato dal DB.
-- **`routes_pec_log.py`**: route GET `/pec-inviate/{id}` ora carica anche la compagnia
-  e la passa al template. Nuova route POST `/pec-inviate/{id}/invia-email`: estrae body
-  dal `.eml` con Python `email` stdlib, cerca allegati in WinCar per nome, invia via SMTP
-  normale, redirect a `?email_inviata=1`.
-- **`pec_inviata_detail.html`**: pulsante "Invia via email" (visibile solo se compagnia
-  ha email e email non ancora inviata). Banner di conferma `?email_inviata=1`. Riga
-  "Email ordinaria" con badge Inviata/Errore/Dry-run nella card intestazione.
-
-### Regole aggiunte
-
-| Regola | Dove | Dettaglio |
-|--------|------|-----------|
-| Email-only → SMTP normale | `routes_vandalismo.py` | Se `not compagnia.pec`: usa `smtp_*` (Tophost) |
-| Dual send → dopo PEC OK | `routes_vandalismo.py` | Se `compagnia.pec and compagnia.email and esito != KO` |
-| Body eml → `email` stdlib | `routes_pec_log.py` | `_estrai_body_da_eml()`: text/plain senza filename |
-| Allegati retroattivi → WinCar | `routes_pec_log.py` | `_trova_allegati_pratica()`: rglob per nome |
-
----
-
-## Lavoro svolto in sessioni precedenti (v0.7.6–0.7.10)
-
-### Collegamento manuale risposta → PEC inviata (v0.7.6)
-- **Problema**: quando il matcher non trova corrispondenza automatica (nessun
-  `In-Reply-To`, nessuna targa/pratica/polizza nel testo), `mail_classificate.pec_inviata_id`
-  rimane NULL e l'escalation SLA continua anche se la compagnia ha risposto.
-- **Fix** (`mail_in_repository.py`): nuovo metodo `aggiorna_link_pec(mail_in_id,
-  pec_inviata_id, pratica_numero)` — UPDATE su `mail_classificate` con
-  `match_method='manual'`, `match_confidence=1.0`.
-- **Route** (`routes_risposte.py`):
-  - GET `/risposte/{id}` accetta `?cerca_pratica=N` → carica `pec_repo.list_by_pratica(N)`
-    e passa `pec_candidates` al template.
-  - POST `/risposte/{id}/collega` — valida mail + PEC, chiama `aggiorna_link_pec`,
-    redirect a `?collegata=1`.
-- **UI** (`risposta_detail.html`): sezione "Collega manualmente" visibile solo se
-  `pec_inviata IS NULL`. Step 1: input numero pratica + "Cerca PEC →". Step 2: dropdown
-  con PEC trovate (id, data, destinatario, esito) + bottone "Collega".
-  Banner di conferma `?collegata=1` dopo il salvataggio.
-
-### Ignora singola / Ignora tutte nel tab "Da collegare" (v0.7.10)
-- **`mail_in_repository.py`**: `ignora_non_matchate()` — bulk soft-delete su tutti
-  i mail_in con `pec_inviata_id IS NULL AND ai_model != '(skip)'`.
-- **`routes_risposte.py`**: POST `/risposte/ignora-non-matchate` (bulk) +
-  POST `/risposte/{id}/ignora` (singola, redirect a `tab=non_matchate`).
-- **`risposte_list.html`**: pulsante "Ignora tutte (N)" con confirm in cima al tab;
-  pulsante "Ignora" per riga con confirm.
-
-### Tab "Da collegare" in /risposte (v0.7.9)
-- **`mail_in_repository.py`**: `list_con_classificazione` aggiunto param
-  `solo_non_matchate=True` → WHERE `pec_inviata_id IS NULL AND ai_model != '(skip)'`.
-  Nuovo `count_non_matchate()` per badge header.
-- **`routes_risposte.py`**: param `tab=matchate|non_matchate`; rimosso `show_all`.
-  `count_non_matchate` passato al template.
-- **`risposte_list.html`**: tab nav con badge rosso contatore; tab "Da collegare"
-  mostra lista senza colonna Pratica + pulsante "Collega" diretto al dettaglio.
-  Escluse ricevute PEC sistema (`ai_model='(skip)'`).
-
-### Lista compagnie — colonna PEC/Email (v0.7.8)
-- **`compagnie_list.html`**: colonna rinominata "PEC / Email"; cella mostra `c.pec`
-  se valorizzata, altrimenti `c.email` con badge `(email)`, altrimenti `—`.
-  Aggiornato testo descrittivo header pagina.
-
-### Scollegamento PEC + fix cerca_pratica vuota (v0.7.7)
-- **Scollega** (`mail_in_repository.py`): nuovo `scollega_pec(mail_in_id)` — UPDATE
-  `mail_classificate` con `pec_inviata_id=NULL`, `match_method='none'`.
-- **Route** (`routes_risposte.py`): POST `/risposte/{id}/scollega` + banner `?scollegata=1`.
-- **UI** (`risposta_detail.html`): pulsante "Scollega" inline accanto a "PEC originale"
-  (visibile sia per match automatici che manuali), con `confirm()` JS.
-- **Fix crash**: `cerca_pratica` da `int | None` a `str | None` nel route; parsing
-  manuale con `try/except`; attributo `required` sull'input HTML.
-
----
-
-## Lavoro svolto in sessioni precedenti (v0.7.2–0.7.5)
-
-### CONTEXT.md + hook commit reminder (v0.7.2)
-- Creato `CONTEXT.md` con documentazione architetturale, decisioni tecniche, milestone.
-- Aggiunto PostToolUse hook in `.claude/settings.local.json`: dopo ogni `git commit`
-  inietta reminder nel contesto Claude per aggiornare CONTEXT.md prima del push.
-
-### Fix update_lys.bat — preserva DB (v0.7.3)
-- **Problema**: `scripts/update_lys.bat` preservava `.env` e `.venv` ma non
-  `data/lys_hub.db`. Al primo aggiornamento prod si perdevano compagnie, PEC inviate,
-  mail classificate.
-- **Fix**: aggiunto blocco `copy /Y lys_hub.db OLD→NEW` con `mkdir data` se assente,
-  prima del backup dell'installazione precedente.
-
-### Compagnie — PEC o email obbligatoria + dropdown match multipli (v0.7.3)
-- **Anagrafica compagnie** (`/compagnie/nuova`, `/compagnie/{id}`):
-  - Validazione cambiata da "PEC obbligatoria" a "PEC **o** email ordinaria obbligatoria"
-    (`compagnie_repository.py`: `create()` + `update()`).
-  - Form: campo PEC non più `required`; hint aggiornati; JS blocca submit se entrambi vuoti.
-- **Invio a email ordinaria**: `data.py` → `compagnia_pec` usa `compagnia.pec or compagnia.email`
-  come fallback → SMTP invia all'email quando la compagnia non ha PEC.
-- **Dropdown match multipli** (`vandalismo_preview.html`):
-  - Aggiunto `lookup_all_by_name()` in `compagnie_repository.py`.
-  - `_trova_compagnia()` in `routes_vandalismo.py` restituisce `(compagnia, lista_candidati)`.
-  - Se match > 1: mostra `<select>` con tutte le opzioni (nome + PEC/email).
-  - `compagnia_id` come hidden field → sopravvive al flusso anteprima → conferma → invia.
-
-### Fix prefix matching compagnie + label PEC/email (v0.7.4)
-- **Bug**: `lookup_all_by_name` usava match esatto su `nome_norm`. "Unipol" (norm `unipol`) non
-  trovava "Unipol Agenzia 39622" (norm `unipol agenzia 39622`) → dropdown non compariva.
-- **Fix**: query con prefix matching bidirezionale:
-  `nome_norm = ? OR nome_norm LIKE ? || ' %' OR ? LIKE nome_norm || ' %'`
-  → trova sia la compagnia madre cercando la figlia, sia viceversa.
-- **Label** campo `compagnia_pec` in `vandalismo_preview.html` cambiata in "Indirizzo PEC / email"
-  con hint che spiega che l'invio avviene sempre via server PEC (InfoCert gestisce la consegna
-  a email ordinaria in modo trasparente).
-
-### Fix compagnia_pec override su cambio dropdown (v0.7.5)
-- **Bug**: cambiando compagnia dal dropdown e cliccando "Rigenera", il campo
-  "Indirizzo PEC / email" restava valorizzato con l'indirizzo della compagnia
-  precedente. Causa: `overrides["compagnia_pec"]` (valore dal form) aveva priorità
-  su `from_pratica()` anche quando l'utente aveva scelto una nuova compagnia.
-- **Fix** (`routes_vandalismo.py`): se `compagnia_id` è esplicitamente valorizzato
-  (scelta dal dropdown), `overrides.pop("compagnia_pec")` prima di chiamare
-  `from_pratica()` → il campo viene ricompilato dalla nuova compagnia.
-
----
-
-## Lavoro svolto in sessioni precedenti (v0.7.0–0.7.1)
-
-### Fix classificazione AI (dinieghi)
-- **Problema**: risposta "veicolo non assicurato con noi" classificata come
-  `liquidazione` (85% conf) perché la definizione includeva "il diniego di copertura".
-  Pratica transitata erroneamente a "In liquidazione".
-- **Fix 1** (`ai_classifier.py`): rimossa "diniego di copertura" da `liquidazione`;
-  aggiunta in `altro` con esempi espliciti.
-- **Fix 2** (`run_polling.py`): soglia confidence 0.70 per `auto_transition()`.
-
-### Fix estrazione PDF allegati PEC (M5.3 follow-up)
-- **Problema**: `augment_body_with_pdf` riceveva il wrapper PEC esterno invece di
-  `postacert.eml`. PDF mai trovati.
-- **Fix**: `inner_msg = _find_postacert(msg) or msg` calcolato una volta in
-  `fetch_into`; passato a `_has_attachments` e `augment_body_with_pdf`.
-- **Rimossa** logica soglia 200 char: estrazione sempre.
-- **Aggiunto** `reextract_body()` pubblico per il bottone "Riclassifica".
-
-### Cruscotto risposte
-- Bottone **🔄 Riclassifica**: re-legge `.eml` dal filesystem, aggiorna body_text,
-  cancella e rigenera classificazione AI. Flash banner post-riclassificazione.
-- Bottone **🗑 Elimina**: soft delete con conferma inline `<details>`.
-- **Soft delete** (`ignorata=1`): mail eliminate non riscaricate al ciclo successivo.
-
-### PDF preview allegati vandalismo
-- Rimosso modal `<dialog>` + `<embed>` (causava finestra vuota sovrapposta).
-- Pulsante 📄 e nome file diventati `<a target="_blank">` — PDF apre in nuova scheda.
-- Fix `Content-Disposition: inline` in route `/pratiche/{n}/allegato`.
-
-### Cessione credito per atto vandalico
-- Aggiunto checkbox `e_vandalismo` in `CessioneData`.
-- `campi_mancanti()`: skippa i 6 campi controparte se `e_vandalismo=True`.
-- Generator: PREMESSO differenziato (vandalism text vs RCA text).
-- Template: sezioni controparte nascoste via JS toggle + `required` rimosso.
-- `_build_overrides()` in `routes.py` gestisce `e_vandalismo` come bool checkbox.
-
-### PEC vandalismo — textarea editabile
-- Rimosso `readonly` dalla textarea bozza PEC; aggiunto `name="pec_body"`.
-- Body editato fluisce: `conferma` → hidden field → `invia` via `dc_replace()`.
-- "Rigenera anteprima" sovrascrive le edits ricostruendo da zero (comportamento corretto).
-- Rimossi: voce "Referente pratica" e firma nome dalla chiusura PEC.
-
----
-
-## Regole / parametri stabiliti
-
-| Regola | Dove | Dettaglio |
-|--------|------|-----------|
-| `inner_msg` per PDF | `imap_fetcher.py` | Sempre `_find_postacert(msg) or msg` |
-| PDF estrazione sempre | `pdf_extractor.py` | Nessuna soglia body length |
-| Soglia confidence auto-transition | `run_polling.py` | `>= 0.70` |
-| Soft delete mail | `mail_in_repository.py` | `ignorata=1`, mai DELETE fisico |
-| Content-Disposition inline | `routes_*.py` | Chiave lowercase, no `filename=` |
-| Prompt AI dinieghi | `ai_classifier.py` | "I dinieghi NON sono liquidazioni" |
-| `dc_replace` ParametriInvio | `routes_vandalismo.py` | Per override body editato |
+### Editable install venv
+Il file `.venv/Lib/site-packages/__editable__.lys_workflow_hub-0.1.0.pth`
+deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hub\src`
+(non al path OneDrive precedente). Verificare se il venv viene ricreato.
 
 ---
 
 ## Ambiente
 
-- **Dev**: WSL2, repo in `/mnt/c/Users/lucap/Documents/Claude/Projects/Lysauto/lys-workflow-hub`
+- **Dev**: WSL2, repo `/mnt/c/Users/lucap/Documents/Claude/Projects/Lysauto/lys-workflow-hub`
 - **Prod**: `C:\LYSApp\lys-workflow-hub` (Windows), Task Scheduler
-- **gh CLI**: installato in `C:\Program Files\GitHub CLI\gh.exe` (non nel PATH WSL)
-  → invocare come `"/mnt/c/Program Files/GitHub CLI/gh.exe" ...`
+- **gh CLI**: `"/mnt/c/Program Files/GitHub CLI/gh.exe"` (non nel PATH WSL)
 - **Python env**: `.venv` nella root del repo
 - **DB**: `data/lys_hub.db` (gitignored)
-- **Chiave API Anthropic**: in `.env` (gitignored)
+- **Chiave API**: in `.env` (gitignored)
 
 ---
 
-## Pending / TODO
+## Versioni
 
-- Aggiornamento produzione (`C:\LYSApp\lys-workflow-hub`) a v1.0.0 — da eseguire
-  con `scripts/update_lys.bat` (preserva `lys_hub.db`).
-  **Nota**: copiare anche `src/lys_workflow_hub/web/static/logo-lys.jpg` (nuovo asset).
-- Feature candidate discusse ma non implementate: timeline pratica, storico
-  comunicazioni unificato, filtri cruscotto, notifica push su risposta ricevuta,
-  matching ricevute PEC InfoCert, export CSV/Excel, backup DB automatico notturno.
+| Versione | Branch | Contenuto |
+|----------|--------|-----------|
+| 1.0.3 | main | Base stabile: cessione, vandalismo, risposte AI, bozze, SLA, UI dark glass |
+| 2.0.0-dev | v2 | + Verbali consegna/riconsegna veicoli di cortesia (Workflow D) |
+
+---
+
+## TODO v2
+
+- Deploy v2 su prod (dopo test completo su dev)
+- Sezione danni verbali: UI grafica schema auto
+- Franchigie verbali: definire valori default LYS
+- Merge v1 fixes in v2 con `git merge main` quando escono aggiornamenti v1.0.x
