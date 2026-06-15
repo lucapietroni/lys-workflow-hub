@@ -165,19 +165,10 @@ def _col_header_row(table, row_idx: int, labels: list[str],
 
 
 def _add_header(doc: Document, data: VerbaleData) -> None:
-    # Logo + testo company per garantire leggibilità (il PNG potrebbe avere testo trasparente)
     if _LOGO_PNG.exists():
-        p = _para(doc, alignment=WD_ALIGN_PARAGRAPH.CENTER, space_after=1)
-        p.add_run().add_picture(str(_LOGO_PNG), width=Cm(4.5))
+        p = _para(doc, alignment=WD_ALIGN_PARAGRAPH.CENTER, space_after=3)
+        p.add_run().add_picture(str(_LOGO_PNG), width=Cm(5.0))
 
-    p = _para(doc, alignment=WD_ALIGN_PARAGRAPH.CENTER, space_before=0, space_after=0)
-    _run(p, CARROZZERIA_NOME, bold=True, size=12)
-
-    p = _para(doc, alignment=WD_ALIGN_PARAGRAPH.CENTER, space_before=0, space_after=3)
-    _run(p, f"{CARROZZERIA_VIA}, {CARROZZERIA_CAP} {CARROZZERIA_COMUNE}",
-         size=8.5, color=COLOR_GREY)
-
-    # Titolo verbale
     p = _para(doc, alignment=WD_ALIGN_PARAGRAPH.CENTER, space_before=2, space_after=1)
     _run(p,
          "VERBALE DI CONSEGNA VEICOLO DI CORTESIA"
@@ -194,39 +185,29 @@ DATA_ROW_H = 370   # twips per riga dati standard
 
 
 def _add_locatario(doc: Document, data: VerbaleData) -> None:
-    # 6 righe: sezione + dati×4 + telefono
-    table = doc.add_table(rows=6, cols=4)
+    table = doc.add_table(rows=5, cols=4)
     table.style = "Table Grid"
     _set_table_width(table)
 
     _section_row(table, 0, "Locatario", 4)
 
-    # riga 1: nome | CF
     c = _merge_row(table, 1, 0, 1); _lv(c, "Locatario", data.locatario_nome)
     c = _merge_row(table, 1, 2, 3); _lv(c, "Cod. Fiscale", data.codice_fiscale)
     _set_row_height(table, 1, DATA_ROW_H)
 
-    # riga 2: indirizzo | localita | cap
     c = _merge_row(table, 2, 0, 1); _lv(c, "Indirizzo", data.indirizzo)
     _lv(table.rows[2].cells[2], "Località", data.localita)
     _lv(table.rows[2].cells[3], "CAP", data.cap)
     _set_row_height(table, 2, DATA_ROW_H)
 
-    # riga 3: patente
-    _lv(table.rows[3].cells[0], "Patente N°",      data.patente_numero)
-    _lv(table.rows[3].cells[1], "Rilasciata da",   data.patente_rilasciata_da)
-    _lv(table.rows[3].cells[2], "il",              data.patente_data_rilascio)
-    _lv(table.rows[3].cells[3], "Validità",        data.patente_validita)
+    _lv(table.rows[3].cells[0], "Patente N°",    data.patente_numero)
+    _lv(table.rows[3].cells[1], "Rilasciata da", data.patente_rilasciata_da)
+    _lv(table.rows[3].cells[2], "il",            data.patente_data_rilascio)
+    _lv(table.rows[3].cells[3], "Validità",      data.patente_validita)
     _set_row_height(table, 3, DATA_ROW_H)
 
-    # riga 4: telefono
     c = _merge_row(table, 4, 0, 3); _lv(c, "Telefono", data.telefono)
     _set_row_height(table, 4, DATA_ROW_H)
-
-    # riga 5: vuota — altezza per firma locatario (sarà nella sezione firme)
-    c = _merge_row(table, 5, 0, 3)
-    _set_cell_margins(c)
-    _set_row_height(table, 5, DATA_ROW_H)
 
 
 def _add_veicolo(doc: Document, data: VerbaleData) -> None:
@@ -313,28 +294,23 @@ def _add_note(doc: Document, data: VerbaleData) -> None:
 
     cell = table.rows[1].cells[0]
     _set_cell_margins(cell, top=60, bottom=60)
-    _set_row_height(table, 1, 1500)
+    _set_row_height(table, 1, 700)
     if data.note:
         _run(cell.paragraphs[0], data.note, size=9.0)
 
 
 def _add_firme(doc: Document, data: VerbaleData) -> None:
-    p = _para(doc, alignment=WD_ALIGN_PARAGRAPH.CENTER, space_before=5, space_after=3)
-    _run(p, f"Pratica n° {data.numero_pratica}", size=9.0, bold=True)
-
     table = doc.add_table(rows=2, cols=3)
     table.style = "Table Grid"
     _set_table_width(table)
 
-    # Riga 0: intestazioni
     _col_header_row(table, 0, [
         f"Data e ora di {data.label_tipo}",
         "Il Locatario  —  Timbro e firma",
         "Il Locatore  —  Timbro e firma",
-    ], row_height=340)
+    ], row_height=330)
 
-    # Riga 1: contenuto
-    _set_row_height(table, 1, 1600)
+    _set_row_height(table, 1, 1200)
 
     date_cell = table.rows[1].cells[0]
     _set_cell_margins(date_cell)
@@ -363,99 +339,131 @@ def _add_firme(doc: Document, data: VerbaleData) -> None:
     _run(p, "........................", size=9.0)
 
 
-MOTIVAZIONI = {
-    "lavoro":      "MOTIVI DI LAVORO",
-    "familiare":   "MOTIVI FAMILIARI",
-    "unico_mezzo": "UNICO MEZZO A DISPOSIZIONE DEL NUCLEO FAMILIARE",
-    "altro":       "ALTRO",
-}
-
-
-def _underline_field(para, value: str, min_width: int = 30) -> None:
-    """Aggiunge valore sottolineato (o spazi se vuoto) come campo compilato."""
-    text = value if value else "_" * min_width
-    r = para.add_run(text)
-    r.underline = True
-    r.font.size = Pt(10.5)
+MOTIVAZIONI = [
+    ("lavoro",      "MOTIVI DI LAVORO"),
+    ("familiare",   "MOTIVI FAMILIARI"),
+    ("unico_mezzo", "UNICO MEZZO A DISPOSIZIONE DEL NUCLEO FAMILIARE"),
+    ("altro",       "ALTRO"),
+]
 
 
 def _add_dichiarazione(doc: Document, data: VerbaleData) -> None:
-    """Pagina 2 — Dichiarazione di necessità auto sostitutiva."""
+    """Pagina 2 — Dichiarazione di necessità auto sostitutiva (stesso stile pagina 1)."""
     doc.add_page_break()
 
-    # Intestazione
-    p = _para(doc, alignment=WD_ALIGN_PARAGRAPH.CENTER, space_before=20, space_after=16)
-    _run(p, "DICHIARAZIONE DI NECESSITA' AUTO SOSTITUTIVA", bold=True, size=13)
+    # --- Logo ---
+    if _LOGO_PNG.exists():
+        p = _para(doc, alignment=WD_ALIGN_PARAGRAPH.CENTER, space_after=3)
+        p.add_run().add_picture(str(_LOGO_PNG), width=Cm(4.5))
 
-    # Riferimento vettura
-    p = _para(doc, space_before=10, space_after=10)
-    _run(p, "Riferimento vettura:  ", bold=True, size=10.5)
-    rif = " ".join(filter(None, [data.cliente_marca, data.cliente_modello, data.cliente_targa]))
-    _underline_field(p, rif, 50)
+    # --- Titolo come riga tabella scura (1 col) ---
+    t_title = doc.add_table(rows=1, cols=1)
+    t_title.style = "Table Grid"
+    _set_table_width(t_title)
+    _section_row(t_title, 0, "Dichiarazione di necessità auto sostitutiva", 1,
+                 row_height=380)
+    t_title.rows[0].cells[0].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-    # Riga sottoscritto + assicurazione
-    p = _para(doc, space_before=6, space_after=0)
-    _run(p, "Spett.le LYS AUTO S.r.l  il sottoscritto  ", size=10.5)
-    _underline_field(p, data.locatario_nome, 35)
-    _run(p, "  assicurato con", size=10.5)
+    # --- Tabella 1: dati intestazione (4 col) ---
+    t1 = doc.add_table(rows=3, cols=4)
+    t1.style = "Table Grid"
+    _set_table_width(t1)
 
-    p = _para(doc, space_before=0, space_after=6)
-    _underline_field(p, data.dich_assicurazione, 30)
-    _run(p, "    Polizza n°  ", size=10.5)
-    _underline_field(p, data.dich_polizza, 30)
+    # riga 0: riferimento vettura (targa cliente + marca)
+    rif = " — ".join(filter(None, [data.cliente_targa, data.cliente_marca]))
+    c = _merge_row(t1, 0, 0, 3)
+    _lv(c, "Riferimento vettura", rif)
+    _set_row_height(t1, 0, DATA_ROW_H)
 
-    # Proprietario del veicolo
-    p = _para(doc, space_before=10, space_after=4)
-    _run(p, "Proprietario del veicolo:", bold=True, size=10.5)
+    # riga 1: sottoscritto | assicurato con
+    c = _merge_row(t1, 1, 0, 1); _lv(c, "Sottoscritto", data.locatario_nome)
+    c = _merge_row(t1, 1, 2, 3); _lv(c, "Assicurato con", data.dich_assicurazione)
+    _set_row_height(t1, 1, DATA_ROW_H)
 
-    for label, value in [
-        ("Marca",    data.cliente_marca),
-        ("Modello",  data.cliente_modello),
-        ("Targa",    data.cliente_targa),
-    ]:
-        p = _para(doc, space_before=4, space_after=4)
-        _run(p, f"{label}:  ", size=10.5)
-        _underline_field(p, value, 28)
+    # riga 2: polizza
+    c = _merge_row(t1, 2, 0, 3); _lv(c, "Polizza n°", data.dich_polizza)
+    _set_row_height(t1, 2, DATA_ROW_H)
 
-    # Dichiara che
-    p = _para(doc, alignment=WD_ALIGN_PARAGRAPH.CENTER, space_before=14, space_after=10)
-    _run(p, "DICHIARA CHE", bold=True, size=11)
+    # --- Tabella 2: proprietario veicolo (3 col) ---
+    t2 = doc.add_table(rows=2, cols=3)
+    t2.style = "Table Grid"
+    _set_table_width(t2)
 
-    p = _para(doc, space_before=0, space_after=8)
-    _run(p, "In conseguenza del sinistro avvenuto il  ", size=10.5)
-    _underline_field(p, data.dich_data_sinistro, 18)
+    _section_row(t2, 0, "Proprietario del veicolo", 3)
+    _lv(t2.rows[1].cells[0], "Marca",   data.cliente_marca)
+    _lv(t2.rows[1].cells[1], "Modello", data.cliente_modello)
+    _lv(t2.rows[1].cells[2], "Targa",   data.cliente_targa)
+    _set_row_height(t2, 1, DATA_ROW_H)
+
+    # --- Tabella 3: dichiarazione sinistro + motivazione (2 col) ---
+    n_mot = len(MOTIVAZIONI)
+    t3 = doc.add_table(rows=2 + n_mot, cols=2)
+    t3.style = "Table Grid"
+    _set_table_width(t3)
+
+    _section_row(t3, 0, "Dichiara che", 2)
+
+    # riga 1: testo sinistro + data
+    c = _merge_row(t3, 1, 0, 1)
+    _set_cell_margins(c)
+    p = c.paragraphs[0]
+    p.paragraph_format.space_before = Pt(2)
+    p.paragraph_format.space_after  = Pt(2)
+    _run(p, "In conseguenza del sinistro avvenuto il  ", size=9.0)
+    _run(p, data.dich_data_sinistro or "_______________", bold=bool(data.dich_data_sinistro),
+         size=9.0)
     _run(p, ",  il mezzo di sua proprietà risulta inutilizzabile e che necessita "
-            "di veicolo sostitutivo per la seguente motivazione:", size=10.5)
+            "di veicolo sostitutivo per la seguente motivazione:", size=9.0)
+    _set_row_height(t3, 1, DATA_ROW_H + 120)
 
-    # Checkbox motivazioni
-    for key, label in MOTIVAZIONI.items():
-        p = _para(doc, space_before=3, space_after=3)
-        p.paragraph_format.left_indent = Cm(1.5)
+    # righe motivazioni: 2 col — simbolo | testo
+    for i, (key, label) in enumerate(MOTIVAZIONI, start=2):
         selected = (data.dich_motivazione == key)
         mark = "●" if selected else "○"
-        _run(p, f"{mark}  {label}", bold=selected, size=10.5)
+        # col 0: simbolo (stretto)
+        c_mark = t3.rows[i].cells[0]
+        _set_cell_margins(c_mark, left=120, right=40)
+        c_mark.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+        _run(c_mark.paragraphs[0], mark, bold=selected, size=11.0,
+             color=COLOR_WHITE if selected else None)
+        if selected:
+            _set_cell_shading(c_mark, COLOR_HEADER_BG)
+        # col 1: testo
+        c_txt = t3.rows[i].cells[1]
+        _set_cell_margins(c_txt)
+        c_txt.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+        _run(c_txt.paragraphs[0], label, bold=selected, size=9.0)
+        _set_row_height(t3, i, 320)
 
-    # Testo fisso
-    p = _para(doc, space_before=14, space_after=0)
+    # --- Testo fisso (paragrafo, italic come disclaimer danni) ---
+    p = _para(doc, space_before=4, space_after=4)
     _run(p, "Dichiara altresì che il mezzo fornito dalla LYS AUTO S.r.l verrà utilizzato "
             "per il tempo strettamente necessario per l'esecuzione delle riparazioni.",
-         size=10.5)
+         italic=True, size=8.5)
 
-    # Luogo e data
-    p = _para(doc, space_before=32, space_after=8)
-    _run(p, "Luogo  ", size=10.5)
-    _underline_field(p, data.dich_luogo, 18)
-    _run(p, "    data  ", size=10.5)
-    # Data dalla data_ora (solo parte data)
+    # --- Tabella 4: luogo, data, firma ---
     data_firma = data.data_ora.split(" ")[0] if data.data_ora else ""
-    _underline_field(p, data_firma, 16)
+    t4 = doc.add_table(rows=2, cols=3)
+    t4.style = "Table Grid"
+    _set_table_width(t4)
 
-    # In fede + firma
-    p = _para(doc, space_before=20, space_after=6)
-    _run(p, "In fede", size=10.5)
+    _col_header_row(t4, 0, ["Luogo", "Data", "In fede — Firma del Locatario"],
+                    row_height=300)
 
-    p = _para(doc, space_before=8, space_after=0)
-    _run(p, "_" * 42, size=10.5)
+    _set_row_height(t4, 1, 1000)
+    for cell, val in [(t4.rows[1].cells[0], data.dich_luogo),
+                      (t4.rows[1].cells[1], data_firma)]:
+        _set_cell_margins(cell)
+        cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+        p = cell.paragraphs[0]
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        _run(p, val, size=10.0)
+    cell_firma = t4.rows[1].cells[2]
+    _set_cell_margins(cell_firma)
+    cell_firma.vertical_alignment = WD_ALIGN_VERTICAL.BOTTOM
+    p = cell_firma.paragraphs[0]
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    _run(p, "........................", size=9.0)
 
 
 def _add_footer(doc: Document) -> None:
