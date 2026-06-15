@@ -183,8 +183,5 @@ def from_pratica(
             pratica.sinistro.data.strftime("%d/%m/%Y") if pratica.sinistro.data else "",
         ),
         dich_motivazione=_get("dich_motivazione", ""),
-        dich_luogo=_get(
-            "dich_luogo",
-            pratica.sinistro.comune or pratica.cliente.citta or "Roma",
-        ),
+        dich_luogo="Roma",
     )
