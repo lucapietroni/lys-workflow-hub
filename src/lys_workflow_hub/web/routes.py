@@ -26,6 +26,7 @@ from lys_workflow_hub.core.draft_repository import (
     STATUS_PENDING,
     STATUS_READY,
 )
+from lys_workflow_hub.core.sollecito_repository import SollecitoRepository
 from lys_workflow_hub.core.mail_in_repository import MailRepository
 from lys_workflow_hub.core.pratica_stato_repository import (
     PraticaStatoRepository,
@@ -96,8 +97,13 @@ def home(
         _draft_repo = DraftRepository(db_path=settings.app_db_path)
         _mail_repo = MailRepository(db_path=settings.app_db_path)
         _stato_repo = PraticaStatoRepository(db_path=settings.app_db_path)
+        _sollecito_repo = SollecitoRepository(db_path=settings.app_db_path)
         _counts = _draft_repo.conta_per_status()
-        context["kpi_bozze"] = _counts.get(STATUS_PENDING, 0) + _counts.get(STATUS_READY, 0)
+        context["kpi_bozze"] = (
+            _counts.get(STATUS_PENDING, 0)
+            + _counts.get(STATUS_READY, 0)
+            + _sollecito_repo.conta_pending()
+        )
         context["kpi_risposte_ar"] = _mail_repo.count_action_required()
         context["kpi_sla_breach"] = _stato_repo.count_sla_breach(
             sla_giorni=settings.sla_giorni_alert
