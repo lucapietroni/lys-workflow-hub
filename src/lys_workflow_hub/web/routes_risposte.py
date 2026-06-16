@@ -4,6 +4,7 @@ Route esposte:
     GET  /risposte                          Lista cronologica + filtri
     GET  /risposte/{mail_id}                Dettaglio risposta + classificazione AI
     GET  /risposte/{mail_id}/scarica        Download del .eml grezzo
+    GET  /risposte/{mail_id}/allegati/{i}   Visualizza/scarica l'allegato i-esimo
     POST /risposte/{mail_id}/riclassifica   Re-estrae body+PDF e riclassifica con AI
     POST /risposte/{mail_id}/collega        Collega manualmente a una PEC inviata
     POST /risposte/{mail_id}/scollega       Rimuove collegamento PEC (torna a non matchata)
@@ -31,7 +32,11 @@ from lys_workflow_hub.core.mail_in_repository import (
 from lys_workflow_hub.core.pec_log_repository import PecLogRepository
 from lys_workflow_hub.core.pratica_stato_repository import PraticaStatoRepository
 from lys_workflow_hub.integrations.ai_classifier import classify
-from lys_workflow_hub.integrations.imap_fetcher import reextract_body
+from lys_workflow_hub.integrations.imap_fetcher import (
+    get_attachment,
+    list_attachments,
+    reextract_body,
+)
 from lys_workflow_hub.workflows.risposte.matcher import match_mail
 
 
@@ -136,6 +141,13 @@ def risposta_detail(
     pec_candidates: list = []
     if pec_inviata is None and cerca_pratica_int is not None:
         pec_candidates = pec_repo.list_by_pratica(cerca_pratica_int)
+    allegati: list = []
+    if mail.has_attachments and mail.raw_eml_path:
+        try:
+            raw = Path(mail.raw_eml_path).read_bytes()
+            allegati = list_attachments(raw)
+        except OSError as exc:
+            logger.warning("Impossibile leggere .eml per allegati mail %s: %s", mail_id, exc)
     return templates.TemplateResponse(
         request,
         "risposta_detail.html",
@@ -146,7 +158,39 @@ def risposta_detail(
             "pec_inviata": pec_inviata,
             "pec_candidates": pec_candidates,
             "cerca_pratica": cerca_pratica_int,
+            "allegati": allegati,
         },
+    )
+
+
+_INLINE_CONTENT_TYPES = (
+    "application/pdf", "image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp",
+)
+
+
+@router.get("/risposte/{mail_id}/allegati/{index}")
+def risposta_allegato(
+    mail_id: int,
+    index: int,
+    mail_repo: MailRepository = Depends(get_mail_repo),
+) -> Response:
+    mail = mail_repo.get_mail(mail_id)
+    if mail is None:
+        raise HTTPException(404, f"Mail id={mail_id} non trovata.")
+    if not mail.raw_eml_path:
+        raise HTTPException(404, "Mail senza .eml archiviato.")
+    eml_path = Path(mail.raw_eml_path)
+    if not eml_path.exists():
+        raise HTTPException(404, "File .eml non trovato su disco.")
+    result = get_attachment(eml_path.read_bytes(), index)
+    if result is None:
+        raise HTTPException(404, "Allegato non trovato.")
+    content, filename, content_type = result
+    disposition = "inline" if content_type in _INLINE_CONTENT_TYPES else "attachment"
+    return Response(
+        content=content,
+        media_type=content_type or "application/octet-stream",
+        headers={"Content-Disposition": f'{disposition}; filename="{filename}"'},
     )
 
 

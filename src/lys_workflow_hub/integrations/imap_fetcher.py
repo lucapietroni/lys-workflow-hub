@@ -405,6 +405,65 @@ class ImapFetcher:
 # --------------------------------------------------------------------------- #
 
 
+@dataclass(frozen=True)
+class AttachmentInfo:
+    index: int
+    filename: str
+    content_type: str
+    size: int
+
+
+def list_attachments(raw_eml_bytes: bytes) -> list[AttachmentInfo]:
+    """Elenca gli allegati reali del messaggio.
+
+    Per le PEC InfoCert legge l'inner ``postacert.eml`` (il messaggio della
+    compagnia), non il wrapper esterno — stessa logica di ``_extract_body_text``.
+    """
+    msg = email.message_from_bytes(raw_eml_bytes, policy=email.policy.default)
+    if not isinstance(msg, EmailMessage):
+        return []
+    inner_msg = _find_postacert(msg) or msg
+    if not inner_msg.is_multipart():
+        return []
+    out: list[AttachmentInfo] = []
+    for idx, part in enumerate(inner_msg.iter_attachments()):
+        filename = part.get_filename() or f"allegato_{idx + 1}"
+        try:
+            payload = part.get_content()
+            size = len(payload) if isinstance(payload, (bytes, str)) else 0
+        except Exception:  # noqa: BLE001
+            size = 0
+        out.append(AttachmentInfo(
+            index=idx,
+            filename=filename,
+            content_type=part.get_content_type(),
+            size=size,
+        ))
+    return out
+
+
+def get_attachment(raw_eml_bytes: bytes, index: int) -> tuple[bytes, str, str] | None:
+    """Restituisce ``(content, filename, content_type)`` per l'allegato `index`-esimo."""
+    msg = email.message_from_bytes(raw_eml_bytes, policy=email.policy.default)
+    if not isinstance(msg, EmailMessage):
+        return None
+    inner_msg = _find_postacert(msg) or msg
+    if not inner_msg.is_multipart():
+        return None
+    for idx, part in enumerate(inner_msg.iter_attachments()):
+        if idx != index:
+            continue
+        filename = part.get_filename() or f"allegato_{idx + 1}"
+        try:
+            payload = part.get_content()
+        except Exception:  # noqa: BLE001
+            payload = part.get_payload(decode=True) or b""
+        if isinstance(payload, str):
+            payload = payload.encode("utf-8", errors="replace")
+        return payload, filename, part.get_content_type()
+    return None
+
+
 def reextract_body(
     raw_eml_bytes: bytes,
     *,
