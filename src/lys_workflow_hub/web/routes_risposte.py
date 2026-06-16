@@ -163,11 +163,6 @@ def risposta_detail(
     )
 
 
-_INLINE_CONTENT_TYPES = (
-    "application/pdf", "image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp",
-)
-
-
 @router.get("/risposte/{mail_id}/allegati/{index}")
 def risposta_allegato(
     mail_id: int,
@@ -186,11 +181,10 @@ def risposta_allegato(
     if result is None:
         raise HTTPException(404, "Allegato non trovato.")
     content, filename, content_type = result
-    disposition = "inline" if content_type in _INLINE_CONTENT_TYPES else "attachment"
     return Response(
         content=content,
         media_type=content_type or "application/octet-stream",
-        headers={"Content-Disposition": f'{disposition}; filename="{filename}"'},
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )
 
 
