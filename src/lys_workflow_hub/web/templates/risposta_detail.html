@@ -171,9 +171,26 @@
   <pre style="white-space:pre-wrap; font-family: 'SF Mono', Menlo, Consolas, monospace; font-size:0.88rem; color:var(--lys-grey-900); margin:0; max-height:500px; overflow:auto;">{{ mail.body_text }}</pre>
   <p class="meta" style="margin-top:12px;">
     Mostro il primo estratto del corpo (max ~8000 caratteri).
-    Per il messaggio completo + allegati apri il file .eml con un client email.
+    Per il messaggio completo apri il file .eml con un client email.
   </p>
 </section>
+
+{% if allegati %}
+<section class="card">
+  <h2>Allegati <span class="tag">{{ allegati|length }}</span></h2>
+  <ul class="files-list">
+    {% for a in allegati %}
+    <li>
+      <span class="file-name">{{ a.filename }}</span>
+      <span class="file-meta">
+        {{ a.content_type }} · {{ (a.size / 1024) | round(1) }} KB
+        <a class="btn" href="/risposte/{{ mail.id }}/allegati/{{ a.index }}" target="_blank">Apri</a>
+      </span>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
 
 {% if pec_inviata is none %}
 <section class="card">
