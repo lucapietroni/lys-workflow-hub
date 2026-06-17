@@ -6,7 +6,7 @@ genera documenti precompilati, monitora le risposte delle compagnie assicurative
 via PEC/email, classifica le risposte con AI e genera alert mirati.
 
 > Branch attivo: **v2** · Versione: **2.0.0-dev**
-> Branch stabile: **main** (v1.0.3)
+> Branch stabile: **main** (v1.0.4)
 
 ---
 
@@ -14,8 +14,8 @@ via PEC/email, classifica le risposte con AI e genera alert mirati.
 
 | Branch | Versione | Stato |
 |--------|----------|-------|
-| `main` | 1.0.x | Stabile — funzionalità assicurative complete |
-| `v2` | 2.0.0-dev | Sviluppo attivo — aggiunge verbali veicoli di cortesia |
+| `main` | **1.0.4** | Stabile — funzionalità assicurative complete + allegati email + fix re-download |
+| `v2` | **2.0.0-dev** | Sviluppo attivo — verbali cortesia, auto cortesia DB, dichiarazione necessità |
 
 ---
 
@@ -37,18 +37,25 @@ Nuovo workflow per generare i verbali di **consegna** e **riconsegna** dei veico
 di cortesia. Accessibile dalla pagina pratica con due nuovi pulsanti.
 
 **Flusso:**
-1. Apertura form da pagina pratica → dati cliente/veicolo auto-popolati da WinCar
-   (nominativo, CF, indirizzo, CAP, telefono, marca/modello, targa, telaio).
-2. Compilazione manuale dei campi mancanti: patente, km, livello carburante,
-   accessori, eventuali danni (3 righe), note, data/ora (auto-fill modificabile).
+1. Dropdown seleziona auto di cortesia (gestite in Impostazioni) → targa/marca/telaio
+   auto-compilati; km e danni pre-compilati dall'ultimo verbale di rientro per quella auto.
+2. Dati locatario pre-compilati da WinCar; campi manuali: patente, carburante, accessori,
+   danni (3 righe), note, data/ora (auto-fill modificabile).
 3. **Scarica PDF** (download immediato) oppure **Genera e salva in WinCar**
-   (salva in `Pratiche/<n>/Pubblici/Allegati/Verbale_Uscita_YYYYMMDD.pdf`).
+   (salva in `Pratiche/<n>/Pubblici/Allegati/`).
 
-**Verbale Uscita**: locatario, veicolo, franchigie (editabili), danni, firme.
-**Verbale Rientro**: stessa struttura, km alla riconsegna, senza franchigie.
+**Verbale Uscita** (2 pagine):
+- Pagina 1: locatario, veicolo cortesia, franchigie, danni, note, firme con timbro LYS Auto.
+- Pagina 2: Dichiarazione di necessità auto sostitutiva — campi pre-compilati da WinCar
+  (assicurazione, polizza, data sinistro, veicolo cliente); motivazione selezionabile.
 
-Logo LYS Auto nell'intestazione, nessun riferimento a fornitori esterni.
-Sezione grafica danni (schema auto cliccabile): TODO futuro.
+**Verbale Rientro** (1 pagina): stessa struttura senza franchigie né dichiarazione.
+
+**Auto di cortesia**: CRUD in `/impostazioni` — aggiunge/modifica/rimuove le auto
+disponibili (targa, marca/modello, telaio, note). Il verbale successivo pre-carica
+km e danni dall'ultimo rientro registrato per quella auto.
+
+Logo LYS Auto + timbro nell'intestazione e nelle firme, nessun riferimento esterno.
 
 ---
 

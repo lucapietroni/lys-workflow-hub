@@ -1,6 +1,6 @@
 # LYS Workflow Hub — Contesto di sviluppo
 
-> Branch: **v2** · Versione: **2.0.0-dev** (base: v1.0.3 / main)
+> Branch: **v2** · Versione: **2.0.0-dev** (base: v1.0.4 / main)
 
 ---
 
@@ -97,31 +97,50 @@ scripts/
 ## Workflow D — Verbali cortesia [v2]
 
 ### Flusso utente
-1. Pagina pratica → bottone "Verbale uscita/rientro veicolo cortesia"
-2. Form pre-compilato da WinCar: nome, CF, indirizzo, CAP, telefono, marca/modello,
-   targa, telaio. Campi manuali: patente, km, carburante, accessori, danni (3 righe),
-   note, data/ora (auto-fill con datetime corrente, modificabile).
-3. "Scarica PDF" → download immediato. "Genera e salva in WinCar" → salva in
-   `Pratiche/<n>/Pubblici/Allegati/Verbale_{Uscita|Rientro}_YYYYMMDD.pdf` + redirect.
+1. Pagina pratica → bottone "Verbale uscita / rientro veicolo cortesia"
+2. Dropdown seleziona auto di cortesia (da DB `auto_cortesia`) → targa/marca/telaio
+   pre-fill automatico; km e danni pre-fill dall'ultimo verbale rientro per quella auto.
+3. Dati locatario pre-compilati da WinCar: nome, CF, indirizzo, CAP, telefono.
+4. Campi manuali: patente, livello carburante, accessori, danni (3 righe), note, data/ora.
+5. **Verbale Uscita**: include pagina 2 — Dichiarazione di necessità auto sostitutiva
+   (assicurazione/polizza/data sinistro/veicolo cliente pre-fill da WinCar, motivazione manuale).
+6. "Scarica PDF" → download. "Genera e salva in WinCar" → salva in
+   `Pratiche/<n>/Pubblici/Allegati/` + log in `verbali_cortesia` + redirect.
 
 ### Differenze uscita vs rientro
-- Uscita: label "Km alla consegna", sezione Franchigie (editabile), titolo "Verbale di Uscita"
-- Rientro: label "Km alla riconsegna", no Franchigie, titolo "Verbale di Rientro"
-- Generator: funzione `generate(data)` dispatcha su `data.tipo`
+- Uscita: Franchigie (editabili), pagina 2 dichiarazione necessità
+- Rientro: nessuna franchisia, nessuna dichiarazione; km = km alla riconsegna
+- Pre-fill km/danni: uscita legge `get_last_rientro(auto_id)`, rientro non pre-fill
 
-### TODO Workflow D
-- Sezione danni con UI grafica (schema auto cliccabile con zone cliccabili)
-- Franchigie: decidere valori default per auto di cortesia LYS
+### DB auto cortesia (`auto_cortesia_repository.py`)
+- `auto_cortesia`: targa (UNIQUE), marca_modello, telaio, note
+- `verbali_cortesia`: tipo, auto_id FK, pratica_numero, km, livello_carburante,
+  danni_json, note, data_ora
+- CRUD in `/impostazioni` → sezione "Auto di cortesia"
+
+### Layout PDF (generator.py)
+- Pagina 1: logo 5cm + titolo + 5 tabelle bordate (locatario, veicolo, franchigie,
+  danni, note, firme) — tutto in 1 pagina A4
+- Tabelle: `TABLE_WIDTH_DXA = 9977` twips, `_section_row()` sfondo `2C3E50` bianco,
+  `_col_header_row()` sfondo `D0D0D0`
+- Firme: 3 colonne — data/ora | Il Locatario (timbro LYS 5.5cm) | Il Locatore (firma manuale)
+- Pagina 2 (solo uscita): logo 4.5cm + titolo scuro + 4 tabelle (intestazione,
+  proprietario veicolo, dichiarazione+motivazioni, luogo/data/firma)
 
 ### Route (routes_verbale.py)
 ```
-GET  /pratiche/{n}/verbale/uscita          Form uscita pre-filled
+GET  /pratiche/{n}/verbale/uscita          Form uscita pre-filled (autos dropdown)
 POST /pratiche/{n}/verbale/uscita/pdf      Genera → download PDF
 POST /pratiche/{n}/verbale/uscita/salva    Genera → salva WinCar → redirect
-GET  /pratiche/{n}/verbale/rientro         Form rientro pre-filled
+GET  /pratiche/{n}/verbale/rientro         Form rientro pre-filled (autos dropdown)
 POST /pratiche/{n}/verbale/rientro/pdf     Genera → download PDF
 POST /pratiche/{n}/verbale/rientro/salva   Genera → salva WinCar → redirect
 ```
+
+### Allegati email visibili in /risposte/{id} (portato da main v1.0.4)
+`list_attachments()` / `get_attachment()` in `imap_fetcher.py` estraggono allegati
+dall'inner `postacert.eml`. Route `GET /risposte/{id}/allegati/{i}` serve inline.
+Template lista allegati con nome/tipo/dimensione e link "Apri" (nuova scheda).
 
 ---
 
@@ -155,8 +174,13 @@ Nel prompt: **"I dinieghi NON sono liquidazioni"**.
 **Regola**: eseguita solo se `confidence >= 0.70` (`run_polling.py`).
 
 ### Soft delete mail_in
-`delete_mail()` scrive `UPDATE mail_in SET ignorata=1` (mai DELETE fisico).
-`max_uid()` include `ignorata=1` → UID non scende → fetcher non riscarica.
+`delete_mail()` e `hard_delete_mail()` scrivono `UPDATE mail_in SET ignorata=1`
+(mai DELETE fisico). `max_uid()` include `ignorata=1` → UID non scende → fetcher
+non riscarica mai una mail già vista, neanche se eliminata.
+
+`hard_delete_mail()` cancella in più `mail_classificate` (rimozione completa dalla UI),
+ma la riga `mail_in` rimane come tombstone per bloccare il re-download via UNIQUE
+su `(casella, uid_imap)`.
 
 **Regola critica**: `delete_mail()` e `ignora_non_matchate()` NON cancellano
 `mail_classificate`. Se cancellate, `mc.id IS NOT NULL` fallirebbe e la mail
@@ -199,14 +223,13 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 
 | Versione | Branch | Contenuto |
 |----------|--------|-----------|
-| 1.0.3 | main | Base stabile: cessione, vandalismo, risposte AI, bozze, SLA, UI dark glass |
-| 2.0.0-dev | v2 | + Verbali consegna/riconsegna veicoli di cortesia (Workflow D) |
+| 1.0.4 | main | Base stabile: cessione, vandalismo, risposte AI, bozze, SLA, UI dark glass, allegati email, fix re-download |
+| 2.0.0-dev | v2 | + Verbali cortesia con auto di cortesia DB, dichiarazione necessità, timbro LYS |
 
 ---
 
 ## TODO v2
 
 - Deploy v2 su prod (dopo test completo su dev)
-- Sezione danni verbali: UI grafica schema auto
-- Franchigie verbali: definire valori default LYS
-- Merge v1 fixes in v2 con `git merge main` quando escono aggiornamenti v1.0.x
+- Sezione danni verbali: UI grafica schema auto cliccabile
+- Franchigie verbali: definire valori default LYS Auto
