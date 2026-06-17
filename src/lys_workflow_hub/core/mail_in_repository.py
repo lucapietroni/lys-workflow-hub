@@ -632,11 +632,11 @@ class MailRepository:
             return cur.rowcount > 0
 
     def hard_delete_mail(self, mail_id: int) -> bool:
-        """Hard DELETE da DB di mail_in + mail_classificate.
+        """Rimuove classificazione e mette ignorata=1 su mail_in.
 
-        Usato da "Elimina" nel tab non_matchate. La mail potrebbe essere
-        riscaricata al prossimo polling se il suo UID IMAP non era il massimo;
-        accettabile per mail di spam/rumore senza Message-ID rilevante.
+        NON fa DELETE fisico: mantenere la riga con ignorata=1 garantisce che
+        il UNIQUE su (casella, uid_imap) blocchi il re-download al prossimo
+        polling, indipendentemente da quale UID sia il massimo in DB.
         """
         with self._connect() as conn:
             conn.execute(
@@ -644,7 +644,7 @@ class MailRepository:
                 (int(mail_id),),
             )
             cur = conn.execute(
-                "DELETE FROM mail_in WHERE id = ?",
+                "UPDATE mail_in SET ignorata = 1 WHERE id = ?",
                 (int(mail_id),),
             )
             return cur.rowcount > 0

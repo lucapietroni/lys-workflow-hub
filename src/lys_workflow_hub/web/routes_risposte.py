@@ -411,10 +411,10 @@ def risposta_elimina(
     mail_id: int,
     mail_repo: MailRepository = Depends(get_mail_repo),
 ) -> RedirectResponse:
-    """Elimina mail_in + classificazione dal DB.
+    """Elimina classificazione e nasconde la mail (ignorata=1).
 
-    Il file .eml su filesystem viene conservato. La mail non verrà riscaricata
-    al prossimo polling se ha Message-ID valorizzato (UNIQUE INDEX).
+    Non fa hard-delete per evitare che il prossimo polling ri-scarichi la
+    stessa mail (la riga tombstoned blocca il UNIQUE su uid_imap).
     """
     mail = mail_repo.get_mail(mail_id)
     if mail is None:
