@@ -20,6 +20,9 @@ class AutoCortesia:
     targa: str
     marca_modello: str
     telaio: str
+    franchigia_rca: str
+    franchigia_kasco: str
+    franchigia_furto_incendio: str
     note: str
 
 
@@ -57,14 +60,23 @@ class AutoCortesiaRepository:
         with self._conn() as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS auto_cortesia (
-                    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-                    targa         TEXT    UNIQUE NOT NULL,
-                    marca_modello TEXT    NOT NULL,
-                    telaio        TEXT    DEFAULT '',
-                    note          TEXT    DEFAULT '',
-                    created_at    TEXT    DEFAULT (datetime('now'))
+                    id                         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    targa                      TEXT    UNIQUE NOT NULL,
+                    marca_modello              TEXT    NOT NULL,
+                    telaio                     TEXT    DEFAULT '',
+                    franchigia_rca             TEXT    DEFAULT '',
+                    franchigia_kasco           TEXT    DEFAULT '',
+                    franchigia_furto_incendio  TEXT    DEFAULT '',
+                    note                       TEXT    DEFAULT '',
+                    created_at                 TEXT    DEFAULT (datetime('now'))
                 )
             """)
+            # Migrazione per DB esistenti
+            for col in ("franchigia_rca", "franchigia_kasco", "franchigia_furto_incendio"):
+                try:
+                    conn.execute(f"ALTER TABLE auto_cortesia ADD COLUMN {col} TEXT DEFAULT ''")
+                except Exception:
+                    pass
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS verbali_cortesia (
                     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -84,50 +96,63 @@ class AutoCortesiaRepository:
     # CRUD auto
     # ------------------------------------------------------------------
 
+    _SELECT = (
+        "SELECT id, targa, marca_modello, telaio, "
+        "franchigia_rca, franchigia_kasco, franchigia_furto_incendio, note "
+        "FROM auto_cortesia"
+    )
+
     def list_auto(self) -> list[AutoCortesia]:
         with self._conn() as conn:
-            rows = conn.execute(
-                "SELECT id, targa, marca_modello, telaio, note "
-                "FROM auto_cortesia ORDER BY targa"
-            ).fetchall()
+            rows = conn.execute(self._SELECT + " ORDER BY targa").fetchall()
         return [self._row_to_auto(r) for r in rows]
 
     def get_auto(self, auto_id: int) -> AutoCortesia | None:
         with self._conn() as conn:
             row = conn.execute(
-                "SELECT id, targa, marca_modello, telaio, note "
-                "FROM auto_cortesia WHERE id = ?", (auto_id,)
+                self._SELECT + " WHERE id = ?", (auto_id,)
             ).fetchone()
         return self._row_to_auto(row) if row else None
 
     def create_auto(
-        self, *, targa: str, marca_modello: str, telaio: str = "", note: str = ""
+        self, *, targa: str, marca_modello: str, telaio: str = "",
+        franchigia_rca: str = "", franchigia_kasco: str = "",
+        franchigia_furto_incendio: str = "", note: str = ""
     ) -> AutoCortesia:
         targa = targa.upper().strip()
         with self._conn() as conn:
             cur = conn.execute(
-                "INSERT INTO auto_cortesia (targa, marca_modello, telaio, note) "
-                "VALUES (?, ?, ?, ?)",
-                (targa, marca_modello.strip(), telaio.strip(), note.strip()),
+                "INSERT INTO auto_cortesia "
+                "(targa, marca_modello, telaio, franchigia_rca, franchigia_kasco, "
+                "franchigia_furto_incendio, note) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (targa, marca_modello.strip(), telaio.strip(),
+                 franchigia_rca.strip(), franchigia_kasco.strip(),
+                 franchigia_furto_incendio.strip(), note.strip()),
             )
             return AutoCortesia(
                 id=cur.lastrowid,
                 targa=targa,
                 marca_modello=marca_modello.strip(),
                 telaio=telaio.strip(),
+                franchigia_rca=franchigia_rca.strip(),
+                franchigia_kasco=franchigia_kasco.strip(),
+                franchigia_furto_incendio=franchigia_furto_incendio.strip(),
                 note=note.strip(),
             )
 
     def update_auto(
-        self, auto_id: int, *, targa: str, marca_modello: str,
-        telaio: str = "", note: str = ""
+        self, auto_id: int, *, targa: str, marca_modello: str, telaio: str = "",
+        franchigia_rca: str = "", franchigia_kasco: str = "",
+        franchigia_furto_incendio: str = "", note: str = ""
     ) -> None:
         with self._conn() as conn:
             conn.execute(
-                "UPDATE auto_cortesia SET targa=?, marca_modello=?, telaio=?, note=? "
+                "UPDATE auto_cortesia SET targa=?, marca_modello=?, telaio=?, "
+                "franchigia_rca=?, franchigia_kasco=?, franchigia_furto_incendio=?, note=? "
                 "WHERE id=?",
-                (targa.upper().strip(), marca_modello.strip(),
-                 telaio.strip(), note.strip(), auto_id),
+                (targa.upper().strip(), marca_modello.strip(), telaio.strip(),
+                 franchigia_rca.strip(), franchigia_kasco.strip(),
+                 franchigia_furto_incendio.strip(), note.strip(), auto_id),
             )
 
     def delete_auto(self, auto_id: int) -> None:
@@ -184,6 +209,9 @@ class AutoCortesiaRepository:
             targa=row["targa"],
             marca_modello=row["marca_modello"],
             telaio=row["telaio"] or "",
+            franchigia_rca=row["franchigia_rca"] or "",
+            franchigia_kasco=row["franchigia_kasco"] or "",
+            franchigia_furto_incendio=row["franchigia_furto_incendio"] or "",
             note=row["note"] or "",
         )
 

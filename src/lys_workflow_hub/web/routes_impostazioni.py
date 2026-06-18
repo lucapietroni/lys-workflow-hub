@@ -259,13 +259,17 @@ async def auto_cortesia_crea(
     targa = str(form.get("targa", "")).strip()
     marca_modello = str(form.get("marca_modello", "")).strip()
     telaio = str(form.get("telaio", "")).strip()
+    franchigia_rca = str(form.get("franchigia_rca", "")).strip()
+    franchigia_kasco = str(form.get("franchigia_kasco", "")).strip()
+    franchigia_furto_incendio = str(form.get("franchigia_furto_incendio", "")).strip()
     note = str(form.get("note", "")).strip()
     if targa and marca_modello:
         auto_repo = AutoCortesiaRepository(db_path=settings.app_db_path)
         try:
             auto_repo.create_auto(
-                targa=targa, marca_modello=marca_modello,
-                telaio=telaio, note=note,
+                targa=targa, marca_modello=marca_modello, telaio=telaio,
+                franchigia_rca=franchigia_rca, franchigia_kasco=franchigia_kasco,
+                franchigia_furto_incendio=franchigia_furto_incendio, note=note,
             )
         except Exception as exc:
             logger.warning("Errore creazione auto cortesia: %s", exc)
@@ -283,13 +287,17 @@ async def auto_cortesia_modifica(
     targa = str(form.get("targa", "")).strip()
     marca_modello = str(form.get("marca_modello", "")).strip()
     telaio = str(form.get("telaio", "")).strip()
+    franchigia_rca = str(form.get("franchigia_rca", "")).strip()
+    franchigia_kasco = str(form.get("franchigia_kasco", "")).strip()
+    franchigia_furto_incendio = str(form.get("franchigia_furto_incendio", "")).strip()
     note = str(form.get("note", "")).strip()
     if targa and marca_modello:
         auto_repo = AutoCortesiaRepository(db_path=settings.app_db_path)
         try:
             auto_repo.update_auto(
-                auto_id, targa=targa, marca_modello=marca_modello,
-                telaio=telaio, note=note,
+                auto_id, targa=targa, marca_modello=marca_modello, telaio=telaio,
+                franchigia_rca=franchigia_rca, franchigia_kasco=franchigia_kasco,
+                franchigia_furto_incendio=franchigia_furto_incendio, note=note,
             )
         except Exception as exc:
             logger.warning("Errore aggiornamento auto cortesia %s: %s", auto_id, exc)
