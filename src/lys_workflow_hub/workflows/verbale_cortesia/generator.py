@@ -113,6 +113,23 @@ def _set_row_height(table, row_idx: int, twips: int,
     tr_pr.append(trH)
 
 
+def _force_table_borders(table) -> None:
+    """Imposta bordi espliciti — fix bordo superiore mancante con alcuni renderer."""
+    tblPr = table._tbl.get_or_add_tblPr()
+    for child in list(tblPr):
+        if child.tag == qn("w:tblBorders"):
+            tblPr.remove(child)
+    borders = OxmlElement("w:tblBorders")
+    for side in ("top", "left", "bottom", "right", "insideH", "insideV"):
+        b = OxmlElement(f"w:{side}")
+        b.set(qn("w:val"),   "single")
+        b.set(qn("w:sz"),    "4")
+        b.set(qn("w:space"), "0")
+        b.set(qn("w:color"), "000000")
+        borders.append(b)
+    tblPr.append(borders)
+
+
 def _merge_row(table, row_idx: int, start_col: int, end_col: int):
     """Merge celle [start_col, end_col] nella riga row_idx, ritorna la cella."""
     row  = table.rows[row_idx]
@@ -181,7 +198,7 @@ def _add_header(doc: Document, data: VerbaleData) -> None:
          size=9.0, italic=True, color=COLOR_GREY)
 
 
-DATA_ROW_H = 370   # twips per riga dati standard
+DATA_ROW_H = 330   # twips per riga dati standard
 
 
 def _add_locatario(doc: Document, data: VerbaleData) -> None:
@@ -294,7 +311,7 @@ def _add_note(doc: Document, data: VerbaleData) -> None:
 
     cell = table.rows[1].cells[0]
     _set_cell_margins(cell, top=60, bottom=60)
-    _set_row_height(table, 1, 700)
+    _set_row_height(table, 1, 550)
     if data.note:
         _run(cell.paragraphs[0], data.note, size=9.0)
 
@@ -306,11 +323,11 @@ def _add_firme(doc: Document, data: VerbaleData) -> None:
 
     _col_header_row(table, 0, [
         f"Data e ora di {data.label_tipo}",
-        "Il Locatario  —  Timbro e firma",
+        "Il Locatario  —  Firma",
         "Il Locatore  —  Timbro e firma",
     ], row_height=330)
 
-    _set_row_height(table, 1, 1600)
+    _set_row_height(table, 1, 1450)
 
     date_cell = table.rows[1].cells[0]
     _set_cell_margins(date_cell)
@@ -319,24 +336,24 @@ def _add_firme(doc: Document, data: VerbaleData) -> None:
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     _run(p, data.data_ora, size=10.0)
 
-    # Il Locatario — timbro LYS Auto
+    # Il Locatario — firma manuale cliente
     loc_cell = table.rows[1].cells[1]
-    _set_cell_margins(loc_cell, top=20, bottom=20, left=20, right=20)
-    loc_cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+    _set_cell_margins(loc_cell)
+    loc_cell.vertical_alignment = WD_ALIGN_VERTICAL.BOTTOM
     p = loc_cell.paragraphs[0]
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    if _TIMBRO_PNG.exists():
-        p.add_run().add_picture(str(_TIMBRO_PNG), width=Cm(5.5))
-    else:
-        _run(p, "........................", size=9.0)
+    _run(p, "........................", size=9.0)
 
-    # Il Locatore — firma manuale cliente
+    # Il Locatore — timbro LYS Auto
     lys_cell = table.rows[1].cells[2]
-    _set_cell_margins(lys_cell)
-    lys_cell.vertical_alignment = WD_ALIGN_VERTICAL.BOTTOM
+    _set_cell_margins(lys_cell, top=20, bottom=20, left=20, right=20)
+    lys_cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
     p = lys_cell.paragraphs[0]
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    _run(p, "........................", size=9.0)
+    if _TIMBRO_PNG.exists():
+        p.add_run().add_picture(str(_TIMBRO_PNG), width=Cm(5.0))
+    else:
+        _run(p, "........................", size=9.0)
 
 
 MOTIVAZIONI = [
@@ -446,6 +463,7 @@ def _add_dichiarazione(doc: Document, data: VerbaleData) -> None:
     t4 = doc.add_table(rows=2, cols=3)
     t4.style = "Table Grid"
     _set_table_width(t4)
+    _force_table_borders(t4)
 
     _col_header_row(t4, 0, ["Luogo", "Data", "In fede — Firma del Locatario"],
                     row_height=300)
@@ -489,6 +507,8 @@ def generate(data: VerbaleData, out: BinaryIO | None = None) -> bytes:
     style = doc.styles["Normal"]
     style.font.name = "Calibri"
     style.font.size = Pt(9.5)
+    style.paragraph_format.space_before = Pt(0)
+    style.paragraph_format.space_after  = Pt(0)
 
     _set_page_margins(doc)
     _add_header(doc, data)
