@@ -437,15 +437,12 @@ def _add_dichiarazione(doc: Document, data: VerbaleData) -> None:
     # righe motivazioni: 2 col — simbolo | testo
     for i, (key, label) in enumerate(MOTIVAZIONI, start=2):
         selected = (data.dich_motivazione == key)
-        mark = "●" if selected else "○"
+        mark = "✓" if selected else "○"
         # col 0: simbolo (stretto)
         c_mark = t3.rows[i].cells[0]
         _set_cell_margins(c_mark, left=120, right=40)
         c_mark.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-        _run(c_mark.paragraphs[0], mark, bold=selected, size=11.0,
-             color=COLOR_WHITE if selected else None)
-        if selected:
-            _set_cell_shading(c_mark, COLOR_HEADER_BG)
+        _run(c_mark.paragraphs[0], mark, bold=selected, size=11.0)
         # col 1: testo
         c_txt = t3.rows[i].cells[1]
         _set_cell_margins(c_txt)
