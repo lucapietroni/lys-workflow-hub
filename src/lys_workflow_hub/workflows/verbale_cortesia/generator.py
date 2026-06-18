@@ -92,7 +92,7 @@ def _para(doc: Document, *, alignment=WD_ALIGN_PARAGRAPH.LEFT,
 
 
 def _set_table_width(table) -> None:
-    """Forza la tabella a TABLE_WIDTH_DXA twips, disabilita autofit."""
+    """Forza la tabella a TABLE_WIDTH_DXA twips, disabilita autofit, imposta bordi espliciti."""
     table.autofit = False
     tbl_pr = table._tbl.tblPr
     for child in list(tbl_pr):
@@ -102,6 +102,7 @@ def _set_table_width(table) -> None:
     tblW.set(qn("w:w"),    str(TABLE_WIDTH_DXA))
     tblW.set(qn("w:type"), "dxa")
     tbl_pr.append(tblW)
+    _force_table_borders(table)
 
 
 def _set_row_height(table, row_idx: int, twips: int,
@@ -115,7 +116,7 @@ def _set_row_height(table, row_idx: int, twips: int,
 
 def _force_table_borders(table) -> None:
     """Imposta bordi espliciti — fix bordo superiore mancante con alcuni renderer."""
-    tblPr = table._tbl.get_or_add_tblPr()
+    tblPr = table._tbl.tblPr
     for child in list(tblPr):
         if child.tag == qn("w:tblBorders"):
             tblPr.remove(child)
@@ -463,7 +464,6 @@ def _add_dichiarazione(doc: Document, data: VerbaleData) -> None:
     t4 = doc.add_table(rows=2, cols=3)
     t4.style = "Table Grid"
     _set_table_width(t4)
-    _force_table_borders(t4)
 
     _col_header_row(t4, 0, ["Luogo", "Data", "In fede — Firma del Locatario"],
                     row_height=300)
