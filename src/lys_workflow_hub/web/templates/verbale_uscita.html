@@ -70,6 +70,9 @@
                   data-targa="{{ a.targa }}"
                   data-marca="{{ a.marca_modello }}"
                   data-telaio="{{ a.telaio }}"
+                  data-rca="{{ a.franchigia_rca }}"
+                  data-kasco="{{ a.franchigia_kasco }}"
+                  data-furto="{{ a.franchigia_furto_incendio }}"
                   {% if data.auto_id == a.id %}selected{% endif %}>
             {{ a.targa }} — {{ a.marca_modello }}
           </option>
@@ -206,9 +209,12 @@ const _lastRientroMap = {{ last_rientro_map_json | safe }};
 function onAutoCortesiaChange(autoId) {
   const sel = document.getElementById('f_auto_id');
   const opt = sel.options[sel.selectedIndex];
-  document.querySelector('[name="targa"]').value     = opt.dataset.targa  || '';
-  document.querySelector('[name="marca_modello"]').value = opt.dataset.marca || '';
-  document.querySelector('[name="telaio"]').value    = opt.dataset.telaio || '';
+  document.querySelector('[name="targa"]').value         = opt.dataset.targa  || '';
+  document.querySelector('[name="marca_modello"]').value = opt.dataset.marca  || '';
+  document.querySelector('[name="telaio"]').value        = opt.dataset.telaio || '';
+  document.querySelector('[name="rca"]').value           = opt.dataset.rca    || '';
+  document.querySelector('[name="kasco"]').value         = opt.dataset.kasco  || '';
+  document.querySelector('[name="furto_incendio"]').value= opt.dataset.furto  || '';
 
   // Pre-fill km e danni dall'ultimo rientro
   const lr = _lastRientroMap[autoId] || {};
