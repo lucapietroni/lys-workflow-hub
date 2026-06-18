@@ -1,11 +1,13 @@
 """Routes per i verbali di consegna/riconsegna veicolo di cortesia.
 
-GET  /pratiche/{numero}/verbale/uscita       → form (auto cortesia dropdown)
-POST /pratiche/{numero}/verbale/uscita/pdf   → genera e scarica PDF
-POST /pratiche/{numero}/verbale/uscita/salva → genera PDF + salva file + log DB → redirect
-GET  /pratiche/{numero}/verbale/rientro      → form (auto cortesia dropdown)
-POST /pratiche/{numero}/verbale/rientro/pdf  → genera e scarica PDF
-POST /pratiche/{numero}/verbale/rientro/salva→ genera PDF + salva file + log DB → redirect
+GET  /pratiche/{numero}/verbale/uscita          → form (auto cortesia dropdown)
+POST /pratiche/{numero}/verbale/uscita/docx     → genera e scarica .docx + log DB
+POST /pratiche/{numero}/verbale/uscita/pdf      → genera e scarica PDF per stampa + log DB
+POST /pratiche/{numero}/verbale/uscita/firmata  → carica PDF firmato → archivia in WinCar
+GET  /pratiche/{numero}/verbale/rientro         → form (pre-fill da ultimo uscita)
+POST /pratiche/{numero}/verbale/rientro/docx    → genera e scarica .docx + log DB
+POST /pratiche/{numero}/verbale/rientro/pdf     → genera e scarica PDF per stampa + log DB
+POST /pratiche/{numero}/verbale/rientro/firmata → carica PDF firmato → archivia in WinCar
 """
 from __future__ import annotations
 
@@ -13,7 +15,7 @@ import json
 import logging
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
@@ -23,6 +25,7 @@ from lys_workflow_hub.core.auto_cortesia_repository import AutoCortesiaRepositor
 from lys_workflow_hub.core.wincar_repository import WinCarRepository
 from lys_workflow_hub.workflows.verbale_cortesia import (
     PdfConversionError,
+    VerbaleData,
     docx_bytes_to_pdf_bytes,
     filename_for,
     from_pratica,
@@ -44,7 +47,8 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 router = APIRouter(tags=["verbale"])
 
-PDF_MIME = "application/pdf"
+PDF_MIME  = "application/pdf"
+DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 
 def _repo() -> WinCarRepository:
@@ -105,6 +109,25 @@ def _last_rientro_map(auto_repo: AutoCortesiaRepository, autos) -> str:
     return json.dumps(result, ensure_ascii=False)
 
 
+def _log_verbale_db(data: VerbaleData, auto_repo: AutoCortesiaRepository,
+                    numero: int) -> None:
+    if not data.auto_id:
+        return
+    try:
+        auto_repo.save_verbale(
+            tipo=data.tipo,
+            auto_id=data.auto_id,
+            pratica_numero=numero,
+            km=data.km,
+            livello_carburante=data.livello_carburante,
+            danni=list(data.danni),
+            note=data.note,
+            data_ora=data.data_ora,
+        )
+    except Exception:
+        logger.exception("Errore log verbale %s DB per auto %s", data.tipo, data.auto_id)
+
+
 # ---------------------------------------------------------------------------
 # Verbale Uscita
 # ---------------------------------------------------------------------------
@@ -114,6 +137,7 @@ def _last_rientro_map(auto_repo: AutoCortesiaRepository, autos) -> str:
 def verbale_uscita_form(
     numero: int,
     request: Request,
+    firmata: str | None = None,
     repo: WinCarRepository = Depends(_repo),
     settings: Settings = Depends(_settings),
     auto_repo: AutoCortesiaRepository = Depends(_auto_repo),
@@ -132,11 +156,31 @@ def verbale_uscita_form(
     ctx["autos"] = autos
     ctx["livelli_carburante"] = LIVELLI_CARBURANTE
     ctx["last_rientro_map_json"] = _last_rientro_map(auto_repo, autos)
+    ctx["firmata"] = bool(firmata)
     try:
         ctx["verbali_archiviati"] = list_verbali(settings.wincar_archivio, numero)
     except Exception:
         ctx["verbali_archiviati"] = []
     return templates.TemplateResponse(request, "verbale_uscita.html", ctx)
+
+
+@router.post("/pratiche/{numero}/verbale/uscita/docx")
+async def verbale_uscita_docx(
+    numero: int,
+    request: Request,
+    repo: WinCarRepository = Depends(_repo),
+    auto_repo: AutoCortesiaRepository = Depends(_auto_repo),
+) -> Response:
+    form = dict(await request.form())
+    _, data, _ = _build_data(numero, TIPO_USCITA, form, repo, auto_repo)
+    docx_bytes = generate(data)
+    _log_verbale_db(data, auto_repo, numero)
+    fname = filename_for(data)
+    return Response(
+        content=docx_bytes,
+        media_type=DOCX_MIME,
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
 
 
 @router.post("/pratiche/{numero}/verbale/uscita/pdf")
@@ -153,6 +197,7 @@ async def verbale_uscita_pdf(
         pdf_bytes = docx_bytes_to_pdf_bytes(docx_bytes)
     except PdfConversionError as exc:
         raise HTTPException(503, str(exc)) from exc
+    _log_verbale_db(data, auto_repo, numero)
     fname = filename_for(data).replace(".docx", ".pdf")
     return Response(
         content=pdf_bytes,
@@ -161,47 +206,24 @@ async def verbale_uscita_pdf(
     )
 
 
-@router.post("/pratiche/{numero}/verbale/uscita/salva")
-async def verbale_uscita_salva(
+@router.post("/pratiche/{numero}/verbale/uscita/firmata")
+async def verbale_uscita_firmata(
     numero: int,
-    request: Request,
-    repo: WinCarRepository = Depends(_repo),
+    file: UploadFile = File(...),
     settings: Settings = Depends(_settings),
-    auto_repo: AutoCortesiaRepository = Depends(_auto_repo),
-) -> Response:
-    form = dict(await request.form())
-    _, data, _ = _build_data(numero, TIPO_USCITA, form, repo, auto_repo)
-    docx_bytes = generate(data)
+) -> RedirectResponse:
+    raw = await file.read()
     try:
-        pdf_bytes = docx_bytes_to_pdf_bytes(docx_bytes)
-    except PdfConversionError as exc:
-        raise HTTPException(503, str(exc)) from exc
-    try:
-        path = save_verbale(
+        save_verbale(
             archivio_root=settings.wincar_archivio,
             numero_pratica=numero,
             tipo=TIPO_USCITA,
-            pdf_bytes=pdf_bytes,
+            pdf_bytes=raw,
         )
     except (ValueError, OSError) as exc:
-        logger.exception("Errore salvataggio verbale uscita pratica %s", numero)
-        raise HTTPException(500, str(exc)) from exc
-    if data.auto_id:
-        try:
-            auto_repo.save_verbale(
-                tipo=TIPO_USCITA,
-                auto_id=data.auto_id,
-                pratica_numero=numero,
-                km=data.km,
-                livello_carburante=data.livello_carburante,
-                danni=list(data.danni),
-                note=data.note,
-                data_ora=data.data_ora,
-            )
-        except Exception:
-            logger.exception("Errore log verbale uscita DB per auto %s", data.auto_id)
+        raise HTTPException(400, str(exc)) from exc
     return RedirectResponse(
-        url=f"/pratiche/{numero}?verbale_salvato={path.name}",
+        url=f"/pratiche/{numero}/verbale/uscita?firmata=1",
         status_code=303,
     )
 
@@ -215,6 +237,7 @@ async def verbale_uscita_salva(
 def verbale_rientro_form(
     numero: int,
     request: Request,
+    firmata: str | None = None,
     repo: WinCarRepository = Depends(_repo),
     settings: Settings = Depends(_settings),
     auto_repo: AutoCortesiaRepository = Depends(_auto_repo),
@@ -227,16 +250,39 @@ def verbale_rientro_form(
             request, "pratica_non_trovata.html", ctx, status_code=404
         )
     autos = auto_repo.list_auto()
-    data = from_pratica(pratica, tipo=TIPO_RIENTRO)
+    # Pre-fill auto dall'ultimo verbale di uscita per questa pratica
+    last_uscita = auto_repo.get_last_uscita_for_pratica(numero)
+    auto_from_uscita = auto_repo.get_auto(last_uscita.auto_id) if last_uscita else None
+    data = from_pratica(pratica, tipo=TIPO_RIENTRO, auto=auto_from_uscita)
     ctx["pratica"] = pratica
     ctx["data"] = data
     ctx["autos"] = autos
     ctx["livelli_carburante"] = LIVELLI_CARBURANTE
+    ctx["firmata"] = bool(firmata)
     try:
         ctx["verbali_archiviati"] = list_verbali(settings.wincar_archivio, numero)
     except Exception:
         ctx["verbali_archiviati"] = []
     return templates.TemplateResponse(request, "verbale_rientro.html", ctx)
+
+
+@router.post("/pratiche/{numero}/verbale/rientro/docx")
+async def verbale_rientro_docx(
+    numero: int,
+    request: Request,
+    repo: WinCarRepository = Depends(_repo),
+    auto_repo: AutoCortesiaRepository = Depends(_auto_repo),
+) -> Response:
+    form = dict(await request.form())
+    _, data, _ = _build_data(numero, TIPO_RIENTRO, form, repo, auto_repo)
+    docx_bytes = generate(data)
+    _log_verbale_db(data, auto_repo, numero)
+    fname = filename_for(data)
+    return Response(
+        content=docx_bytes,
+        media_type=DOCX_MIME,
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
 
 
 @router.post("/pratiche/{numero}/verbale/rientro/pdf")
@@ -253,6 +299,7 @@ async def verbale_rientro_pdf(
         pdf_bytes = docx_bytes_to_pdf_bytes(docx_bytes)
     except PdfConversionError as exc:
         raise HTTPException(503, str(exc)) from exc
+    _log_verbale_db(data, auto_repo, numero)
     fname = filename_for(data).replace(".docx", ".pdf")
     return Response(
         content=pdf_bytes,
@@ -261,46 +308,23 @@ async def verbale_rientro_pdf(
     )
 
 
-@router.post("/pratiche/{numero}/verbale/rientro/salva")
-async def verbale_rientro_salva(
+@router.post("/pratiche/{numero}/verbale/rientro/firmata")
+async def verbale_rientro_firmata(
     numero: int,
-    request: Request,
-    repo: WinCarRepository = Depends(_repo),
+    file: UploadFile = File(...),
     settings: Settings = Depends(_settings),
-    auto_repo: AutoCortesiaRepository = Depends(_auto_repo),
-) -> Response:
-    form = dict(await request.form())
-    _, data, _ = _build_data(numero, TIPO_RIENTRO, form, repo, auto_repo)
-    docx_bytes = generate(data)
+) -> RedirectResponse:
+    raw = await file.read()
     try:
-        pdf_bytes = docx_bytes_to_pdf_bytes(docx_bytes)
-    except PdfConversionError as exc:
-        raise HTTPException(503, str(exc)) from exc
-    try:
-        path = save_verbale(
+        save_verbale(
             archivio_root=settings.wincar_archivio,
             numero_pratica=numero,
             tipo=TIPO_RIENTRO,
-            pdf_bytes=pdf_bytes,
+            pdf_bytes=raw,
         )
     except (ValueError, OSError) as exc:
-        logger.exception("Errore salvataggio verbale rientro pratica %s", numero)
-        raise HTTPException(500, str(exc)) from exc
-    if data.auto_id:
-        try:
-            auto_repo.save_verbale(
-                tipo=TIPO_RIENTRO,
-                auto_id=data.auto_id,
-                pratica_numero=numero,
-                km=data.km,
-                livello_carburante=data.livello_carburante,
-                danni=list(data.danni),
-                note=data.note,
-                data_ora=data.data_ora,
-            )
-        except Exception:
-            logger.exception("Errore log verbale rientro DB per auto %s", data.auto_id)
+        raise HTTPException(400, str(exc)) from exc
     return RedirectResponse(
-        url=f"/pratiche/{numero}?verbale_salvato={path.name}",
+        url=f"/pratiche/{numero}/verbale/rientro?firmata=1",
         status_code=303,
     )

@@ -186,6 +186,18 @@ class AutoCortesiaRepository:
             )
             return cur.lastrowid
 
+    def get_last_uscita_for_pratica(self, pratica_numero: int) -> VerbaleRecord | None:
+        with self._conn() as conn:
+            row = conn.execute(
+                """SELECT id, tipo, auto_id, pratica_numero, km, livello_carburante,
+                          danni_json, note, data_ora, created_at
+                   FROM verbali_cortesia
+                   WHERE pratica_numero=? AND tipo='uscita'
+                   ORDER BY id DESC LIMIT 1""",
+                (pratica_numero,),
+            ).fetchone()
+        return self._row_to_verbale(row) if row else None
+
     def get_last_rientro(self, auto_id: int) -> VerbaleRecord | None:
         with self._conn() as conn:
             row = conn.execute(

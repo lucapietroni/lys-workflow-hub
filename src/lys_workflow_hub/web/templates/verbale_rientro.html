@@ -28,15 +28,6 @@
   </div>
 </header>
 
-{% if verbali_archiviati %}
-  <div class="alert alert-success">
-    <strong>Verbali già archiviati per questa pratica:</strong>
-    {% for v in verbali_archiviati %}
-      <code>{{ v.nome_file }}</code> ({{ v.data_archiviazione.strftime("%d/%m/%Y") }} · {{ v.size_label }}){% if not loop.last %},{% endif %}
-    {% endfor %}
-  </div>
-{% endif %}
-
 <form method="post" action="/pratiche/{{ pratica.numero }}/verbale/rientro/pdf">
   <input type="hidden" name="tipo" value="rientro" />
 
@@ -135,16 +126,55 @@
     <a href="/pratiche/{{ pratica.numero }}" class="btn">Annulla</a>
     <button type="submit"
             class="btn"
-            formaction="/pratiche/{{ pratica.numero }}/verbale/rientro/pdf">
-      Scarica PDF
+            formaction="/pratiche/{{ pratica.numero }}/verbale/rientro/docx">
+      Scarica .docx
     </button>
     <button type="submit"
             class="btn btn-primary"
-            formaction="/pratiche/{{ pratica.numero }}/verbale/rientro/salva">
-      Genera e salva in WinCar
+            formaction="/pratiche/{{ pratica.numero }}/verbale/rientro/pdf">
+      Genera PDF per stampa
     </button>
   </div>
 </form>
+
+{% if firmata %}
+<div class="alert alert-success" style="margin-bottom: 20px;">
+  <strong>Verbale firmato archiviato in WinCar.</strong>
+</div>
+{% endif %}
+
+<section class="card">
+  <h2>Archivia verbale firmato</h2>
+  {% if verbali_archiviati %}
+    <p class="meta" style="margin-top:-6px;">
+      Documenti già archiviati per questa pratica (in <code>Pratiche\{{ pratica.numero }}\Pubblici\Allegati\</code>):
+    </p>
+    <ul class="files-list">
+      {% for v in verbali_archiviati %}
+      <li>
+        <span class="file-name">{{ v.nome_file }}</span>
+        <span class="file-meta">{{ v.data_archiviazione.strftime("%d/%m/%Y") }} · {{ v.size_label }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="meta" style="margin-top:-6px;">Nessun verbale firmato archiviato per questa pratica.</p>
+  {% endif %}
+  <form method="post"
+        action="/pratiche/{{ pratica.numero }}/verbale/rientro/firmata"
+        enctype="multipart/form-data"
+        style="margin-top: 12px;">
+    <label for="file_verbale_r" class="dropzone" id="dropzone-verbale">
+      <span class="dropzone-title">Carica verbale firmato (PDF)</span>
+      <span class="dropzone-hint">Trascina il PDF scansionato o clicca per scegliere.</span>
+      <span class="dropzone-selected" id="dropzone-verbale-label"></span>
+      <input type="file" id="file_verbale_r" name="file" accept="application/pdf" required hidden />
+    </label>
+    <div class="form-actions" style="border:none; padding-top:8px; margin-top:0;">
+      <button type="submit" class="btn btn-primary">Archivia in WinCar</button>
+    </div>
+  </form>
+</section>
 
 <script>
 function onAutoCortesiaChange(autoId) {
@@ -154,5 +184,26 @@ function onAutoCortesiaChange(autoId) {
   document.querySelector('[name="marca_modello"]').value = opt.dataset.marca  || '';
   document.querySelector('[name="telaio"]').value        = opt.dataset.telaio || '';
 }
+
+// Dropzone verbale firmato
+(function () {
+  var inp = document.getElementById('file_verbale_r');
+  var lbl = document.getElementById('dropzone-verbale-label');
+  if (!inp) return;
+  inp.addEventListener('change', function () {
+    lbl.textContent = inp.files[0] ? inp.files[0].name : '';
+  });
+  var dz = document.getElementById('dropzone-verbale');
+  dz.addEventListener('click', function () { inp.click(); });
+  dz.addEventListener('dragover', function (e) { e.preventDefault(); dz.classList.add('dragover'); });
+  dz.addEventListener('dragleave', function () { dz.classList.remove('dragover'); });
+  dz.addEventListener('drop', function (e) {
+    e.preventDefault(); dz.classList.remove('dragover');
+    if (e.dataTransfer.files[0]) {
+      inp.files = e.dataTransfer.files;
+      lbl.textContent = e.dataTransfer.files[0].name;
+    }
+  });
+}());
 </script>
 {% endblock %}
