@@ -242,7 +242,7 @@ def _add_veicolo(doc: Document, data: VerbaleData) -> None:
 
     _lv(table.rows[2].cells[0], data.label_km,        data.km)
     _lv(table.rows[2].cells[1], "Livello carburante",  data.livello_carburante)
-    c = _merge_row(table, 2, 2, 3); _lv(c, "Omologato per", data.omologato_per)
+    _merge_row(table, 2, 2, 3)
     _set_row_height(table, 2, DATA_ROW_H)
 
     _lv(table.rows[3].cells[0], "Max Km mese",         data.max_km_mese)
