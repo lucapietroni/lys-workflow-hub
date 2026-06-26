@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lys-workflow-hub"
-version = "1.0.3"
+version = "2.1.0"
 description = "Piattaforma di automazione documentale per Carrozzeria LYS Auto srl, integrata con WinCar."
 requires-python = ">=3.11"
 authors = [{ name = "Luca Pietroni", email = "luca.pietroni@gmail.com" }]
@@ -19,6 +19,7 @@ dependencies = [
     "pydantic-settings>=2.3",
     "python-docx>=1.1",
     "anthropic>=0.28",
+    "watchdog>=4.0",
 ]
 
 [tool.setuptools.packages.find]

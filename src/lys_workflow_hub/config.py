@@ -110,6 +110,15 @@ class Settings(BaseSettings):
     ai_budget_monthly_eur: float = Field(default=20.0)
     ai_budget_alert_eur: float = Field(default=15.0)
 
+    # --- Foto lavorazioni (v2.1) ---
+    # Cartella dove Syncthing deposita le foto dallo smartphone aziendale.
+    # Il watcher elabora ogni nuova immagine: estrae targa via Claude Vision,
+    # copia in foto_fallback_path/<TARGA>/ e (se trovata pratica) in WinCar.
+    # Vuoto = watcher disabilitato.
+    foto_inbox_path: Path = Field(default=Path(r"C:\LYSApp\Inbox Foto"))
+    # Archivio permanente per targa, sempre popolato indipendentemente dalla pratica.
+    foto_fallback_path: Path = Field(default=Path(r"C:\LYSApp\Foto lavorazioni"))
+
     # --- SLA pratiche (M5/M6.1) ---
     # Numero di giorni senza risposta dopo i quali scatta l'alert SLA.
     # Impostare a 0 per disabilitare il check SLA nel polling.

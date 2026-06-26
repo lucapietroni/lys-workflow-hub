@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Foto Lavorazioni · LYS Workflow Hub{% endblock %}
+
+{% block content %}
+<header class="pratica-header">
+  <div>
+    <h1>Foto Lavorazioni</h1>
+    <p class="meta">
+      Inbox Syncthing: <code>{{ inbox_path }}</code>
+      &nbsp;·&nbsp;
+      Archivio: <code>{{ fallback_path }}</code>
+    </p>
+  </div>
+</header>
+
+{% if inbox_files %}
+<section class="card" style="border-left: 4px solid var(--accent);">
+  <h2>File in attesa nell'inbox ({{ inbox_files | length }})</h2>
+  <ul class="files-list">
+    {% for f in inbox_files %}
+    <li><span class="file-name">{{ f }}</span></li>
+    {% endfor %}
+  </ul>
+  <p class="meta" style="margin-top: 8px;">Il watcher li processerà automaticamente entro pochi secondi.</p>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>Foto processate <span class="tag">ultime 100</span></h2>
+
+  {% if not records %}
+  <p class="meta">Nessuna foto processata ancora. Le foto arriveranno automaticamente quando Syncthing sincronizzerà lo smartphone.</p>
+  {% else %}
+  <table class="data-table" style="width:100%; font-size: 0.88rem;">
+    <thead>
+      <tr>
+        <th>Data</th>
+        <th>File</th>
+        <th>Targa</th>
+        <th>Pratica</th>
+        <th>Stato</th>
+        <th>Destinazioni</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in records %}
+      <tr>
+        <td style="white-space:nowrap; color: var(--text-muted);">{{ r.created_at[:16] }}</td>
+        <td style="font-family: monospace; font-size: 0.82rem; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ r.filename_originale }}</td>
+        <td>
+          {% if r.targa_riconosciuta %}
+            <strong>{{ r.targa_riconosciuta }}</strong>
+          {% else %}
+            <span style="color: var(--text-muted);">—</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if r.pratica_numero %}
+            <a href="/pratiche/{{ r.pratica_numero }}">{{ r.pratica_numero }}</a>
+          {% else %}
+            <span style="color: var(--text-muted);">—</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if r.stato == 'ok' %}
+            <span class="badge badge-blue">OK → pratica + archivio</span>
+          {% elif r.stato == 'ok_no_pratica' %}
+            <span class="badge badge-warn">OK → solo archivio</span>
+          {% elif r.stato == 'targa_non_trovata' %}
+            <span class="badge badge-alert">Targa non letta</span>
+          {% elif r.stato == 'heic' %}
+            <span class="badge badge-alert">HEIC non supportato</span>
+          {% elif r.stato == 'errore' %}
+            <span class="badge badge-alert">Errore</span>
+            {% if r.errore %}<br><small style="color:var(--text-muted);">{{ r.errore }}</small>{% endif %}
+          {% else %}
+            <span class="badge">{{ r.stato }}</span>
+          {% endif %}
+        </td>
+        <td style="font-size: 0.78rem; color: var(--text-muted); max-width: 280px;">
+          {% if r.percorso_fallback %}
+            <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ r.percorso_fallback }}">📁 {{ r.percorso_fallback }}</div>
+          {% endif %}
+          {% if r.percorso_pratica %}
+            <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ r.percorso_pratica }}">🔗 {{ r.percorso_pratica }}</div>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Come funziona</h2>
+  <ol style="line-height: 2; padding-left: 20px; color: var(--text-muted);">
+    <li>Lo smartphone aziendale scatta foto durante le lavorazioni (con targa visibile nel frame).</li>
+    <li>Syncthing sincronizza automaticamente le foto nella cartella <code>{{ inbox_path }}</code> sul PC.</li>
+    <li>LYS Hub rileva i nuovi file, invia ogni foto a Claude AI per riconoscere la targa.</li>
+    <li>La foto viene copiata in <code>{{ fallback_path }}\&lt;TARGA&gt;\</code> (sempre).</li>
+    <li>Se la targa corrisponde a una pratica WinCar → copia anche in <code>Pratiche\&lt;n&gt;\Pubblici\Foto\</code>.</li>
+    <li>Il file originale viene eliminato dall'inbox dopo la copia.</li>
+  </ol>
+  <p class="meta" style="margin-top: 12px;">
+    <strong>Formato smartphone:</strong> configurare fotocamera in JPEG (non HEIC/HEIF).
+    Su Android: formato di default è già JPEG. Su iPhone: Impostazioni → Fotocamera → Formato → Compatibilità massima.
+  </p>
+</section>
+{% endblock %}

@@ -56,6 +56,7 @@ from lys_workflow_hub.web.routes_impostazioni import router as impostazioni_rout
 from lys_workflow_hub.web.routes_pec_log import router as pec_log_router
 from lys_workflow_hub.web.routes_risposte import router as risposte_router
 from lys_workflow_hub.web.routes_vandalismo import router as vandalismo_router
+from lys_workflow_hub.web.routes_foto import router as foto_router
 from lys_workflow_hub.web.routes_verbale import router as verbale_router
 
 
@@ -137,7 +138,7 @@ STATIC_DIR = WEB_DIR / "static"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Schema check al boot. Vedi `core/schema_check.py`."""
+    """Schema check al boot + avvio foto watcher. Vedi `core/schema_check.py`."""
     settings = get_settings()
     logger.info("LYS Workflow Hub v%s - env=%s", __version__, settings.app_env)
     logger.info("WinCar archivio: %s", settings.wincar_archivio)
@@ -153,7 +154,25 @@ async def lifespan(app: FastAPI):
     except Exception as exc:  # noqa: BLE001
         logger.warning("Schema check non eseguito (WinCar non raggiungibile?): %s", exc)
 
+    # Foto watcher (v2.1): avviato solo se foto_inbox_path configurato
+    _foto_watcher = None
+    if settings.foto_inbox_path:
+        try:
+            from lys_workflow_hub.core.foto_lavorazioni_repository import (
+                FotoLavorazioniRepository,
+            )
+            from lys_workflow_hub.integrations.foto_watcher import FotoWatcher
+
+            foto_repo = FotoLavorazioniRepository(db_path=settings.app_db_path)
+            _foto_watcher = FotoWatcher(settings=settings, foto_repo=foto_repo)
+            _foto_watcher.start()
+        except Exception:  # noqa: BLE001
+            logger.exception("Impossibile avviare foto watcher — funzionalità disabilitata")
+
     yield
+
+    if _foto_watcher:
+        _foto_watcher.stop()
     logger.info("LYS Workflow Hub: shutdown")
 
 
@@ -177,6 +196,7 @@ app.include_router(risposte_router)
 app.include_router(bozze_router)
 app.include_router(impostazioni_router)
 app.include_router(verbale_router)
+app.include_router(foto_router)
 app.include_router(api_router)
 
 
