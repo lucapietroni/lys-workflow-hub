@@ -154,7 +154,7 @@ async def lifespan(app: FastAPI):
     except Exception as exc:  # noqa: BLE001
         logger.warning("Schema check non eseguito (WinCar non raggiungibile?): %s", exc)
 
-    # Foto watcher (v2.1): avviato solo se foto_inbox_path configurato
+    # Foto watcher (v2.1): avviato solo se FOTO_INBOX_PATH configurato in .env
     _foto_watcher = None
     if settings.foto_inbox_path:
         try:
@@ -164,6 +164,7 @@ async def lifespan(app: FastAPI):
             from lys_workflow_hub.integrations.foto_watcher import FotoWatcher
 
             foto_repo = FotoLavorazioniRepository(db_path=settings.app_db_path)
+            app.state.foto_repo = foto_repo  # condiviso con routes_foto per evitare DDL per-request
             _foto_watcher = FotoWatcher(settings=settings, foto_repo=foto_repo)
             _foto_watcher.start()
         except Exception:  # noqa: BLE001

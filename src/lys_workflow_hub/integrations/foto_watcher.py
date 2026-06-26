@@ -3,7 +3,7 @@
 Flusso automatico (zero azioni operative):
   1. Syncthing deposita foto da smartphone in foto_inbox_path
   2. Watchdog rileva il file → coda thread-safe
-  3. Worker: Claude Vision estrae targa → copia in fallback + pratica WinCar → elimina inbox → log DB
+  3. Worker: Claude Vision estrae targa → copia in fallback + pratica WinCar → log DB → elimina inbox
 
 Regola destinazione:
   - SEMPRE in foto_fallback_path/<TARGA>/  (o /SCONOSCIUTA/ se targa non letta)
@@ -22,6 +22,7 @@ import re
 import shutil
 import threading
 import time
+import uuid
 from datetime import datetime
 from pathlib import Path
 
@@ -54,11 +55,14 @@ _SUPPORTED: dict[str, str] = {
     ".png": "image/png",
     ".webp": "image/webp",
 }
+_MAX_IMG_BYTES = 20 * 1024 * 1024  # 20 MB
+_AI_TIMEOUT = 30.0                  # secondi per chiamata Claude Vision
 
 
 def _dest_name(original: Path) -> str:
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return f"{ts}_{original.name}"
+    uid = uuid.uuid4().hex[:6]
+    return f"{ts}_{uid}_{original.name}"
 
 
 class _QueueingHandler(FileSystemEventHandler):
@@ -87,10 +91,16 @@ class FotoWatcher:
     ) -> None:
         self._settings = settings
         self._foto_repo = foto_repo
-        self._q: "queue.Queue[str]" = queue.Queue()
+        self._q: "queue.Queue[str]" = queue.Queue(maxsize=500)
         self._stop = threading.Event()
         self._observer: Observer | None = None
         self._worker: threading.Thread | None = None
+        # Client Anthropic condiviso (un solo httpx pool per l'intera vita del watcher)
+        self._ai_client: anthropic.Anthropic | None = (
+            anthropic.Anthropic(api_key=settings.anthropic_api_key, timeout=_AI_TIMEOUT)
+            if settings.anthropic_api_key
+            else None
+        )
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -101,8 +111,21 @@ class FotoWatcher:
             raise RuntimeError(
                 "watchdog non installato. Eseguire: pip install watchdog>=4.0"
             )
+        if not self._settings.foto_inbox_path:
+            raise RuntimeError("foto_inbox_path non configurato")
+
         inbox = Path(self._settings.foto_inbox_path)
         inbox.mkdir(parents=True, exist_ok=True)
+
+        # Accoda file già presenti (sopravvissuti a crash precedente)
+        pre_existing = [f for f in inbox.iterdir() if f.is_file()]
+        for f in pre_existing:
+            try:
+                self._q.put_nowait(str(f))
+            except queue.Full:
+                logger.warning("FotoWatcher: coda piena, saltato file pre-esistente %s", f.name)
+        if pre_existing:
+            logger.info("FotoWatcher: accodati %d file pre-esistenti dall'inbox", len(pre_existing))
 
         handler = _QueueingHandler(self._q)
         self._observer = Observer()
@@ -122,6 +145,8 @@ class FotoWatcher:
             self._observer.join(timeout=5)
         if self._worker:
             self._worker.join(timeout=5)
+        if self._ai_client:
+            self._ai_client.close()
         logger.info("FotoWatcher: fermato")
 
     # ------------------------------------------------------------------
@@ -164,6 +189,23 @@ class FotoWatcher:
         if not media_type:
             return  # file di sistema o formato non immagine
 
+        # Controllo dimensione prima di caricare in RAM
+        try:
+            file_size = path.stat().st_size
+        except OSError:
+            return
+        if file_size > _MAX_IMG_BYTES:
+            logger.error(
+                "FotoWatcher: %s troppo grande (%d MB, max %d MB), saltato",
+                filename, file_size // 1_000_000, _MAX_IMG_BYTES // 1_000_000,
+            )
+            self._foto_repo.log_foto(
+                filename=filename,
+                stato="errore",
+                errore=f"File troppo grande ({file_size // 1_000_000} MB, max {_MAX_IMG_BYTES // 1_000_000} MB)",
+            )
+            return
+
         try:
             img_bytes = path.read_bytes()
         except OSError as exc:
@@ -205,13 +247,7 @@ class FotoWatcher:
             except Exception:
                 logger.exception("FotoWatcher: errore ricerca pratica per targa %s", targa)
 
-        # 4. Elimina dall'inbox
-        try:
-            path.unlink()
-        except OSError:
-            logger.warning("FotoWatcher: impossibile eliminare %s dall'inbox", path)
-
-        # 5. Log
+        # 4. Log DB prima di eliminare: se unlink fallisce il record c'è già
         if targa is None:
             stato = "targa_non_trovata"
         elif pratica_numero:
@@ -228,20 +264,25 @@ class FotoWatcher:
             stato=stato,
         )
 
+        # 5. Elimina dall'inbox
+        try:
+            path.unlink()
+        except OSError:
+            logger.warning("FotoWatcher: impossibile eliminare %s dall'inbox", path)
+
     # ------------------------------------------------------------------
     # Claude Vision
     # ------------------------------------------------------------------
 
     def _extract_targa(self, img_bytes: bytes, media_type: str) -> str | None:
-        if not self._settings.anthropic_api_key:
+        if self._ai_client is None:
             logger.warning(
                 "FotoWatcher: ANTHROPIC_API_KEY non configurata, targa non estratta"
             )
             return None
         try:
-            client = anthropic.Anthropic(api_key=self._settings.anthropic_api_key)
             b64 = base64.standard_b64encode(img_bytes).decode()
-            msg = client.messages.create(
+            msg = self._ai_client.messages.create(
                 model=self._settings.anthropic_model,
                 max_tokens=20,
                 messages=[

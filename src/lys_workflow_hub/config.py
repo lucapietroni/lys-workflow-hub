@@ -114,8 +114,9 @@ class Settings(BaseSettings):
     # Cartella dove Syncthing deposita le foto dallo smartphone aziendale.
     # Il watcher elabora ogni nuova immagine: estrae targa via Claude Vision,
     # copia in foto_fallback_path/<TARGA>/ e (se trovata pratica) in WinCar.
-    # Vuoto = watcher disabilitato.
-    foto_inbox_path: Path = Field(default=Path(r"C:\LYSApp\Inbox Foto"))
+    # None (default) = watcher disabilitato. Impostare in .env su prod:
+    #   FOTO_INBOX_PATH=C:\LYSApp\Inbox Foto
+    foto_inbox_path: Path | None = Field(default=None)
     # Archivio permanente per targa, sempre popolato indipendentemente dalla pratica.
     foto_fallback_path: Path = Field(default=Path(r"C:\LYSApp\Foto lavorazioni"))
 
