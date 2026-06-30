@@ -186,6 +186,13 @@ def pratica_detail(
         context["stati_disponibili"] = STATI
         context["stato_labels"] = STATO_LABELS
         context["sla_breach_questa"] = []
+    # Solleciti SLA per questa pratica (per mostrare se già inviato)
+    try:
+        sol_repo = SollecitoRepository(db_path=settings.app_db_path)
+        context["solleciti_questa"] = sol_repo.list_per_pratica(numero)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Impossibile caricare solleciti per %s: %s", numero, exc)
+        context["solleciti_questa"] = []
     # Parametro URL per conferma cambio stato
     context["stato_aggiornato"] = bool(request.query_params.get("stato_aggiornato"))
     # Verbali cortesia già generati per questa pratica

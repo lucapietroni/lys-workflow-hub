@@ -36,14 +36,29 @@
 {% endif %}
 
 {% if sla_breach_questa %}
-  <div class="alert alert-warn">
-    <strong>⚠ SLA scaduto.</strong>
-    {% for a in sla_breach_questa %}
-      PEC inviata a <strong>{{ a.compagnia_nome }}</strong> il
-      {{ a.data_invio.strftime("%d/%m/%Y") }}
-      — nessuna risposta dopo <strong>{{ a.giorni_attesa }} giorni</strong>.
-    {% endfor %}
-  </div>
+  {% set sol_inviati = solleciti_questa | selectattr("status", "equalto", "sent") | list %}
+  {% if sol_inviati %}
+    <div class="alert alert-info">
+      <strong>SLA scaduto — sollecito già inviato.</strong>
+      {% for a in sla_breach_questa %}
+        PEC a <strong>{{ a.compagnia_nome }}</strong> del {{ a.data_invio.strftime("%d/%m/%Y") }}
+        — {{ a.giorni_attesa }} giorni senza risposta.
+      {% endfor %}
+      {% for s in sol_inviati %}
+        · Sollecito (liv. {{ s.livello }}) inviato il {{ s.sent_at.strftime("%d/%m/%Y") }}
+        — <a href="/solleciti/{{ s.id }}">vedi</a>.
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="alert alert-warn">
+      <strong>⚠ SLA scaduto.</strong>
+      {% for a in sla_breach_questa %}
+        PEC inviata a <strong>{{ a.compagnia_nome }}</strong> il
+        {{ a.data_invio.strftime("%d/%m/%Y") }}
+        — nessuna risposta dopo <strong>{{ a.giorni_attesa }} giorni</strong>.
+      {% endfor %}
+    </div>
+  {% endif %}
 {% endif %}
 
 {% if risposte_da_gestire %}
