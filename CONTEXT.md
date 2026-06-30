@@ -1,6 +1,6 @@
 # LYS Workflow Hub — Contesto di sviluppo
 
-> Branch: **v2** · Versione: **2.0.0-dev** (base: v1.0.4 / main)
+> Branch: **v2** · Versione: **2.1.0** (base: v1.0.4 / main)
 
 ---
 
@@ -10,12 +10,12 @@ Piattaforma di automazione documentale per **Carrozzeria LYS Auto srl** (Roma).
 Legge le pratiche dal gestionale **WinCar** (database Microsoft Access `.mdb`) in
 sola lettura, genera documenti precompilati, monitora le risposte assicurative
 via PEC/email, classifica con AI (Anthropic Claude), produce bozze di replica,
-genera alert SLA. Branch v2 aggiunge i verbali di consegna/riconsegna veicoli
-di cortesia.
+genera alert SLA. Branch v2 aggiunge i verbali di consegna/riconsegna veicoli di cortesia (v2.0)
+e il sistema di foto lavorazioni automatiche via Syncthing + Claude Vision (v2.1).
 
 **Stack**: FastAPI + Jinja2 · SQLite `lys_hub.db` · pyodbc → WinCar `.mdb` ·
 InfoCert Legalmail (IMAP + SMTP SSL 465) · Anthropic Claude API · `pypdf` ·
-python-docx + docx2pdf (Word COM)
+python-docx + docx2pdf (Word COM) · watchdog (file system events)
 
 **Deploy**: `C:\LYSApp\lys-workflow-hub` (Windows, Task Scheduler).
 Dev: WSL2 (`/mnt/c/Users/lucap/Documents/Claude/Projects/Lysauto/lys-workflow-hub`).
@@ -30,10 +30,14 @@ Web UI (FastAPI + Jinja2)
     ├── Workflow A — Cessione del credito        → python-docx → PDF via Word COM
     ├── Workflow B — Richiesta vandalismo         → PEC/email SMTP
     ├── Workflow C — Lettura risposte             → IMAP → AI → bozze → SLA
-    └── Workflow D — Verbali cortesia [v2]        → python-docx → PDF via Word COM
+    ├── Workflow D — Verbali cortesia [v2]        → python-docx → PDF via Word COM
+    └── Workflow E — Foto lavorazioni [v2.1]      → watchdog → Claude Vision → file copy
 
 Script polling (Task Scheduler)
     └── run_polling.py: fetch → match → classify → auto-transition → notify
+
+Foto watcher (thread daemon, avviato al boot se FOTO_INBOX_PATH configurato)
+    └── Syncthing inbox → targa via Claude Vision → fallback/<TARGA>/ + WinCar Pratiche/
 ```
 
 **DB SQLite** tabelle principali:
@@ -45,6 +49,7 @@ Script polling (Task Scheduler)
 - `compagnie_assicurative` — anagrafica + PEC + soglie SLA personalizzate
 - `categoria_policy` — policy generazione bozze per categoria AI
 - `pec_sla_reminder` — tracking escalation SLA già inviati
+- `foto_lavorazioni` — log foto processate dal watcher [v2.1]
 
 ---
 
@@ -52,7 +57,7 @@ Script polling (Task Scheduler)
 
 ```
 src/lys_workflow_hub/
-├── main.py                         Entry point FastAPI
+├── main.py                         Entry point FastAPI + lifespan (watcher start/stop)
 ├── config.py                       Caricamento .env (Settings)
 ├── core/
 │   ├── wincar_repository.py        Lettura WinCar (read-only)
@@ -62,13 +67,15 @@ src/lys_workflow_hub/
 │   ├── draft_repository.py         Bozze di risposta
 │   ├── compagnie_repository.py     Anagrafica compagnie
 │   ├── categoria_policy_repository.py  Policy bozze
-│   └── sollecito_repository.py     Solleciti SLA
+│   ├── sollecito_repository.py     Solleciti SLA
+│   └── foto_lavorazioni_repository.py  Log foto processate [v2.1]
 ├── integrations/
 │   ├── imap_fetcher.py             Fetch IMAP + estrazione body + PDF
 │   ├── ai_classifier.py            Classificatore Anthropic Claude
 │   ├── pdf_extractor.py            Estrazione testo PDF allegati (pypdf)
 │   ├── pec_mailer.py               SMTP + IMAP append posta inviata
-│   └── notifier.py                 Push ntfy + email
+│   ├── notifier.py                 Push ntfy + email
+│   └── foto_watcher.py             Watchdog + Claude Vision + routing foto [v2.1]
 ├── workflows/
 │   ├── cessione_credito/           Workflow A (data.py, generator.py, archive.py)
 │   │   └── assets/                 Firma pre-apposta (PNG)
@@ -85,6 +92,7 @@ src/lys_workflow_hub/
     ├── routes_risposte.py          Cruscotto risposte
     ├── routes_bozze.py             Cruscotto bozze
     ├── routes_verbale.py           Workflow D [v2] — 6 route
+    ├── routes_foto.py              Workflow E [v2.1] — log foto /foto
     ├── routes_compagnie.py         CRUD compagnie
     ├── routes_impostazioni.py      Statistiche + policy editor
     └── templates/ + static/
@@ -141,6 +149,50 @@ POST /pratiche/{n}/verbale/rientro/salva   Genera → salva WinCar → redirect
 `list_attachments()` / `get_attachment()` in `imap_fetcher.py` estraggono allegati
 dall'inner `postacert.eml`. Route `GET /risposte/{id}/allegati/{i}` serve inline.
 Template lista allegati con nome/tipo/dimensione e link "Apri" (nuova scheda).
+
+---
+
+## Workflow E — Foto lavorazioni [v2.1]
+
+### Flusso automatico
+1. Syncthing deposita foto da smartphone Android in `foto_inbox_path`
+2. `_QueueingHandler` (watchdog) intercetta `on_created` + `on_moved` → coda (`maxsize=500`)
+3. Worker thread (`foto-worker`, daemon): Claude Vision estrae targa
+4. Copia **sempre** in `foto_fallback_path/<TARGA>/` (o `/SCONOSCIUTA/`)
+5. Se pratica trovata in WinCar → copia anche in `Pratiche/<n>/Pubblici/Foto/`
+6. Log in `foto_lavorazioni` (DB) **prima** dell'unlink
+7. File eliminato dall'inbox
+
+### Config
+```
+FOTO_INBOX_PATH=      # vuoto = watcher off (dev); impostare in prod
+FOTO_FALLBACK_PATH=C:\LYSApp\Foto lavorazioni
+```
+Watcher avviato in `lifespan()` solo se `foto_inbox_path` non è None.
+
+### Stato record
+| stato | significato |
+|-------|-------------|
+| `ok` | targa estratta + pratica trovata |
+| `ok_no_pratica` | targa estratta, nessuna pratica WinCar |
+| `targa_non_trovata` | Claude Vision → NONE o risposta non valida |
+| `errore` | eccezione (file troppo grande, OS error, Vision timeout) |
+| `heic` | formato HEIC non supportato |
+
+### Decisioni tecniche critiche
+- **Syncthing `on_moved`**: Syncthing scrive temp file → rinomina atomico → catturare `dest_path` da `on_moved`, non solo `on_created`.
+- **OOM guard**: `_MAX_IMG_BYTES = 20 MB` — controllo `stat().st_size` prima di `read_bytes()`.
+- **Client AI singleton**: `anthropic.Anthropic(timeout=30.0)` creato in `__init__`, chiuso in `stop()` — un solo httpx pool per tutta la vita del watcher.
+- **Crash recovery**: `start()` scansiona inbox e accoda file pre-esistenti — idempotente al riavvio.
+- **Filename collision-safe**: `_dest_name()` = `{timestamp}_{uuid6}_{nome_originale}`.
+- **Log prima dell'unlink**: se `path.unlink()` fallisce, il record esiste già nel DB.
+- **Singleton `app.state.foto_repo`**: creato in `lifespan`, condiviso con `routes_foto.py` — evita DDL per ogni request HTTP.
+- **`_WATCHDOG_OK` flag**: import watchdog con fallback a stub classes — app si avvia anche senza watchdog installato; `start()` fallisce con errore chiaro.
+
+### Route
+```
+GET /foto   Lista inbox corrente + log ultime 100 foto processate
+```
 
 ---
 
@@ -224,12 +276,16 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 | Versione | Branch | Contenuto |
 |----------|--------|-----------|
 | 1.0.4 | main | Base stabile: cessione, vandalismo, risposte AI, bozze, SLA, UI dark glass, allegati email, fix re-download |
-| 2.0.0-dev | v2 | + Verbali cortesia con auto di cortesia DB, dichiarazione necessità, timbro LYS |
+| 2.0.0 | v2 | + Verbali cortesia con auto di cortesia DB, dichiarazione necessità, timbro LYS |
+| 2.1.0 | v2 | + Foto lavorazioni: Syncthing + watchdog + Claude Vision → routing automatico per targa |
 
 ---
 
 ## TODO v2
 
 - Deploy v2 su prod (dopo test completo su dev)
+  - Setup Syncthing smartphone → PC
+  - Installare watchdog in venv prod: `pip install watchdog>=4.0`
+  - Aggiungere `FOTO_INBOX_PATH=C:\LYSApp\Inbox Foto` al `.env` prod
 - Sezione danni verbali: UI grafica schema auto cliccabile
 - Franchigie verbali: definire valori default LYS Auto

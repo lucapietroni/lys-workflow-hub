@@ -5,7 +5,7 @@ con il gestionale **WinCar**. Legge le pratiche dal database WinCar in sola lett
 genera documenti precompilati, monitora le risposte delle compagnie assicurative
 via PEC/email, classifica le risposte con AI e genera alert mirati.
 
-> Branch attivo: **v2** · Versione: **2.0.0-dev**
+> Branch attivo: **v2** · Versione: **2.1.0**
 > Branch stabile: **main** (v1.0.4)
 
 ---
@@ -15,7 +15,7 @@ via PEC/email, classifica le risposte con AI e genera alert mirati.
 | Branch | Versione | Stato |
 |--------|----------|-------|
 | `main` | **1.0.4** | Stabile — funzionalità assicurative complete + allegati email + fix re-download |
-| `v2` | **2.0.0-dev** | Sviluppo attivo — verbali cortesia, auto cortesia DB, dichiarazione necessità |
+| `v2` | **2.1.0** | Sviluppo attivo — verbali cortesia + foto lavorazioni automatiche |
 
 ---
 
@@ -28,6 +28,36 @@ via PEC/email, classifica le risposte con AI e genera alert mirati.
 - **Stato pratica + SLA**: ciclo vita pratica, transizioni automatiche da AI, escalation SLA a tre livelli (sollecito / formale / diffida).
 - **Statistiche**: KPI globali e per compagnia, costi AI, tempi di risposta.
 - **UI dark glass**: tema navy/oro con logo LYS Auto, animazioni, KPI cliccabili.
+
+---
+
+## Novità v2.1 — Foto lavorazioni automatiche
+
+Flusso **zero azioni operative**: lo smartphone aziendale (Android) scatta foto
+durante le lavorazioni → Syncthing sincronizza in background → LYS Hub rileva,
+riconosce la targa e archivia automaticamente.
+
+**Flusso:**
+1. Syncthing deposita le foto in `C:\LYSApp\Inbox Foto\`
+2. Watchdog (thread daemon) rileva il nuovo file → coda thread-safe
+3. Claude Vision estrae la targa dal formato italiano (AA000AA)
+4. Foto copiata **sempre** in `C:\LYSApp\Foto lavorazioni\<TARGA>\`
+5. Se pratica trovata in WinCar → copiata anche in `Pratiche\<n>\Pubblici\Foto\`
+6. Log salvato in SQLite; file eliminato dall'inbox
+7. Pagina `/foto` mostra log ultime 100 foto con stato e percorsi
+
+**Setup produzione:**
+```
+# .env
+FOTO_INBOX_PATH=C:\LYSApp\Inbox Foto
+
+# venv
+pip install watchdog>=4.0
+```
+Poi configurare Syncthing: smartphone Android → `C:\LYSApp\Inbox Foto`.
+
+**Formati supportati**: `.jpg` `.jpeg` `.png` `.webp` (Android default è JPEG).
+HEIC (iPhone): loggato e saltato — configurare fotocamera su "Compatibilità massima".
 
 ---
 
@@ -67,15 +97,19 @@ Web UI (FastAPI + Jinja2)
     ├── Workflow A — Cessione del credito        → python-docx → PDF via Word COM
     ├── Workflow B — Richiesta vandalismo         → PEC/email SMTP
     ├── Workflow C — Lettura risposte             → IMAP → AI → bozze → SLA
-    └── Workflow D — Verbali cortesia [v2]        → python-docx → PDF via Word COM
+    ├── Workflow D — Verbali cortesia [v2]        → python-docx → PDF via Word COM
+    └── Workflow E — Foto lavorazioni [v2.1]      → watchdog → Claude Vision → file copy
 
 Script polling (Task Scheduler Windows)
     └── run_polling.py: fetch → match → classify → auto-transition → notify
+
+Foto watcher (thread daemon, avviato al boot se FOTO_INBOX_PATH configurato)
+    └── Syncthing inbox → targa via Claude Vision → fallback + WinCar Pratiche/
 ```
 
 **Stack**: FastAPI + Jinja2 · SQLite `lys_hub.db` · pyodbc → WinCar `.mdb` ·
 InfoCert Legalmail (IMAP + SMTP SSL 465) · Anthropic Claude API ·
-`pypdf` · python-docx + docx2pdf (Word COM)
+`pypdf` · python-docx + docx2pdf (Word COM) · watchdog (file system events)
 
 ---
 
@@ -85,8 +119,12 @@ InfoCert Legalmail (IMAP + SMTP SSL 465) · Anthropic Claude API ·
 src/lys_workflow_hub/
 ├── main.py
 ├── config.py
-├── core/                           Repository SQLite (mail, pratiche, bozze, SLA)
-├── integrations/                   IMAP, SMTP, AI classifier, PDF extractor, notifier
+├── core/
+│   ├── ...                         Repository SQLite (mail, pratiche, bozze, SLA)
+│   └── foto_lavorazioni_repository.py  Log foto processate [v2.1]
+├── integrations/
+│   ├── ...                         IMAP, SMTP, AI classifier, PDF extractor, notifier
+│   └── foto_watcher.py             Watchdog + Claude Vision + routing foto [v2.1]
 ├── workflows/
 │   ├── cessione_credito/           Workflow A
 │   ├── risarcimento_vandalismo/    Workflow B
@@ -102,6 +140,7 @@ src/lys_workflow_hub/
     ├── routes_risposte.py          Workflow C
     ├── routes_bozze.py             Bozze risposta
     ├── routes_verbale.py           Workflow D [v2]
+    ├── routes_foto.py              Workflow E — log foto [v2.1]
     ├── routes_compagnie.py
     ├── routes_impostazioni.py
     └── templates/ + static/
