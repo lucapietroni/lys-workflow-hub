@@ -72,6 +72,30 @@ logger = logging.getLogger(__name__)
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
+
+# --------------------------------------------------------------------------- #
+#  HTML ↔ plain-text helpers (solo per editor solleciti)
+# --------------------------------------------------------------------------- #
+
+def _body_html_to_text(html: str) -> str:
+    import re as _re
+    text = _re.sub(r"(?i)<br\s*/?>", "\n", html)
+    text = _re.sub(r"(?i)</p\s*>", "\n\n", text)
+    text = _re.sub(r"<[^>]+>", "", text)
+    return text.replace("&nbsp;", " ").replace("&amp;", "&").strip()
+
+
+def _body_text_to_html(text: str) -> str:
+    text = text.strip().replace("\r\n", "\n").replace("\r", "\n")
+    if not text:
+        return ""
+    result = []
+    for p in text.split("\n\n"):
+        p = p.strip()
+        if p:
+            result.append("<p>" + p.replace("\n", "<br>") + "</p>")
+    return "".join(result)
+
 router = APIRouter(tags=["bozze"])
 
 
@@ -534,6 +558,7 @@ def sollecito_edit(
         {
             "version": __version__,
             "s": s,
+            "body_text": _body_html_to_text(s.body_html or ""),
             "livello_label": LIVELLO_LABELS.get(s.livello, str(s.livello)),
             "livello_badge": LIVELLO_BADGE_CLASS.get(s.livello, "badge-gray"),
             "SOL_LABELS": SOL_LABELS,
@@ -556,9 +581,10 @@ async def sollecito_salva(
         raise HTTPException(409, f"Sollecito in stato {s.status}: non modificabile")
     form = await request.form()
     subject = (form.get("subject") or "").strip() or s.subject
-    body = (form.get("body") or "").strip() or s.body_html
+    body_raw = (form.get("body") or "").strip()
+    body_html = _body_text_to_html(body_raw) if body_raw else s.body_html
     to_address = (form.get("to_address") or "").strip() or s.to_address
-    sol_repo.update_body(sol_id, subject=subject, body_html=body, to_address=to_address)
+    sol_repo.update_body(sol_id, subject=subject, body_html=body_html, to_address=to_address)
     return RedirectResponse(url=f"/solleciti/{sol_id}", status_code=303)
 
 
@@ -585,9 +611,10 @@ async def sollecito_invia(
     if s.is_editable:
         form = await request.form()
         subject = (form.get("subject") or "").strip() or s.subject
-        body = (form.get("body") or "").strip() or s.body_html
+        body_raw = (form.get("body") or "").strip()
+        body_html = _body_text_to_html(body_raw) if body_raw else s.body_html
         to_address = (form.get("to_address") or "").strip() or s.to_address
-        s = sol_repo.update_body(sol_id, subject=subject, body_html=body, to_address=to_address)
+        s = sol_repo.update_body(sol_id, subject=subject, body_html=body_html, to_address=to_address)
 
     # Converti body_html → plain text (stessa logica di sender.py).
     body_plain = _re.sub(r"(?i)<br\s*/?>", "\n", s.body_html)
@@ -637,6 +664,7 @@ async def sollecito_invia(
         {
             "version": __version__,
             "s": s,
+            "body_text": _body_html_to_text(s.body_html or ""),
             "livello_label": LIVELLO_LABELS.get(s.livello, str(s.livello)),
             "livello_badge": LIVELLO_BADGE_CLASS.get(s.livello, "badge-gray"),
             "SOL_LABELS": SOL_LABELS,
