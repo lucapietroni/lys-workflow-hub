@@ -33,6 +33,9 @@ pypdf>=4.0
 # AI (M3)
 anthropic>=0.34
 
+# Foto watcher (v2.1)
+watchdog>=4.0
+
 # Push notification (M3)
 requests>=2.31
 
