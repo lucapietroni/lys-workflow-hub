@@ -49,6 +49,10 @@ from lys_workflow_hub.core.wincar_repository import WinCarRepository
 logger = logging.getLogger(__name__)
 
 _TARGA_SEARCH_RE = re.compile(r"\b([A-Z]{2}\d{3}[A-Z]{2})\b")
+# Targhe mai emesse in Italia (serie non ancora raggiunta): se il modello le
+# restituisce è quasi certamente un'allucinazione da esempio/placeholder,
+# non una lettura reale.
+_TARGA_BLACKLIST = {"AA000AA", "AA111AA", "XX000XX"}
 _SUPPORTED: dict[str, str] = {
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
@@ -171,6 +175,16 @@ class FotoWatcher:
 
         ext = path.suffix.lower()
         filename = path.name
+
+        if "trashed" in filename.lower():
+            # Cestino Android (.trashed-<timestamp>-<nome>) sincronizzato per errore
+            # da Syncthing: foto già cancellate dall'utente, spesso non auto.
+            logger.info("FotoWatcher: %s dal cestino Android, ignorato", filename)
+            try:
+                path.unlink()
+            except OSError:
+                pass
+            return
 
         if ext == ".heic":
             logger.warning(
@@ -300,18 +314,24 @@ class FotoWatcher:
                             {
                                 "type": "text",
                                 "text": (
-                                    "Individua la targa italiana del veicolo in foto (formato "
-                                    "AA000AA: 2 lettere, 3 cifre, 2 lettere).\n"
-                                    "La foto può essere scattata di taglio, angolata, con riflessi "
-                                    "o parzialmente in ombra: usa la spaziatura tipica e la forma dei "
-                                    "caratteri per dedurli anche se leggermente deformati o inclinati. "
-                                    "Attenzione a caratteri facilmente confondibili: 0/O, 1/I, 8/B, "
-                                    "5/S, 2/Z, G/C.\n"
+                                    "Individua la targa italiana del veicolo in foto. Schema targa "
+                                    "italiana standard: due lettere maiuscole, poi tre cifre, poi due "
+                                    "lettere maiuscole, senza spazi (es. due lettere-tre cifre-due "
+                                    "lettere).\n"
+                                    "La foto può essere scattata di taglio, angolata, con riflessi, "
+                                    "parzialmente in ombra, o la targa può risultare fisicamente "
+                                    "capovolta/ruotata di 180° (es. portellone posteriore aperto oltre "
+                                    "la verticale): usa la spaziatura tipica e la forma dei caratteri "
+                                    "per dedurli anche se deformati, inclinati o capovolti. Attenzione "
+                                    "a caratteri facilmente confondibili, specie se l'immagine è "
+                                    "ruotata: 0/O, 1/I, 8/B, 5/S, 2/Z, G/C.\n"
                                     "Rispondi in questo formato, due righe esatte:\n"
                                     "RAGIONAMENTO: <breve descrizione di cosa vedi e come hai letto i "
                                     "caratteri>\n"
-                                    "TARGA: <AA000AA oppure NONE se non riesci a leggere una targa "
-                                    "italiana valida>"
+                                    "TARGA: <la targa letta, oppure NONE se non riesci a leggere con "
+                                    "certezza una targa italiana valida nell'immagine>\n"
+                                    "Non inventare né dedurre una targa se non è visibile: in quel "
+                                    "caso rispondi sempre NONE."
                                 ),
                             },
                         ],
@@ -322,6 +342,12 @@ class FotoWatcher:
             match = _TARGA_SEARCH_RE.search(text)
             if match:
                 targa = match.group(1)
+                if targa in _TARGA_BLACKLIST:
+                    logger.warning(
+                        "FotoWatcher: targa %s in blacklist (probabile allucinazione "
+                        "da placeholder), scartata (risposta: %r)", targa, text,
+                    )
+                    return None
                 logger.info("FotoWatcher: Claude Vision → targa %s (risposta: %r)", targa, text)
                 return targa
             logger.info("FotoWatcher: Claude Vision → nessuna targa (risposta: %r)", text)
