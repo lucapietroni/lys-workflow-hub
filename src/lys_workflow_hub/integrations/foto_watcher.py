@@ -5,6 +5,16 @@ Flusso automatico (zero azioni operative):
   2. Watchdog rileva il file → coda thread-safe
   3. Worker: Claude Vision estrae targa → copia in fallback + pratica WinCar → log DB → elimina inbox
 
+Lettura targa a due passaggi:
+  - 1° tentativo su foto intera. Se la targa è piccola/distante/capovolta e
+    l'immagine non viene letta con certezza, il modello restituisce comunque
+    la zona approssimativa (REGIONE) dove pensa ci sia una targa.
+  - Se c'è una REGIONE, ritaglio quella zona dall'originale a piena
+    risoluzione (Pillow) e ritento: l'API Anthropic ridimensiona sempre le
+    immagini a un lato lungo ~1568px, quindi su foto d'insieme il dettaglio
+    di una targa piccola va perso nel resize anche se l'originale è ad alta
+    risoluzione — il ritaglio aggira il problema.
+
 Regola destinazione:
   - SEMPRE in foto_fallback_path/<TARGA>/  (o /SCONOSCIUTA/ se targa non letta)
   - SE pratica trovata in WinCar → ANCHE in Pratiche/<n>/Pubblici/Foto/
@@ -16,6 +26,7 @@ HEIC (default iPhone): loggato come errore + saltato.
 from __future__ import annotations
 
 import base64
+import io
 import logging
 import queue
 import re
@@ -41,6 +52,12 @@ except ImportError:
     class Observer:  # type: ignore[no-redef]
         pass
 
+try:
+    from PIL import Image
+    _PIL_OK = True
+except ImportError:
+    _PIL_OK = False
+
 from lys_workflow_hub.config import Settings
 from lys_workflow_hub.core.foto_lavorazioni_repository import FotoLavorazioniRepository
 from lys_workflow_hub.core.pratica_files import cartella_foto
@@ -49,6 +66,7 @@ from lys_workflow_hub.core.wincar_repository import WinCarRepository
 logger = logging.getLogger(__name__)
 
 _TARGA_SEARCH_RE = re.compile(r"TARGA:\s*([A-Z]{2}\d{3}[A-Z]{2})\b")
+_REGIONE_RE = re.compile(r"REGIONE:\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})")
 # Targhe mai emesse in Italia (serie non ancora raggiunta): se il modello le
 # restituisce è quasi certamente un'allucinazione da esempio/placeholder,
 # non una lettura reale.
@@ -61,6 +79,46 @@ _SUPPORTED: dict[str, str] = {
 }
 _MAX_IMG_BYTES = 20 * 1024 * 1024  # 20 MB
 _AI_TIMEOUT = 30.0                  # secondi per chiamata Claude Vision
+
+_PROMPT_LETTURA = (
+    "Individua la targa italiana del veicolo in foto. Schema targa "
+    "italiana standard: due lettere maiuscole, poi tre cifre, poi due "
+    "lettere maiuscole, senza spazi (es. due lettere-tre cifre-due "
+    "lettere).\n"
+    "La foto può essere scattata di taglio, angolata, con riflessi, "
+    "parzialmente in ombra, o la targa può risultare fisicamente "
+    "capovolta/ruotata di 180° (es. portellone posteriore aperto oltre "
+    "la verticale): usa la spaziatura tipica e la forma dei caratteri "
+    "per dedurli anche se deformati, inclinati o capovolti. Attenzione "
+    "a caratteri facilmente confondibili, specie se l'immagine è "
+    "ruotata: 0/O, 1/I, 8/B, 5/S, 2/Z, G/C.\n"
+    "Rispondi in questo formato, tre righe esatte:\n"
+    "RAGIONAMENTO: <breve descrizione di cosa vedi e come hai letto i "
+    "caratteri>\n"
+    "TARGA: <la targa letta, oppure NONE se non riesci a leggere con "
+    "certezza una targa italiana valida nell'immagine>\n"
+    "REGIONE: <coordinate percentuali x1,y1,x2,y2 (0-100, origine in alto "
+    "a sinistra) del rettangolo che contiene la targa o un oggetto simile "
+    "a una targa, anche se non l'hai letta con certezza — utile per "
+    "ritagliare e ingrandire quella zona; oppure NONE se non vedi nessuna "
+    "targa né rettangolo plausibile in tutta l'immagine>\n"
+    "Non inventare né dedurre una targa se non è visibile: in quel caso "
+    "rispondi sempre NONE alla riga TARGA."
+)
+
+_PROMPT_ZOOM = (
+    "Questo è un ritaglio ravvicinato e ingrandito di una foto più ampia, "
+    "centrato su una zona che potrebbe contenere una targa italiana "
+    "(schema: due lettere maiuscole, tre cifre, due lettere maiuscole). "
+    "Può essere ancora angolata, di taglio o capovolta di 180°. Leggi i "
+    "caratteri con attenzione, specie quelli facilmente confondibili se "
+    "ruotata o poco nitida: 0/O, 1/I, 8/B, 5/S, 2/Z, G/C.\n"
+    "Rispondi in questo formato, due righe esatte:\n"
+    "RAGIONAMENTO: <breve descrizione di cosa vedi e come hai letto i "
+    "caratteri>\n"
+    "TARGA: <la targa letta, oppure NONE se anche qui non è leggibile con "
+    "certezza>"
+)
 
 
 def _dest_name(original: Path) -> str:
@@ -294,6 +352,37 @@ class FotoWatcher:
                 "FotoWatcher: ANTHROPIC_API_KEY non configurata, targa non estratta"
             )
             return None
+
+        text = self._call_vision(img_bytes, media_type, _PROMPT_LETTURA)
+        if text is None:
+            return None
+
+        targa = self._parse_targa(text)
+        if targa:
+            return targa
+
+        # Targa non letta con certezza sull'immagine intera: l'API Anthropic
+        # ridimensiona sempre le immagini a un lato lungo ~1568px prima di
+        # "vederle". Su foto d'insieme (targa piccola/distante/capovolta) il
+        # dettaglio va perso nel resize anche se l'originale è ad alta
+        # risoluzione. Se il primo passaggio ha comunque individuato una zona
+        # plausibile, ritagliamo quella zona dall'originale a piena
+        # risoluzione e ritentiamo: la targa occuperà quasi tutto il frame.
+        if not _PIL_OK:
+            return None
+        regione = self._parse_regione(text)
+        if regione is None:
+            return None
+        crop_bytes = self._crop_region(img_bytes, regione)
+        if crop_bytes is None:
+            return None
+        logger.info("FotoWatcher: targa non letta su foto intera, ritento su ritaglio zona %s", regione)
+        text2 = self._call_vision(crop_bytes, "image/jpeg", _PROMPT_ZOOM)
+        if text2 is None:
+            return None
+        return self._parse_targa(text2)
+
+    def _call_vision(self, img_bytes: bytes, media_type: str, prompt: str) -> str | None:
         try:
             b64 = base64.standard_b64encode(img_bytes).decode()
             msg = self._ai_client.messages.create(
@@ -311,47 +400,72 @@ class FotoWatcher:
                                     "data": b64,
                                 },
                             },
-                            {
-                                "type": "text",
-                                "text": (
-                                    "Individua la targa italiana del veicolo in foto. Schema targa "
-                                    "italiana standard: due lettere maiuscole, poi tre cifre, poi due "
-                                    "lettere maiuscole, senza spazi (es. due lettere-tre cifre-due "
-                                    "lettere).\n"
-                                    "La foto può essere scattata di taglio, angolata, con riflessi, "
-                                    "parzialmente in ombra, o la targa può risultare fisicamente "
-                                    "capovolta/ruotata di 180° (es. portellone posteriore aperto oltre "
-                                    "la verticale): usa la spaziatura tipica e la forma dei caratteri "
-                                    "per dedurli anche se deformati, inclinati o capovolti. Attenzione "
-                                    "a caratteri facilmente confondibili, specie se l'immagine è "
-                                    "ruotata: 0/O, 1/I, 8/B, 5/S, 2/Z, G/C.\n"
-                                    "Rispondi in questo formato, due righe esatte:\n"
-                                    "RAGIONAMENTO: <breve descrizione di cosa vedi e come hai letto i "
-                                    "caratteri>\n"
-                                    "TARGA: <la targa letta, oppure NONE se non riesci a leggere con "
-                                    "certezza una targa italiana valida nell'immagine>\n"
-                                    "Non inventare né dedurre una targa se non è visibile: in quel "
-                                    "caso rispondi sempre NONE."
-                                ),
-                            },
+                            {"type": "text", "text": prompt},
                         ],
                     }
                 ],
             )
-            text = msg.content[0].text.strip().upper()
-            match = _TARGA_SEARCH_RE.search(text)
-            if match:
-                targa = match.group(1)
-                if targa in _TARGA_BLACKLIST:
-                    logger.warning(
-                        "FotoWatcher: targa %s in blacklist (probabile allucinazione "
-                        "da placeholder), scartata (risposta: %r)", targa, text,
-                    )
-                    return None
-                logger.info("FotoWatcher: Claude Vision → targa %s (risposta: %r)", targa, text)
-                return targa
-            logger.info("FotoWatcher: Claude Vision → nessuna targa (risposta: %r)", text)
-            return None
+            return msg.content[0].text.strip().upper()
         except Exception:
             logger.exception("FotoWatcher: errore Claude Vision")
+            return None
+
+    @staticmethod
+    def _parse_targa(text: str) -> str | None:
+        match = _TARGA_SEARCH_RE.search(text)
+        if not match:
+            logger.info("FotoWatcher: Claude Vision → nessuna targa (risposta: %r)", text)
+            return None
+        targa = match.group(1)
+        if targa in _TARGA_BLACKLIST:
+            logger.warning(
+                "FotoWatcher: targa %s in blacklist (probabile allucinazione da "
+                "placeholder), scartata (risposta: %r)", targa, text,
+            )
+            return None
+        logger.info("FotoWatcher: Claude Vision → targa %s (risposta: %r)", targa, text)
+        return targa
+
+    @staticmethod
+    def _parse_regione(text: str) -> tuple[float, float, float, float] | None:
+        match = _REGIONE_RE.search(text)
+        if not match:
+            return None
+        x1, y1, x2, y2 = (float(g) for g in match.groups())
+        if not all(0 <= v <= 100 for v in (x1, y1, x2, y2)):
+            return None
+        if x2 <= x1 or y2 <= y1:
+            return None
+        return (x1, y1, x2, y2)
+
+    @staticmethod
+    def _crop_region(
+        img_bytes: bytes,
+        box_pct: tuple[float, float, float, float],
+        pad_pct: float = 8.0,
+    ) -> bytes | None:
+        try:
+            im = Image.open(io.BytesIO(img_bytes))
+            im.load()
+            w, h = im.size
+            x1p, y1p, x2p, y2p = box_pct
+            pad_x = (x2p - x1p) * pad_pct / 100
+            pad_y = (y2p - y1p) * pad_pct / 100
+            x1 = max(0.0, x1p - pad_x) / 100 * w
+            x2 = min(100.0, x2p + pad_x) / 100 * w
+            y1 = max(0.0, y1p - pad_y) / 100 * h
+            y2 = min(100.0, y2p + pad_y) / 100 * h
+            crop = im.crop((int(x1), int(y1), int(x2), int(y2)))
+            if crop.width < 10 or crop.height < 10:
+                return None
+            if crop.width < 700:
+                scale = 700 / crop.width
+                crop = crop.resize(
+                    (int(crop.width * scale), int(crop.height * scale)), Image.LANCZOS
+                )
+            buf = io.BytesIO()
+            crop.convert("RGB").save(buf, format="JPEG", quality=92)
+            return buf.getvalue()
+        except Exception:
+            logger.exception("FotoWatcher: errore ritaglio zona targa")
             return None
