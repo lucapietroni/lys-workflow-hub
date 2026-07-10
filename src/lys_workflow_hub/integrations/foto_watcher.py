@@ -66,7 +66,10 @@ from lys_workflow_hub.core.wincar_repository import WinCarRepository
 logger = logging.getLogger(__name__)
 
 _TARGA_SEARCH_RE = re.compile(r"TARGA:\s*([A-Z]{2}\d{3}[A-Z]{2})\b")
-_REGIONE_RE = re.compile(r"REGIONE:\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})")
+_REGIONE_RE = re.compile(
+    r"REGIONE:\s*(\d{1,3}(?:\.\d+)?)\s*,\s*(\d{1,3}(?:\.\d+)?)\s*,\s*"
+    r"(\d{1,3}(?:\.\d+)?)\s*,\s*(\d{1,3}(?:\.\d+)?)"
+)
 # Targhe mai emesse in Italia (serie non ancora raggiunta): se il modello le
 # restituisce è quasi certamente un'allucinazione da esempio/placeholder,
 # non una lettura reale.
@@ -430,11 +433,17 @@ class FotoWatcher:
     def _parse_regione(text: str) -> tuple[float, float, float, float] | None:
         match = _REGIONE_RE.search(text)
         if not match:
+            if "REGIONE:" in text:
+                logger.warning(
+                    "FotoWatcher: REGIONE presente ma non parsabile (risposta: %r)", text,
+                )
             return None
         x1, y1, x2, y2 = (float(g) for g in match.groups())
         if not all(0 <= v <= 100 for v in (x1, y1, x2, y2)):
+            logger.warning("FotoWatcher: REGIONE fuori range 0-100: %s", match.groups())
             return None
         if x2 <= x1 or y2 <= y1:
+            logger.warning("FotoWatcher: REGIONE con box degenere: %s", match.groups())
             return None
         return (x1, y1, x2, y2)
 
