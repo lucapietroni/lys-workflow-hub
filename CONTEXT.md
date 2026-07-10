@@ -247,19 +247,29 @@ Su `/pratiche/<n>`, sotto "Assicurazione cliente": riquadro **Foto pratica**
 `scan()` server-side e accetta solo un `path` che corrisponde esattamente a
 uno dei file trovati (stesso pattern di sicurezza di `bozza_allegato_preview`
 in `routes_bozze.py`: niente path traversal, niente file fuori dalle
-cartelle WinCar della pratica). Risposta con `Content-Disposition: inline`
+cartelle WinCar della pratica). Solo le estensioni in `_PREVIEW_MIME`
+(immagini standard + PDF) rispondono con `Content-Disposition: inline`
 (chiave header minuscola, niente `filename=` separato — vedi nota Starlette
-sotto) → il browser renderizza invece di scaricare.
+sotto) → il browser renderizza invece di scaricare. Le altre estensioni
+(`.docx`, `.xlsx`, HEIC, ecc.) restano `attachment` col comportamento
+`FileResponse` di default — stesso ramo whitelist/fallback di
+`bozza_allegato_preview`.
 
 - **Foto**: click su miniatura apre un lightbox JS (overlay nella stessa
   pagina, `<img>` con `src` aggiornato dinamicamente) — nessun download,
   nessuna nuova finestra.
 - **Documenti**: link `target="_blank"` — nuova scheda con viewer nativo del
   browser (PDF), nessun download forzato.
+- **HEIC/HEIF (iPhone)**: nessun browser le renderizza in `<img>` → escluse
+  dalla griglia foto (thumbnail altrimenti rotta e silenziosa), mostrate
+  invece come documento (link diretto, che scarica: comportamento corretto
+  dato che il browser non può comunque visualizzarle inline).
 - **Miniature**: nessun resize server-side, `<img>` full-res mostrata piccola
   via CSS (`object-fit: cover`, griglia `auto-fill`) — accettabile al volume
   tipico (poche/dozzina foto per pratica); da rivedere se in futuro le
-  pratiche accumulano decine di foto ad alta risoluzione.
+  pratiche accumulano decine di foto ad alta risoluzione. Ogni thumbnail
+  ri-esegue `scan()` lato server (N+1): accettabile a questo volume, da
+  rivedere se cresce molto.
 
 ---
 

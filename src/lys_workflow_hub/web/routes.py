@@ -86,6 +86,10 @@ _PREVIEW_MIME: dict[str, str] = {
     ".pdf": "application/pdf",
 }
 
+# Formati immagine che nessun browser renderizza in <img> (niente thumbnail
+# in griglia foto pratica, vanno mostrati come documento scaricabile).
+_NON_RENDERIZZABILI = {".heic", ".heif"}
+
 
 def _allegati_con_url(numero: int, items: list[Allegato]) -> list[dict[str, Any]]:
     """Arricchisce gli Allegato con l'URL di anteprima inline per il template."""
@@ -234,9 +238,19 @@ def pratica_detail(
     # Foto e documenti archiviati nelle cartelle Pubblici/Foto e Pubblici/Allegati
     try:
         allegati = scan_allegati(settings.wincar_archivio, numero)
-        context["foto_pratica"] = _allegati_con_url(numero, allegati.foto)
+        # HEIC/HEIF (iPhone): nessun browser le renderizza in <img>, quindi non
+        # vanno in griglia come miniatura (thumbnail rotta e silenziosa) — le
+        # trattiamo come documento (link diretto, non anteprima inline).
+        foto_renderizzabili = [
+            a for a in allegati.foto if a.path.suffix.lower() not in _NON_RENDERIZZABILI
+        ]
+        foto_non_renderizzabili = [
+            a for a in allegati.foto if a.path.suffix.lower() in _NON_RENDERIZZABILI
+        ]
+        context["foto_pratica"] = _allegati_con_url(numero, foto_renderizzabili)
         context["documenti_pratica"] = _allegati_con_url(
-            numero, allegati.cessioni + allegati.denunce + allegati.altri
+            numero,
+            allegati.cessioni + allegati.denunce + allegati.altri + foto_non_renderizzabili,
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("Impossibile leggere foto/documenti per %s: %s", numero, exc)
@@ -268,12 +282,18 @@ def pratica_file_preview(
     file_path = Path(path)
     if not file_path.exists() or not file_path.is_file():
         raise HTTPException(410, f"File non piu' disponibile sul filesystem: {path}")
-    media_type = _PREVIEW_MIME.get(file_path.suffix.lower(), "application/octet-stream")
-    return FileResponse(
-        path=file_path,
-        media_type=media_type,
-        headers={"content-disposition": f'inline; filename="{file_path.name}"'},
-    )
+    ext = file_path.suffix.lower()
+    # Solo i tipi che il browser sa renderizzare vanno inline (niente filename=,
+    # header in minuscolo: evita che Starlette aggiunga un secondo
+    # Content-Disposition: attachment, vedi bozza_allegato_preview). Gli altri
+    # (.docx, .xlsx, .heic, ecc.) restano attachment col comportamento di default.
+    if ext in _PREVIEW_MIME:
+        return FileResponse(
+            path=file_path,
+            media_type=_PREVIEW_MIME[ext],
+            headers={"content-disposition": f'inline; filename="{file_path.name}"'},
+        )
+    return FileResponse(path=file_path, filename=file_path.name)
 
 
 # --------------------------------------------------------------------------- #
