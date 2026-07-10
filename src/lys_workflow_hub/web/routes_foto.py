@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from lys_workflow_hub import __version__
@@ -39,5 +39,19 @@ def foto_inbox(request: Request) -> HTMLResponse:
         "inbox_path": str(inbox_path) if inbox_path else "(non configurato)",
         "fallback_path": str(settings.foto_fallback_path),
         "inbox_files": inbox_files,
+        "copia_pratica_abilitata": foto_repo.get_copia_pratica_abilitata(),
     }
     return templates.TemplateResponse(request, "foto_inbox.html", ctx)
+
+
+@router.post("/foto/copia-pratica")
+def toggle_copia_pratica(request: Request) -> RedirectResponse:
+    settings = get_settings()
+    foto_repo: FotoLavorazioniRepository = getattr(
+        request.app.state,
+        "foto_repo",
+        FotoLavorazioniRepository(db_path=settings.app_db_path),
+    )
+    nuovo_stato = not foto_repo.get_copia_pratica_abilitata()
+    foto_repo.set_copia_pratica_abilitata(nuovo_stato)
+    return RedirectResponse(url="/foto", status_code=303)

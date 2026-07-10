@@ -4,6 +4,7 @@ from __future__ import annotations
 import sqlite3
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Iterator
 
@@ -51,6 +52,34 @@ class FotoLavorazioniRepository:
                     created_at          TEXT    DEFAULT (datetime('now'))
                 )
             """)
+            # Riga singola (id=1) con le impostazioni del watcher foto.
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS foto_settings (
+                    id                        INTEGER PRIMARY KEY CHECK (id = 1),
+                    copia_pratica_abilitata   INTEGER NOT NULL DEFAULT 1
+                )
+            """)
+            conn.execute(
+                "INSERT OR IGNORE INTO foto_settings (id, copia_pratica_abilitata) VALUES (1, 1)"
+            )
+
+    # ------------------------------------------------------------------
+    # Impostazioni
+    # ------------------------------------------------------------------
+
+    def get_copia_pratica_abilitata(self) -> bool:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT copia_pratica_abilitata FROM foto_settings WHERE id = 1"
+            ).fetchone()
+        return bool(row["copia_pratica_abilitata"]) if row else True
+
+    def set_copia_pratica_abilitata(self, enabled: bool) -> None:
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE foto_settings SET copia_pratica_abilitata = ? WHERE id = 1",
+                (1 if enabled else 0,),
+            )
 
     def log_foto(
         self,
@@ -67,10 +96,10 @@ class FotoLavorazioniRepository:
             cur = conn.execute(
                 """INSERT INTO foto_lavorazioni
                    (filename_originale, targa_riconosciuta, pratica_numero,
-                    percorso_fallback, percorso_pratica, stato, errore)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    percorso_fallback, percorso_pratica, stato, errore, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (filename, targa, pratica_numero, percorso_fallback,
-                 percorso_pratica, stato, errore),
+                 percorso_pratica, stato, errore, datetime.now().isoformat(timespec="seconds")),
             )
             return cur.lastrowid
 

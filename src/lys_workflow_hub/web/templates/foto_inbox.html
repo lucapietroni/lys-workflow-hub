@@ -11,7 +11,25 @@
       Archivio: <code>{{ fallback_path }}</code>
     </p>
   </div>
+  <form method="post" action="/foto/copia-pratica">
+    <button type="submit" class="btn {% if copia_pratica_abilitata %}btn-sm{% else %}btn-sm btn-danger-outline{% endif %}">
+      {% if copia_pratica_abilitata %}
+        Copia in pratica: attiva — clic per disattivare
+      {% else %}
+        Copia in pratica: disattivata — clic per riattivare
+      {% endif %}
+    </button>
+  </form>
 </header>
+{% if not copia_pratica_abilitata %}
+<section class="card" style="border-left: 4px solid var(--warn, orange);">
+  <p class="meta" style="margin:0;">
+    Copia automatica nella cartella pratica <strong>disattivata</strong>: le foto vengono
+    salvate solo in <code>{{ fallback_path }}\&lt;TARGA&gt;\</code>. Utile se ci sono più
+    pratiche con la stessa targa e vuoi smistarle a mano.
+  </p>
+</section>
+{% endif %}
 
 {% if inbox_files %}
 <section class="card" style="border-left: 4px solid var(--accent);">

@@ -238,10 +238,10 @@ class FotoWatcher:
         shutil.copy2(path, dest_fallback)
         logger.info("FotoWatcher: %s → fallback %s", filename, dest_fallback)
 
-        # 3. Copia anche in pratica WinCar (se targa trovata)
+        # 3. Copia anche in pratica WinCar (se targa trovata e copia abilitata)
         pratica_numero: int | None = None
         dest_pratica_str = ""
-        if targa:
+        if targa and self._foto_repo.get_copia_pratica_abilitata():
             try:
                 wincar = WinCarRepository.from_settings()
                 results = wincar.search_pratiche(targa=targa, limit=1)
