@@ -107,6 +107,9 @@ class Settings(BaseSettings):
     ai_disabled: bool = Field(default=False)
     anthropic_api_key: str = Field(default="")
     anthropic_model: str = Field(default="claude-haiku-4-5-20251001")
+    # Modello per lettura targhe da foto (v2.1): serve più capacità OCR/vision
+    # di Haiku, specie su foto di taglio o angolate. Costo per foto trascurabile.
+    anthropic_vision_model: str = Field(default="claude-sonnet-5")
     ai_budget_monthly_eur: float = Field(default=20.0)
     ai_budget_alert_eur: float = Field(default=15.0)
 

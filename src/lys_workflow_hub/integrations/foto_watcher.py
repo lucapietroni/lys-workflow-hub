@@ -48,7 +48,7 @@ from lys_workflow_hub.core.wincar_repository import WinCarRepository
 
 logger = logging.getLogger(__name__)
 
-_TARGA_RE = re.compile(r"^[A-Z]{2}\d{3}[A-Z]{2}$")
+_TARGA_SEARCH_RE = re.compile(r"\b([A-Z]{2}\d{3}[A-Z]{2})\b")
 _SUPPORTED: dict[str, str] = {
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
@@ -283,8 +283,8 @@ class FotoWatcher:
         try:
             b64 = base64.standard_b64encode(img_bytes).decode()
             msg = self._ai_client.messages.create(
-                model=self._settings.anthropic_model,
-                max_tokens=20,
+                model=self._settings.anthropic_vision_model,
+                max_tokens=300,
                 messages=[
                     {
                         "role": "user",
@@ -300,10 +300,18 @@ class FotoWatcher:
                             {
                                 "type": "text",
                                 "text": (
-                                    "Estrai la targa del veicolo italiano dall'immagine. "
-                                    "Rispondi SOLO con la targa nel formato esatto AA000AA "
-                                    "(2 lettere maiuscole, 3 cifre, 2 lettere maiuscole), senza spazi. "
-                                    "Se non vedi una targa italiana leggibile, rispondi esattamente: NONE"
+                                    "Individua la targa italiana del veicolo in foto (formato "
+                                    "AA000AA: 2 lettere, 3 cifre, 2 lettere).\n"
+                                    "La foto può essere scattata di taglio, angolata, con riflessi "
+                                    "o parzialmente in ombra: usa la spaziatura tipica e la forma dei "
+                                    "caratteri per dedurli anche se leggermente deformati o inclinati. "
+                                    "Attenzione a caratteri facilmente confondibili: 0/O, 1/I, 8/B, "
+                                    "5/S, 2/Z, G/C.\n"
+                                    "Rispondi in questo formato, due righe esatte:\n"
+                                    "RAGIONAMENTO: <breve descrizione di cosa vedi e come hai letto i "
+                                    "caratteri>\n"
+                                    "TARGA: <AA000AA oppure NONE se non riesci a leggere una targa "
+                                    "italiana valida>"
                                 ),
                             },
                         ],
@@ -311,9 +319,11 @@ class FotoWatcher:
                 ],
             )
             text = msg.content[0].text.strip().upper()
-            if _TARGA_RE.match(text):
-                logger.info("FotoWatcher: Claude Vision → targa %s", text)
-                return text
+            match = _TARGA_SEARCH_RE.search(text)
+            if match:
+                targa = match.group(1)
+                logger.info("FotoWatcher: Claude Vision → targa %s (risposta: %r)", targa, text)
+                return targa
             logger.info("FotoWatcher: Claude Vision → nessuna targa (risposta: %r)", text)
             return None
         except Exception:
