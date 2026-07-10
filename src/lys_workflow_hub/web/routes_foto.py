@@ -23,10 +23,8 @@ def foto_inbox(request: Request) -> HTMLResponse:
     # Usa il repo singleton creato in lifespan (app.state.foto_repo) se disponibile,
     # altrimenti ne crea uno temporaneo (fallback per dev senza watcher avviato).
     foto_repo: FotoLavorazioniRepository = getattr(
-        request.app.state,
-        "foto_repo",
-        FotoLavorazioniRepository(db_path=settings.app_db_path),
-    )
+        request.app.state, "foto_repo", None
+    ) or FotoLavorazioniRepository(db_path=settings.app_db_path)
     records = foto_repo.list_recenti(limit=100)
     inbox_path = settings.foto_inbox_path
     inbox_files: list[str] = []
@@ -48,10 +46,8 @@ def foto_inbox(request: Request) -> HTMLResponse:
 def toggle_copia_pratica(request: Request) -> RedirectResponse:
     settings = get_settings()
     foto_repo: FotoLavorazioniRepository = getattr(
-        request.app.state,
-        "foto_repo",
-        FotoLavorazioniRepository(db_path=settings.app_db_path),
-    )
+        request.app.state, "foto_repo", None
+    ) or FotoLavorazioniRepository(db_path=settings.app_db_path)
     nuovo_stato = not foto_repo.get_copia_pratica_abilitata()
     foto_repo.set_copia_pratica_abilitata(nuovo_stato)
     return RedirectResponse(url="/foto", status_code=303)

@@ -48,7 +48,7 @@ from lys_workflow_hub.core.wincar_repository import WinCarRepository
 
 logger = logging.getLogger(__name__)
 
-_TARGA_SEARCH_RE = re.compile(r"\b([A-Z]{2}\d{3}[A-Z]{2})\b")
+_TARGA_SEARCH_RE = re.compile(r"TARGA:\s*([A-Z]{2}\d{3}[A-Z]{2})\b")
 # Targhe mai emesse in Italia (serie non ancora raggiunta): se il modello le
 # restituisce è quasi certamente un'allucinazione da esempio/placeholder,
 # non una lettura reale.
