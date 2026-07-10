@@ -206,6 +206,37 @@
 </section>
 
 <section class="card">
+  <h2>Foto pratica <span class="tag">{{ foto_pratica|length }}</span></h2>
+  {% if foto_pratica %}
+  <div class="foto-grid">
+    {% for f in foto_pratica %}
+    <button type="button" class="foto-thumb" data-full="{{ f.url }}" data-name="{{ f.nome_file }}" title="{{ f.nome_file }}">
+      <img src="{{ f.url }}" alt="{{ f.nome_file }}" loading="lazy" />
+    </button>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="meta" style="margin-top:-6px">Nessuna foto archiviata per questa pratica.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Documenti <span class="tag">{{ documenti_pratica|length }}</span></h2>
+  {% if documenti_pratica %}
+  <ul class="files-list">
+    {% for d in documenti_pratica %}
+    <li>
+      <a class="file-name" href="{{ d.url }}" target="_blank" rel="noopener" style="text-decoration:none;">{{ d.nome_file }}</a>
+      <span class="file-meta">{{ d.data_modifica.strftime("%d/%m/%Y") }} · {{ d.size_label }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="meta" style="margin-top:-6px">Nessun documento archiviato per questa pratica.</p>
+  {% endif %}
+</section>
+
+<section class="card">
   <h2>Scansione cessione firmata</h2>
   {% if scansioni %}
     <p class="meta" style="margin-top:-6px">
@@ -296,7 +327,43 @@
   <a href="/api/pratiche/{{ pratica.numero }}" target="_blank" rel="noopener">apri /api/pratiche/{{ pratica.numero }}</a>.
 </aside>
 
+<div id="foto-lightbox" class="lightbox" hidden>
+  <button type="button" class="lightbox-close" id="lightbox-close" aria-label="Chiudi">&times;</button>
+  <img id="lightbox-img" src="" alt="" />
+</div>
+
 <script>
+  // Lightbox foto pratica: click su miniatura → ingrandita in overlay, niente download/nuova finestra
+  (function() {
+    var lb = document.getElementById("foto-lightbox");
+    var lbImg = document.getElementById("lightbox-img");
+    var closeBtn = document.getElementById("lightbox-close");
+    if (!lb || !lbImg || !closeBtn) return;
+    function openLightbox(src, alt) {
+      lbImg.src = src;
+      lbImg.alt = alt || "";
+      lb.hidden = false;
+      document.body.classList.add("lightbox-open");
+    }
+    function closeLightbox() {
+      lb.hidden = true;
+      lbImg.src = "";
+      document.body.classList.remove("lightbox-open");
+    }
+    document.querySelectorAll(".foto-thumb").forEach(function(btn) {
+      btn.addEventListener("click", function() {
+        openLightbox(btn.getAttribute("data-full"), btn.getAttribute("data-name"));
+      });
+    });
+    closeBtn.addEventListener("click", closeLightbox);
+    lb.addEventListener("click", function(e) {
+      if (e.target === lb) closeLightbox();
+    });
+    document.addEventListener("keydown", function(e) {
+      if (e.key === "Escape" && !lb.hidden) closeLightbox();
+    });
+  })();
+
   // Drag & drop + nome file scelto
   (function() {
     var dz = document.getElementById("dropzone");

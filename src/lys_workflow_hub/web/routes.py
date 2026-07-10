@@ -14,9 +14,10 @@ import logging
 from datetime import date
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote as _urlquote
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from lys_workflow_hub import __version__
@@ -28,6 +29,7 @@ from lys_workflow_hub.core.draft_repository import (
 )
 from lys_workflow_hub.core.sollecito_repository import SollecitoRepository
 from lys_workflow_hub.core.mail_in_repository import MailRepository
+from lys_workflow_hub.core.pratica_files import Allegato, scan as scan_allegati
 from lys_workflow_hub.core.pratica_stato_repository import (
     PraticaStatoRepository,
     STATI,
@@ -69,6 +71,34 @@ def get_app_settings() -> Settings:
 
 def _common_context() -> dict:
     return {"version": __version__}
+
+
+# Estensioni renderizzabili inline nel browser (foto pratica + documenti).
+_PREVIEW_MIME: dict[str, str] = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+    ".bmp": "image/bmp",
+    ".tif": "image/tiff",
+    ".tiff": "image/tiff",
+    ".pdf": "application/pdf",
+}
+
+
+def _allegati_con_url(numero: int, items: list[Allegato]) -> list[dict[str, Any]]:
+    """Arricchisce gli Allegato con l'URL di anteprima inline per il template."""
+    return [
+        {
+            "nome_file": a.nome_file,
+            "size_label": a.size_label,
+            "data_modifica": a.data_modifica,
+            "categoria": a.categoria,
+            "url": f"/pratiche/{numero}/file?path={_urlquote(str(a.path))}",
+        }
+        for a in items
+    ]
 
 
 # --------------------------------------------------------------------------- #
@@ -201,7 +231,49 @@ def pratica_detail(
     except Exception as exc:  # noqa: BLE001
         logger.warning("Impossibile leggere verbali cortesia per %s: %s", numero, exc)
         context["verbali_cortesia"] = []
+    # Foto e documenti archiviati nelle cartelle Pubblici/Foto e Pubblici/Allegati
+    try:
+        allegati = scan_allegati(settings.wincar_archivio, numero)
+        context["foto_pratica"] = _allegati_con_url(numero, allegati.foto)
+        context["documenti_pratica"] = _allegati_con_url(
+            numero, allegati.cessioni + allegati.denunce + allegati.altri
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Impossibile leggere foto/documenti per %s: %s", numero, exc)
+        context["foto_pratica"] = []
+        context["documenti_pratica"] = []
     return templates.TemplateResponse(request, "pratica_detail.html", context)
+
+
+@router.get("/pratiche/{numero}/file")
+def pratica_file_preview(
+    numero: int,
+    path: str = Query(..., description="Path assoluto del file (deve appartenere alla pratica)"),
+    settings: Settings = Depends(get_app_settings),
+) -> FileResponse:
+    """Serve un file di Pubblici/Foto o Pubblici/Allegati per anteprima inline.
+
+    Sicurezza: il path richiesto deve corrispondere ESATTAMENTE a uno dei file
+    trovati dalla scansione delle cartelle di questa pratica. Niente path
+    traversal, niente file al di fuori delle cartelle WinCar della pratica.
+    """
+    try:
+        allegati = scan_allegati(settings.wincar_archivio, numero)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Impossibile leggere allegati per %s: %s", numero, exc)
+        raise HTTPException(404, "Pratica non trovata o cartelle non accessibili.")
+    valid_paths = {str(a.path) for a in allegati.tutti}
+    if path not in valid_paths:
+        raise HTTPException(403, "File non autorizzato per questa pratica.")
+    file_path = Path(path)
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(410, f"File non piu' disponibile sul filesystem: {path}")
+    media_type = _PREVIEW_MIME.get(file_path.suffix.lower(), "application/octet-stream")
+    return FileResponse(
+        path=file_path,
+        media_type=media_type,
+        headers={"content-disposition": f'inline; filename="{file_path.name}"'},
+    )
 
 
 # --------------------------------------------------------------------------- #

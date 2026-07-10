@@ -63,7 +63,7 @@
     <tbody>
       {% for r in records %}
       <tr>
-        <td style="white-space:nowrap; color: var(--text-muted);">{{ r.created_at[:16] }}</td>
+        <td style="white-space:nowrap; color: var(--text-muted);">{{ r.created_at[:16].replace("T", " ") }}</td>
         <td style="font-family: monospace; font-size: 0.82rem; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ r.filename_originale }}</td>
         <td>
           {% if r.targa_riconosciuta %}
