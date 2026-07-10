@@ -1,6 +1,6 @@
 # LYS Workflow Hub — Contesto di sviluppo
 
-> Branch: **v2** · Versione: **2.1.0** (base: v1.0.4 / main)
+> Branch: **v2** · Versione: **2.2.0** (base: v1.0.4 / main)
 
 ---
 
@@ -152,23 +152,56 @@ Template lista allegati con nome/tipo/dimensione e link "Apri" (nuova scheda).
 
 ---
 
-## Workflow E — Foto lavorazioni [v2.1]
+## Workflow E — Foto lavorazioni [v2.1, migliorato in v2.2]
 
 ### Flusso automatico
 1. Syncthing deposita foto da smartphone Android in `foto_inbox_path`
 2. `_QueueingHandler` (watchdog) intercetta `on_created` + `on_moved` → coda (`maxsize=500`)
-3. Worker thread (`foto-worker`, daemon): Claude Vision estrae targa
-4. Copia **sempre** in `foto_fallback_path/<TARGA>/` (o `/SCONOSCIUTA/`)
-5. Se pratica trovata in WinCar → copia anche in `Pratiche/<n>/Pubblici/Foto/`
-6. Log in `foto_lavorazioni` (DB) **prima** dell'unlink
-7. File eliminato dall'inbox
+3. Worker thread (`foto-worker`, daemon): file `.trashed-*` (cestino Android
+   sincronizzato per errore) scartati subito, senza chiamata AI
+4. Claude Vision estrae targa (vedi "Lettura targa a due passaggi" sotto)
+5. Copia **sempre** in `foto_fallback_path/<TARGA>/` (o `/SCONOSCIUTA/`)
+6. Se pratica trovata in WinCar **e** `copia_pratica_abilitata` (toggle su `/foto`)
+   → copia anche in `Pratiche/<n>/Pubblici/Foto/`
+7. Log in `foto_lavorazioni` (DB) **prima** dell'unlink
+8. File eliminato dall'inbox
+
+### Lettura targa a due passaggi (locate+zoom, v2.2)
+L'API Anthropic ridimensiona sempre le immagini a un lato lungo ~1568px prima
+di processarle. Su foto d'insieme (vano motore/bagagliaio) con targa piccola,
+distante o fisicamente capovolta (portellone aperto oltre la verticale), il
+dettaglio va perso nel resize anche partendo da un originale ad alta
+risoluzione — il modello finiva per indovinare l'intera targa, non solo
+confondere caratteri simili.
+
+1. **1° tentativo** su foto intera (`_PROMPT_LETTURA`, modello
+   `anthropic_vision_model`, non più lo stesso Haiku del classificatore email).
+   Risposta a tre righe: `RAGIONAMENTO:` / `TARGA:` / `REGIONE:` (bounding box
+   % `x1,y1,x2,y2`, best-guess anche se la targa non è letta con certezza).
+2. Se `TARGA:` è `NONE` (o in blacklist) ma c'è una `REGIONE:` valida →
+   ritaglio quella zona + 8% padding dall'originale a piena risoluzione
+   (Pillow, upscale se il crop è sotto 700px), **2° tentativo** mirato
+   (`_PROMPT_ZOOM`) solo su quel ritaglio.
+3. `_TARGA_BLACKLIST` = targhe mai emesse (`AA000AA`, ecc.): rete di sicurezza
+   contro l'allucinazione "placeholder" — il modello a volte ripeteva
+   l'esempio di formato del prompt invece di dire NONE. Il prompt v2.2 non
+   contiene più un placeholder letterale.
+
+Seconda chiamata AI solo sui casi difficili; foto leggibili al primo
+tentativo restano a una sola chiamata (nessun impatto su costo/latenza per
+il caso comune).
 
 ### Config
 ```
-FOTO_INBOX_PATH=      # vuoto = watcher off (dev); impostare in prod
+FOTO_INBOX_PATH=          # vuoto = watcher off (dev); impostare in prod
 FOTO_FALLBACK_PATH=C:\LYSApp\Foto lavorazioni
+ANTHROPIC_VISION_MODEL=claude-sonnet-5   # separato da ANTHROPIC_MODEL (classificatore email)
 ```
 Watcher avviato in `lifespan()` solo se `foto_inbox_path` non è None.
+Toggle `copia_pratica_abilitata` in tabella `foto_settings` (riga singola,
+default 1), gestito da `/foto` (bottone) — quando disattivo, `_process()`
+salta la ricerca WinCar e la copia in pratica, la foto resta comunque sempre
+in `foto_fallback_path/<TARGA>/`.
 
 ### Stato record
 | stato | significato |
@@ -188,11 +221,45 @@ Watcher avviato in `lifespan()` solo se `foto_inbox_path` non è None.
 - **Log prima dell'unlink**: se `path.unlink()` fallisce, il record esiste già nel DB.
 - **Singleton `app.state.foto_repo`**: creato in `lifespan`, condiviso con `routes_foto.py` — evita DDL per ogni request HTTP.
 - **`_WATCHDOG_OK` flag**: import watchdog con fallback a stub classes — app si avvia anche senza watchdog installato; `start()` fallisce con errore chiaro.
+- **`_PIL_OK` flag** (v2.2): stesso pattern per Pillow — senza, il modulo resta importabile ma il retry locate+zoom viene saltato (solo 1° tentativo).
+- **`created_at` esplicito in Python** (v2.2): `datetime.now().isoformat(...)` passato in ogni `INSERT`, non default SQLite `datetime('now')` (che è UTC — mostrava orari sfasati di 2h rispetto all'Italia CEST).
 
 ### Route
 ```
-GET /foto   Lista inbox corrente + log ultime 100 foto processate
+GET  /foto                    Lista inbox corrente + log ultime 100 foto processate
+POST /foto/copia-pratica      Toggle copia_pratica_abilitata
 ```
+
+---
+
+## Foto e documenti in pratica [v2.2]
+
+Su `/pratiche/<n>`, sotto "Assicurazione cliente": riquadro **Foto pratica**
+(miniature) e riquadro **Documenti** (elenco). Riusa `pratica_files.scan()`
+(già esistente, usato anche da Workflow B) senza modificarlo.
+
+- `foto_pratica` = `scan().foto` (immagini in `Pubblici/Foto/` + eventuali
+  immagini finite in `Pubblici/Allegati/`)
+- `documenti_pratica` = `scan().cessioni + denunce + altri` (tutto il resto:
+  PDF e altri file non immagine)
+
+**Anteprima inline**: `GET /pratiche/{numero}/file?path=...` — ri-esegue
+`scan()` server-side e accetta solo un `path` che corrisponde esattamente a
+uno dei file trovati (stesso pattern di sicurezza di `bozza_allegato_preview`
+in `routes_bozze.py`: niente path traversal, niente file fuori dalle
+cartelle WinCar della pratica). Risposta con `Content-Disposition: inline`
+(chiave header minuscola, niente `filename=` separato — vedi nota Starlette
+sotto) → il browser renderizza invece di scaricare.
+
+- **Foto**: click su miniatura apre un lightbox JS (overlay nella stessa
+  pagina, `<img>` con `src` aggiornato dinamicamente) — nessun download,
+  nessuna nuova finestra.
+- **Documenti**: link `target="_blank"` — nuova scheda con viewer nativo del
+  browser (PDF), nessun download forzato.
+- **Miniature**: nessun resize server-side, `<img>` full-res mostrata piccola
+  via CSS (`object-fit: cover`, griglia `auto-fill`) — accettabile al volume
+  tipico (poche/dozzina foto per pratica); da rivedere se in futuro le
+  pratiche accumulano decine di foto ad alta risoluzione.
 
 ---
 
@@ -278,14 +345,15 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 | 1.0.4 | main | Base stabile: cessione, vandalismo, risposte AI, bozze, SLA, UI dark glass, allegati email, fix re-download |
 | 2.0.0 | v2 | + Verbali cortesia con auto di cortesia DB, dichiarazione necessità, timbro LYS |
 | 2.1.0 | v2 | + Foto lavorazioni: Syncthing + watchdog + Claude Vision → routing automatico per targa |
+| 2.2.0 | v2 | + Foto/documenti in pratica (anteprima inline) + lettura targa a due passaggi (locate+zoom), toggle copia-pratica, fix orario UTC |
 
 ---
 
 ## TODO v2
 
-- Deploy v2 su prod (dopo test completo su dev)
-  - Setup Syncthing smartphone → PC
-  - Installare watchdog in venv prod: `pip install watchdog>=4.0`
-  - Aggiungere `FOTO_INBOX_PATH=C:\LYSApp\Inbox Foto` al `.env` prod
+- Deploy v2.2 su prod (dopo test completo su dev)
+  - `pip install -r requirements.txt` (installa watchdog + Pillow, già in requirements.txt)
+  - Verificare `ANTHROPIC_VISION_MODEL` in `.env` prod (default claude-sonnet-5 se assente)
+  - Setup Syncthing smartphone → PC (se non già fatto)
 - Sezione danni verbali: UI grafica schema auto cliccabile
 - Franchigie verbali: definire valori default LYS Auto

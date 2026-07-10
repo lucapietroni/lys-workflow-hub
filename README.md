@@ -5,7 +5,7 @@ con il gestionale **WinCar**. Legge le pratiche dal database WinCar in sola lett
 genera documenti precompilati, monitora le risposte delle compagnie assicurative
 via PEC/email, classifica le risposte con AI e genera alert mirati.
 
-> Branch attivo: **v2** · Versione: **2.1.0**
+> Branch attivo: **v2** · Versione: **2.2.0**
 > Branch stabile: **main** (v1.0.4)
 
 ---
@@ -15,7 +15,7 @@ via PEC/email, classifica le risposte con AI e genera alert mirati.
 | Branch | Versione | Stato |
 |--------|----------|-------|
 | `main` | **1.0.4** | Stabile — funzionalità assicurative complete + allegati email + fix re-download |
-| `v2` | **2.1.0** | Sviluppo attivo — verbali cortesia + foto lavorazioni automatiche |
+| `v2` | **2.2.0** | Sviluppo attivo — verbali cortesia + foto lavorazioni automatiche + foto/documenti in pratica |
 
 ---
 
@@ -28,6 +28,30 @@ via PEC/email, classifica le risposte con AI e genera alert mirati.
 - **Stato pratica + SLA**: ciclo vita pratica, transizioni automatiche da AI, escalation SLA a tre livelli (sollecito / formale / diffida).
 - **Statistiche**: KPI globali e per compagnia, costi AI, tempi di risposta.
 - **UI dark glass**: tema navy/oro con logo LYS Auto, animazioni, KPI cliccabili.
+
+---
+
+## Novità v2.2 — Foto/documenti in pratica + targhe più affidabili
+
+**Riquadri su `/pratiche/<n>`** (sotto "Assicurazione cliente"):
+- **Foto pratica**: miniature di tutte le immagini archiviate (`Pubblici/Foto/` +
+  eventuali immagini finite in `Pubblici/Allegati/`). Click → ingrandita in overlay
+  nella stessa pagina (nessun download, nessuna nuova finestra).
+- **Documenti**: elenco di PDF e altri allegati non immagine. Click → apre in una
+  nuova scheda del browser col viewer nativo (nessun download forzato).
+
+**Lettura targa più affidabile** (Workflow E):
+- Modello vision dedicato (più capace di Haiku su foto di taglio/angolate).
+- Prompt riscritto: gestisce targhe capovolte (portellone aperto oltre la verticale),
+  disambigua caratteri simili, niente più placeholder letterale che il modello
+  a volte ripeteva invece di dire "non leggo nulla".
+- **Due passaggi (locate+zoom)**: se la targa è piccola/distante in una foto
+  d'insieme, un secondo tentativo mirato ritaglia la zona indicata dal primo
+  passaggio a piena risoluzione — aggira il ridimensionamento automatico
+  dell'API che altrimenti distrugge il dettaglio.
+- Filtro cestino Android sincronizzato per errore da Syncthing.
+- Toggle su `/foto` per disattivare la copia automatica nella cartella pratica
+  (utile se più pratiche WinCar condividono la stessa targa).
 
 ---
 
