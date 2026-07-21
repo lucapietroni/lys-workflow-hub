@@ -28,6 +28,12 @@
         <a href="/impostazioni">Impostazioni</a>
         <a href="/docs" target="_blank" rel="noopener">API</a>
       </nav>
+      {% if current_user %}
+      <form method="post" action="/logout" class="user-box">
+        <span class="user-box-name">{{ current_user.nome or current_user.email }}</span>
+        <button type="submit" class="btn-link">Esci</button>
+      </form>
+      {% endif %}
     </header>
 
     <main class="container">

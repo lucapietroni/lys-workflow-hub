@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import logging.handlers
 import os
+import secrets
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -40,6 +41,7 @@ if sys.stderr is None:
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
 
 from lys_workflow_hub import __version__
 from lys_workflow_hub.config import get_settings
@@ -47,9 +49,12 @@ from lys_workflow_hub.core.schema_check import (
     SchemaCheckError,
     assert_schema_ok,
 )
+from lys_workflow_hub.core.utenti_repository import UtentiRepository
 from lys_workflow_hub.core.wincar_repository import WinCarRepository
 from lys_workflow_hub.web.api import router as api_router
+from lys_workflow_hub.web.auth import AuthMiddleware
 from lys_workflow_hub.web.routes import router as pages_router
+from lys_workflow_hub.web.routes_auth import router as auth_router
 from lys_workflow_hub.web.routes_bozze import router as bozze_router
 from lys_workflow_hub.web.routes_compagnie import router as compagnie_router
 from lys_workflow_hub.web.routes_impostazioni import router as impostazioni_router
@@ -136,6 +141,32 @@ WEB_DIR = Path(__file__).parent / "web"
 STATIC_DIR = WEB_DIR / "static"
 
 
+def _resolve_secret_key() -> str:
+    """Chiave di firma della sessione (cookie di login).
+
+    In produzione DEVE arrivare da `.env` (SECRET_KEY): senza, un riavvio
+    dell'app invaliderebbe tutte le sessioni attive e — peggio — una chiave
+    prevedibile/assente comprometterebbe l'autenticazione. In sviluppo, se
+    non impostata, ne generiamo una effimera ad ogni avvio (comodo: nessuna
+    config richiesta, costo: si viene disconnessi ad ogni riavvio del reload).
+    """
+    settings = get_settings()
+    if settings.secret_key:
+        return settings.secret_key
+    if settings.app_env == "production":
+        sys.stderr.write(
+            "ERRORE: SECRET_KEY non impostata in .env. Obbligatoria in produzione "
+            "(genera con: python -c \"import secrets; print(secrets.token_hex(32))\").\n"
+        )
+        sys.exit(2)
+    logger.warning(
+        "SECRET_KEY non impostata: uso una chiave effimera generata a runtime "
+        "(le sessioni non sopravvivono al riavvio). Imposta SECRET_KEY in .env "
+        "per avere sessioni stabili anche in sviluppo."
+    )
+    return secrets.token_hex(32)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Schema check al boot + avvio foto watcher. Vedi `core/schema_check.py`."""
@@ -188,7 +219,36 @@ app = FastAPI(
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
+# Autenticazione (v3.0): SessionMiddleware firma il cookie, AuthMiddleware
+# legge la sessione e blocca le route non pubbliche (vedi web/auth.py).
+# L'ordine conta: `Starlette.add_middleware` INSERISCE in testa alla lista
+# (non l'accoda), quindi il middleware aggiunto per ULTIMO finisce più
+# ESTERNO e gira per primo su ogni richiesta. AuthMiddleware legge
+# `request.session` prima di chiamare `call_next`, quindi ha bisogno che
+# SessionMiddleware sia già stato eseguito -> SessionMiddleware deve essere
+# più esterno di AuthMiddleware -> va aggiunto per ULTIMO.
+_settings = get_settings()
+
+# Singleton condiviso con AuthMiddleware e routes_auth.py (stesso pattern di
+# app.state.foto_repo): evita di aprire/chiudere connessioni SQLite per ogni
+# richiesta e permette ai test di sostituirlo con un DB temporaneo.
+app.state.utenti_repo = UtentiRepository(
+    db_path=_settings.app_db_path,
+    max_attempts=_settings.login_max_attempts,
+    lockout_minutes=_settings.login_lockout_minutes,
+)
+
+app.add_middleware(AuthMiddleware)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=_resolve_secret_key(),
+    max_age=_settings.session_max_age_days * 24 * 3600,
+    same_site="lax",
+    https_only=_settings.app_env == "production",
+)
+
 # Router: pagine HTML (root) e API JSON (/api).
+app.include_router(auth_router)
 app.include_router(pages_router)
 app.include_router(compagnie_router)
 app.include_router(vandalismo_router)

@@ -18,6 +18,7 @@ from lys_workflow_hub.core.wincar_repository import (
 )
 from lys_workflow_hub.main import app
 from lys_workflow_hub.web.routes import get_repository
+from tests.conftest import login_as_admin
 
 
 def _sample_summary() -> PraticaSummary:
@@ -81,7 +82,7 @@ def _sample_pratica() -> Pratica:
 
 
 @pytest.fixture
-def client_with_mock_repo():
+def client_with_mock_repo(authenticated_app):
     repo = MagicMock()
 
     def _override():
@@ -89,7 +90,9 @@ def client_with_mock_repo():
 
     app.dependency_overrides[get_repository] = _override
     try:
-        yield TestClient(app), repo
+        client = TestClient(app)
+        login_as_admin(client)
+        yield client, repo
     finally:
         app.dependency_overrides.pop(get_repository, None)
 

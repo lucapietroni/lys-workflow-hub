@@ -19,6 +19,7 @@ from lys_workflow_hub.core.wincar_repository import (
 )
 from lys_workflow_hub.main import app
 from lys_workflow_hub.web.routes import get_app_settings, get_repository
+from tests.conftest import login_as_admin
 
 
 MINI_PDF = b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\ntrailer\n%%EOF\n"
@@ -37,7 +38,7 @@ def _sample_pratica(numero: int = 12) -> Pratica:
 
 
 @pytest.fixture
-def client_with_mocks(tmp_path: Path):
+def client_with_mocks(tmp_path: Path, authenticated_app):
     repo = MagicMock()
     repo.get_pratica.return_value = _sample_pratica()
     settings = Settings(
@@ -48,7 +49,9 @@ def client_with_mocks(tmp_path: Path):
     app.dependency_overrides[get_repository] = lambda: repo
     app.dependency_overrides[get_app_settings] = lambda: settings
     try:
-        yield TestClient(app), repo, settings, tmp_path
+        client = TestClient(app)
+        login_as_admin(client)
+        yield client, repo, settings, tmp_path
     finally:
         app.dependency_overrides.pop(get_repository, None)
         app.dependency_overrides.pop(get_app_settings, None)

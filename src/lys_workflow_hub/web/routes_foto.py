@@ -3,18 +3,21 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from lys_workflow_hub import __version__
 from lys_workflow_hub.config import get_settings
 from lys_workflow_hub.core.foto_lavorazioni_repository import FotoLavorazioniRepository
+from lys_workflow_hub.web.auth import require_admin, template_context_processor
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+templates = Jinja2Templates(
+    directory=str(TEMPLATES_DIR), context_processors=[template_context_processor]
+)
 
-router = APIRouter(tags=["foto"])
+router = APIRouter(tags=["foto"], dependencies=[Depends(require_admin)])
 
 
 @router.get("/foto", response_class=HTMLResponse)

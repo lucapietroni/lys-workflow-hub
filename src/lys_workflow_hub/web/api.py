@@ -23,9 +23,10 @@ from lys_workflow_hub.core.wincar_repository import (
     PraticaSummary,
     WinCarRepository,
 )
+from lys_workflow_hub.web.auth import require_admin
 
 
-router = APIRouter(prefix="/api", tags=["api"])
+router = APIRouter(prefix="/api", tags=["api"], dependencies=[Depends(require_admin)])
 
 
 def get_repository() -> WinCarRepository:

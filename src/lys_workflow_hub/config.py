@@ -154,6 +154,22 @@ class Settings(BaseSettings):
     # per il rodaggio o per il dev). Utile soprattutto in pytest.
     notify_disabled: bool = Field(default=False)
 
+    # --- Autenticazione (v3.0) ---
+    # Chiave usata per firmare il cookie di sessione (SessionMiddleware).
+    # OBBLIGATORIA in produzione: l'app si rifiuta di partire se app_env=production
+    # e questa è vuota (vedi assert in main.py). Generare con:
+    #   python -c "import secrets; print(secrets.token_hex(32))"
+    # Vuoto in sviluppo = viene generata una chiave random ad ogni avvio (le
+    # sessioni non sopravvivono al riavvio, comodo per testare senza doverla
+    # configurare a mano).
+    secret_key: str = Field(default="")
+    # Durata del cookie di sessione (giorni). Scaduto, l'utente deve rifare login.
+    session_max_age_days: int = Field(default=14)
+    # Tentativi di login falliti consecutivi prima del blocco temporaneo account.
+    login_max_attempts: int = Field(default=5)
+    # Durata del blocco account dopo troppi tentativi falliti (minuti).
+    login_lockout_minutes: int = Field(default=15)
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

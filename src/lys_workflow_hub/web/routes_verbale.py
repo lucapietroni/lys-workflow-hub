@@ -38,14 +38,17 @@ from lys_workflow_hub.workflows.verbale_cortesia.data import (
     TIPO_RIENTRO,
     TIPO_USCITA,
 )
+from lys_workflow_hub.web.auth import require_admin, template_context_processor
 
 
 logger = logging.getLogger(__name__)
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+templates = Jinja2Templates(
+    directory=str(TEMPLATES_DIR), context_processors=[template_context_processor]
+)
 
-router = APIRouter(tags=["verbale"])
+router = APIRouter(tags=["verbale"], dependencies=[Depends(require_admin)])
 
 PDF_MIME  = "application/pdf"
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"

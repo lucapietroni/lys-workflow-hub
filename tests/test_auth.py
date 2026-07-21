@@ -1,0 +1,145 @@
+"""Test dell'autenticazione (v3.0 fase 1): repository utenti + route login/logout."""
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
+
+from lys_workflow_hub.core.utenti_repository import AuthError, UtentiRepository
+from lys_workflow_hub.main import app
+from tests.conftest import ADMIN_EMAIL, ADMIN_PASSWORD, login_as_admin
+
+
+_CSRF_RE = re.compile(r'name="csrf_token" value="([^"]+)"')
+
+
+# --------------------------------------------------------------------------- #
+#  UtentiRepository
+# --------------------------------------------------------------------------- #
+
+
+def test_create_and_authenticate(tmp_path: Path) -> None:
+    repo = UtentiRepository(db_path=tmp_path / "u.db")
+    repo.create(email="Test@Example.com", password="password123", ruolo="admin")
+
+    utente = repo.authenticate("test@example.com", "password123")
+    assert utente.email == "test@example.com"
+    assert utente.is_admin
+    assert utente.last_login is not None
+
+
+def test_authenticate_wrong_password_raises(tmp_path: Path) -> None:
+    repo = UtentiRepository(db_path=tmp_path / "u.db")
+    repo.create(email="a@b.it", password="password123")
+
+    with pytest.raises(AuthError):
+        repo.authenticate("a@b.it", "sbagliata")
+
+
+def test_authenticate_unknown_email_raises(tmp_path: Path) -> None:
+    repo = UtentiRepository(db_path=tmp_path / "u.db")
+    with pytest.raises(AuthError):
+        repo.authenticate("nonexiste@nte.it", "qualcosa123")
+
+
+def test_authenticate_locks_after_max_attempts(tmp_path: Path) -> None:
+    repo = UtentiRepository(db_path=tmp_path / "u.db", max_attempts=3, lockout_minutes=15)
+    repo.create(email="a@b.it", password="password123")
+
+    for _ in range(3):
+        with pytest.raises(AuthError):
+            repo.authenticate("a@b.it", "sbagliata")
+
+    # Quarto tentativo, anche con la password corretta: account bloccato.
+    with pytest.raises(AuthError, match="Troppi tentativi"):
+        repo.authenticate("a@b.it", "password123")
+
+
+def test_authenticate_disabled_user_raises(tmp_path: Path) -> None:
+    repo = UtentiRepository(db_path=tmp_path / "u.db")
+    utente = repo.create(email="a@b.it", password="password123")
+    repo.set_attivo(utente.id, False)
+
+    with pytest.raises(AuthError, match="disattivato"):
+        repo.authenticate("a@b.it", "password123")
+
+
+def test_create_duplicate_email_raises(tmp_path: Path) -> None:
+    repo = UtentiRepository(db_path=tmp_path / "u.db")
+    repo.create(email="a@b.it", password="password123")
+    with pytest.raises(ValueError, match="già registrata"):
+        repo.create(email="a@b.it", password="altrapassword")
+
+
+def test_create_short_password_raises(tmp_path: Path) -> None:
+    repo = UtentiRepository(db_path=tmp_path / "u.db")
+    with pytest.raises(ValueError, match="8 caratteri"):
+        repo.create(email="a@b.it", password="corta")
+
+
+# --------------------------------------------------------------------------- #
+#  Route /login, /logout + protezione route
+# --------------------------------------------------------------------------- #
+
+
+def test_protected_route_redirects_to_login_when_anonymous(authenticated_app) -> None:
+    client = TestClient(app, follow_redirects=False)
+    response = client.get("/")
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/login")
+
+
+def test_health_is_public(authenticated_app) -> None:
+    client = TestClient(app, follow_redirects=False)
+    response = client.get("/health")
+    assert response.status_code == 200
+
+
+def test_login_wrong_password_shows_error(authenticated_app) -> None:
+    client = TestClient(app)
+    resp = client.get("/login")
+    csrf = _CSRF_RE.search(resp.text).group(1)
+
+    resp = client.post(
+        "/login",
+        data={"email": ADMIN_EMAIL, "password": "sbagliata", "csrf_token": csrf, "next": "/"},
+    )
+    assert resp.status_code == 401
+    assert "non corretti" in resp.text
+
+
+def test_login_bad_csrf_rejected(authenticated_app) -> None:
+    client = TestClient(app)
+    client.get("/login")  # inizializza la sessione
+
+    resp = client.post(
+        "/login",
+        data={
+            "email": ADMIN_EMAIL,
+            "password": ADMIN_PASSWORD,
+            "csrf_token": "token-falso",
+            "next": "/",
+        },
+    )
+    assert resp.status_code == 401
+    assert "scaduta" in resp.text
+
+
+def test_login_success_then_logout(authenticated_app) -> None:
+    client = TestClient(app, follow_redirects=False)
+    login_as_admin(client)
+
+    # Sessione valida: la home non reindirizza più a /login.
+    resp = client.get("/")
+    assert resp.status_code != 303
+
+    resp = client.post("/logout")
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/login"
+
+    # Sessione chiusa: torna a essere bloccata.
+    resp = client.get("/")
+    assert resp.status_code == 303
+    assert resp.headers["location"].startswith("/login")

@@ -46,14 +46,17 @@ from lys_workflow_hub.workflows.cessione_credito import (
     save_signed_pdf,
 )
 from lys_workflow_hub.workflows.verbale_cortesia.archive import list_verbali
+from lys_workflow_hub.web.auth import require_admin, template_context_processor
 
 
 logger = logging.getLogger(__name__)
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+templates = Jinja2Templates(
+    directory=str(TEMPLATES_DIR), context_processors=[template_context_processor]
+)
 
-router = APIRouter(tags=["pages"])
+router = APIRouter(tags=["pages"], dependencies=[Depends(require_admin)])
 
 DOCX_MIME = (
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document"

@@ -1,6 +1,6 @@
 # LYS Workflow Hub — Contesto di sviluppo
 
-> Branch: **v2** · Versione: **2.2.0** (base: v1.0.4 / main)
+> Branch: **v2** · Versione: **3.0.0** (base: v1.0.4 / main)
 
 ---
 
@@ -10,8 +10,10 @@ Piattaforma di automazione documentale per **Carrozzeria LYS Auto srl** (Roma).
 Legge le pratiche dal gestionale **WinCar** (database Microsoft Access `.mdb`) in
 sola lettura, genera documenti precompilati, monitora le risposte assicurative
 via PEC/email, classifica con AI (Anthropic Claude), produce bozze di replica,
-genera alert SLA. Branch v2 aggiunge i verbali di consegna/riconsegna veicoli di cortesia (v2.0)
-e il sistema di foto lavorazioni automatiche via Syncthing + Claude Vision (v2.1).
+genera alert SLA. Branch v2 aggiunge i verbali di consegna/riconsegna veicoli di cortesia (v2.0),
+il sistema di foto lavorazioni automatiche via Syncthing + Claude Vision (v2.1), e — a partire
+dalla v3.0 — un sistema di login/ruoli in vista della pubblicazione dell'app su internet e di
+un portale di collaborazione per agenzie pratiche auto / avvocati esterni.
 
 **Stack**: FastAPI + Jinja2 · SQLite `lys_hub.db` · pyodbc → WinCar `.mdb` ·
 InfoCert Legalmail (IMAP + SMTP SSL 465) · Anthropic Claude API · `pypdf` ·
@@ -50,6 +52,7 @@ Foto watcher (thread daemon, avviato al boot se FOTO_INBOX_PATH configurato)
 - `categoria_policy` — policy generazione bozze per categoria AI
 - `pec_sla_reminder` — tracking escalation SLA già inviati
 - `foto_lavorazioni` — log foto processate dal watcher [v2.1]
+- `utenti` — account applicativi: email, password_hash (bcrypt), ruolo (admin/esterno) [v3.0]
 
 ---
 
@@ -68,7 +71,8 @@ src/lys_workflow_hub/
 │   ├── compagnie_repository.py     Anagrafica compagnie
 │   ├── categoria_policy_repository.py  Policy bozze
 │   ├── sollecito_repository.py     Solleciti SLA
-│   └── foto_lavorazioni_repository.py  Log foto processate [v2.1]
+│   ├── foto_lavorazioni_repository.py  Log foto processate [v2.1]
+│   └── utenti_repository.py        Utenti + autenticazione (bcrypt, lockout) [v3.0]
 ├── integrations/
 │   ├── imap_fetcher.py             Fetch IMAP + estrazione body + PDF
 │   ├── ai_classifier.py            Classificatore Anthropic Claude
@@ -87,17 +91,20 @@ src/lys_workflow_hub/
 │       ├── archive.py              Salva PDF in Pratiche/<n>/Pubblici/Allegati/
 │       └── assets/logo_lys.png     Logo LYS Auto Carrozzeria & Noleggio
 └── web/
-    ├── routes.py                   Pratica + Workflow A
-    ├── routes_vandalismo.py        Workflow B
-    ├── routes_risposte.py          Cruscotto risposte
-    ├── routes_bozze.py             Cruscotto bozze
-    ├── routes_verbale.py           Workflow D [v2] — 6 route
-    ├── routes_foto.py              Workflow E [v2.1] — log foto /foto
-    ├── routes_compagnie.py         CRUD compagnie
-    ├── routes_impostazioni.py      Statistiche + policy editor
+    ├── auth.py                     Sessione, AuthMiddleware, require_admin, CSRF [v3.0]
+    ├── routes_auth.py              GET/POST /login, POST /logout [v3.0]
+    ├── routes.py                   Pratica + Workflow A (admin-only)
+    ├── routes_vandalismo.py        Workflow B (admin-only)
+    ├── routes_risposte.py          Cruscotto risposte (admin-only)
+    ├── routes_bozze.py             Cruscotto bozze (admin-only)
+    ├── routes_verbale.py           Workflow D [v2] — 6 route (admin-only)
+    ├── routes_foto.py              Workflow E [v2.1] — log foto /foto (admin-only)
+    ├── routes_compagnie.py         CRUD compagnie (admin-only)
+    ├── routes_impostazioni.py      Statistiche + policy editor (admin-only)
     └── templates/ + static/
 scripts/
-└── run_polling.py                  Ciclo polling completo
+├── run_polling.py                  Ciclo polling completo
+└── create_admin.py                 Bootstrap primo utente admin [v3.0]
 ```
 
 ---
@@ -273,6 +280,79 @@ sotto) → il browser renderizza invece di scaricare. Le altre estensioni
 
 ---
 
+## Autenticazione [v3.0 fase 1]
+
+Prerequisito per pubblicare l'app su internet (port forwarding dal router
+della carrozzeria): fino alla v2.2 l'app non aveva alcun login, chiunque
+sulla LAN poteva aprire qualsiasi pagina. La v3.0 introduce utenti/ruoli in
+più fasi; questa sezione copre la fase 1 (fondamenta auth), già completata.
+Fasi successive (non ancora costruite): assegnazione pratiche ad agenzie/
+avvocati esterni, note di collaborazione condivise, calendario per pratica,
+notifiche di reminder, reverse proxy + TLS per l'esposizione pubblica.
+
+### Modello utenti
+Tabella `utenti` (`core/utenti_repository.py`): email UNIQUE, `password_hash`
+(bcrypt), `ruolo` (`admin` | `esterno`), `attivo`, `failed_login_count` +
+`locked_until` per il blocco anti-bruteforce. Due ruoli fissi per ora (non
+tabella permessi granulare) — [[decisione utente]]: se in futuro serve più
+granularità si aggiunge senza toccare lo schema base.
+
+### Sessione e protezione route
+- `SessionMiddleware` (Starlette, cookie firmato con `SECRET_KEY`) +
+  `AuthMiddleware` custom (`web/auth.py`) che carica l'utente dalla sessione
+  in `request.state.current_user` a ogni richiesta.
+- **Fail-closed**: qualunque path non in `PUBLIC_PATHS`/`PUBLIC_PREFIXES`
+  (`/login`, `/health`, `/static/*`) redirige a `/login` se non loggato. Una
+  route nuova aggiunta in futuro è protetta di default, non serve ricordarsi
+  di aggiungerla a una allowlist.
+- `require_admin` (dependency FastAPI) applicato a `dependencies=[...]` di
+  **tutti** i router esistenti (`routes.py`, `routes_vandalismo.py`,
+  `routes_risposte.py`, `routes_bozze.py`, `routes_verbale.py`,
+  `routes_foto.py`, `routes_compagnie.py`, `routes_impostazioni.py`,
+  `routes_pec_log.py`, `api.py`) — oggi equivalgono a "richiede login" dato
+  che esistono solo admin, ma prepara il terreno: quando arriverà il portale
+  per utenti "esterno" (fase 3), quelle route resteranno riservate agli
+  operatori carrozzeria e il portale vivrà in router separati senza
+  `require_admin`.
+- `current_user` disponibile in ogni template via `context_processors=
+  [template_context_processor]` passato a **ogni** `Jinja2Templates(...)`
+  esistente (una per router file) — necessario perché `base.html` mostra
+  nome utente + bottone "Esci" nella topbar.
+
+### CSRF e anti-bruteforce
+- Token CSRF legato alla sessione, verificato sul form di login (unico form
+  raggiungibile da utente non ancora autenticato). Estensione ai form delle
+  pagine già esistenti (compagnie, bozze, verbali, ecc.) è lavoro di
+  hardening rimandato, non ancora fatto.
+- `authenticate()` in `utenti_repository.py`: dopo `login_max_attempts`
+  (default 5) tentativi falliti consecutivi, account bloccato per
+  `login_lockout_minutes` (default 15). Messaggio di errore identico per
+  "email inesistente" e "password sbagliata" (niente enumerazione utenti);
+  hash bcrypt "a vuoto" anche quando l'email non esiste, per non rivelare
+  l'esistenza dell'account via timing.
+
+### SECRET_KEY
+`config.py` + `main.py` (`_resolve_secret_key()`): se `APP_ENV=production` e
+`SECRET_KEY` non è impostata in `.env`, l'app si rifiuta di partire
+(`sys.exit(2)`, stesso pattern dello schema check WinCar). In sviluppo, se
+vuota, viene generata una chiave effimera ad ogni avvio (sessioni non
+sopravvivono al riavvio — comodo per non dover configurare nulla in dev).
+
+### Bootstrap primo admin
+Nessuna self-registration. `scripts/create_admin.py` crea (o promuove a
+admin resettando la password) un utente via CLI interattiva
+(`getpass`, password non echeggiata) o non interattiva (`--email --nome
+--password --yes`) — necessario da lanciare una volta dopo il deploy v3.0.
+
+### Route (routes_auth.py)
+```
+GET  /login     Form di accesso (pubblico)
+POST /login     Verifica credenziali (rate-limited via lockout), apre sessione
+POST /logout    Chiude la sessione
+```
+
+---
+
 ## Decisioni tecniche chiave
 
 ### PEC InfoCert — struttura messaggi
@@ -356,6 +436,7 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 | 2.0.0 | v2 | + Verbali cortesia con auto di cortesia DB, dichiarazione necessità, timbro LYS |
 | 2.1.0 | v2 | + Foto lavorazioni: Syncthing + watchdog + Claude Vision → routing automatico per targa |
 | 2.2.0 | v2 | + Foto/documenti in pratica (anteprima inline) + lettura targa a due passaggi (locate+zoom), toggle copia-pratica, fix orario UTC |
+| 3.0.0 | v2 | + Autenticazione fase 1: utenti/ruoli, login/logout, sessione cookie, route admin-only, lockout anti-bruteforce, bootstrap CLI |
 
 ---
 
@@ -367,3 +448,9 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
   - Setup Syncthing smartphone → PC (se non già fatto)
 - Sezione danni verbali: UI grafica schema auto cliccabile
 - Franchigie verbali: definire valori default LYS Auto
+- **v3.0 fasi successive** (non ancora costruite, vedi sezione "Autenticazione"):
+  fase 2 (deploy sicuro: reverse proxy + TLS + rate-limit + CSRF esteso a
+  tutti i form), fase 3 (assegnazione pratiche a utenti esterni), fase 4
+  (note collaborazione + calendario per pratica), fase 5 (notifiche reminder)
+- Dopo deploy v3.0 in prod: lanciare `scripts/create_admin.py` per creare il
+  primo utente admin, e impostare `SECRET_KEY` in `.env` prod

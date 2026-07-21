@@ -65,12 +65,15 @@ from lys_workflow_hub.workflows.risposte.sollecito_generator import (
     LIVELLO_BADGE_CLASS,
     LIVELLO_LABELS,
 )
+from lys_workflow_hub.web.auth import require_admin, template_context_processor
 
 
 logger = logging.getLogger(__name__)
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+templates = Jinja2Templates(
+    directory=str(TEMPLATES_DIR), context_processors=[template_context_processor]
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -96,7 +99,7 @@ def _body_text_to_html(text: str) -> str:
             result.append("<p>" + p.replace("\n", "<br>") + "</p>")
     return "".join(result)
 
-router = APIRouter(tags=["bozze"])
+router = APIRouter(tags=["bozze"], dependencies=[Depends(require_admin)])
 
 
 # --------------------------------------------------------------------------- #

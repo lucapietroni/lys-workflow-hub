@@ -49,14 +49,17 @@ from lys_workflow_hub.workflows.risarcimento_vandalismo.invio_pec import (
 from lys_workflow_hub.workflows.risarcimento_vandalismo.data import (
     CARROZZERIA_NOME as VAND_CARROZZERIA_NOME,
 )
+from lys_workflow_hub.web.auth import require_admin, template_context_processor
 
 
 logger = logging.getLogger(__name__)
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+templates = Jinja2Templates(
+    directory=str(TEMPLATES_DIR), context_processors=[template_context_processor]
+)
 
-router = APIRouter(tags=["vandalismo"])
+router = APIRouter(tags=["vandalismo"], dependencies=[Depends(require_admin)])
 
 
 # --------------------------------------------------------------------------- #

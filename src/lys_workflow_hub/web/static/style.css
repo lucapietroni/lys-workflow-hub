@@ -524,8 +524,24 @@ code {
   font-size: 0.88rem;
   color: var(--lys-gold-glow);
   font-weight: 600;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 0;
 }
 .btn-link:hover { color: #fff; }
+
+.user-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.user-box-name {
+  font-size: 0.85rem;
+  color: var(--lys-grey-700);
+}
 
 .empty {
   background: var(--glass);

@@ -5,7 +5,7 @@ con il gestionale **WinCar**. Legge le pratiche dal database WinCar in sola lett
 genera documenti precompilati, monitora le risposte delle compagnie assicurative
 via PEC/email, classifica le risposte con AI e genera alert mirati.
 
-> Branch attivo: **v2** · Versione: **2.2.0**
+> Branch attivo: **v2** · Versione: **3.0.0**
 > Branch stabile: **main** (v1.0.4)
 
 ---
@@ -15,7 +15,7 @@ via PEC/email, classifica le risposte con AI e genera alert mirati.
 | Branch | Versione | Stato |
 |--------|----------|-------|
 | `main` | **1.0.4** | Stabile — funzionalità assicurative complete + allegati email + fix re-download |
-| `v2` | **2.2.0** | Sviluppo attivo — verbali cortesia + foto lavorazioni automatiche + foto/documenti in pratica |
+| `v2` | **3.0.0** | Sviluppo attivo — verbali cortesia + foto lavorazioni automatiche + foto/documenti in pratica + autenticazione (fase 1) |
 
 ---
 
@@ -28,6 +28,32 @@ via PEC/email, classifica le risposte con AI e genera alert mirati.
 - **Stato pratica + SLA**: ciclo vita pratica, transizioni automatiche da AI, escalation SLA a tre livelli (sollecito / formale / diffida).
 - **Statistiche**: KPI globali e per compagnia, costi AI, tempi di risposta.
 - **UI dark glass**: tema navy/oro con logo LYS Auto, animazioni, KPI cliccabili.
+
+---
+
+## Novità v3.0 (fase 1) — Autenticazione
+
+Primo passo verso la pubblicazione dell'app su internet (port forwarding dal
+router della carrozzeria): fino alla v2.2 chiunque sulla LAN poteva aprire
+qualsiasi pagina, senza login.
+
+- **Login/logout**: pagina `/login`, sessione via cookie firmato, tutte le
+  route esistenti ora richiedono un utente autenticato (redirect automatico
+  a `/login` se assente).
+- **Ruoli**: `admin` (accesso completo) ed `esterno` (per ora senza pagine
+  dedicate — arriveranno nelle fasi successive: portale di collaborazione
+  per agenzie pratiche auto/avvocati esterni).
+- **Anti-bruteforce**: blocco account dopo 5 tentativi falliti consecutivi
+  (configurabile), sblocco automatico dopo 15 minuti.
+- **Bootstrap**: nessuna self-registration — `scripts/create_admin.py` crea
+  il primo utente admin dopo il deploy.
+- **`SECRET_KEY` obbligatoria in produzione**: l'app non si avvia senza,
+  per evitare sessioni firmate con una chiave debole/assente.
+
+Fasi successive (non ancora costruite): reverse proxy + TLS per
+l'esposizione pubblica, assegnazione pratiche a utenti esterni, note di
+collaborazione condivise, calendario per pratica, notifiche reminder.
+Dettagli tecnici completi in `CONTEXT.md`.
 
 ---
 
@@ -133,7 +159,8 @@ Foto watcher (thread daemon, avviato al boot se FOTO_INBOX_PATH configurato)
 
 **Stack**: FastAPI + Jinja2 · SQLite `lys_hub.db` · pyodbc → WinCar `.mdb` ·
 InfoCert Legalmail (IMAP + SMTP SSL 465) · Anthropic Claude API ·
-`pypdf` · python-docx + docx2pdf (Word COM) · watchdog (file system events)
+`pypdf` · python-docx + docx2pdf (Word COM) · watchdog (file system events) ·
+bcrypt + sessione cookie (autenticazione, v3.0)
 
 ---
 
@@ -145,7 +172,8 @@ src/lys_workflow_hub/
 ├── config.py
 ├── core/
 │   ├── ...                         Repository SQLite (mail, pratiche, bozze, SLA)
-│   └── foto_lavorazioni_repository.py  Log foto processate [v2.1]
+│   ├── foto_lavorazioni_repository.py  Log foto processate [v2.1]
+│   └── utenti_repository.py        Utenti + autenticazione (bcrypt, lockout) [v3.0]
 ├── integrations/
 │   ├── ...                         IMAP, SMTP, AI classifier, PDF extractor, notifier
 │   └── foto_watcher.py             Watchdog + Claude Vision + routing foto [v2.1]
@@ -159,17 +187,20 @@ src/lys_workflow_hub/
 │       ├── archive.py              Salvataggio in WinCar
 │       └── assets/logo_lys.png
 └── web/
-    ├── routes.py                   Pratica + Workflow A
-    ├── routes_vandalismo.py        Workflow B
-    ├── routes_risposte.py          Workflow C
-    ├── routes_bozze.py             Bozze risposta
-    ├── routes_verbale.py           Workflow D [v2]
-    ├── routes_foto.py              Workflow E — log foto [v2.1]
-    ├── routes_compagnie.py
-    ├── routes_impostazioni.py
+    ├── auth.py                     Sessione, AuthMiddleware, require_admin, CSRF [v3.0]
+    ├── routes_auth.py              GET/POST /login, POST /logout [v3.0]
+    ├── routes.py                   Pratica + Workflow A (admin-only)
+    ├── routes_vandalismo.py        Workflow B (admin-only)
+    ├── routes_risposte.py          Workflow C (admin-only)
+    ├── routes_bozze.py             Bozze risposta (admin-only)
+    ├── routes_verbale.py           Workflow D [v2] (admin-only)
+    ├── routes_foto.py              Workflow E — log foto [v2.1] (admin-only)
+    ├── routes_compagnie.py         (admin-only)
+    ├── routes_impostazioni.py      (admin-only)
     └── templates/ + static/
 scripts/
-└── run_polling.py
+├── run_polling.py
+└── create_admin.py                 Bootstrap primo utente admin [v3.0]
 ```
 
 ---
@@ -192,15 +223,22 @@ python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
 pip install -e .
-copy .env.example .env   # compilare percorsi WinCar, credenziali PEC, chiave Claude
+copy .env.example .env   # compilare percorsi WinCar, credenziali PEC, chiave Claude, SECRET_KEY
 python -m lys_workflow_hub.main
-# apri http://localhost:8000
+python scripts\create_admin.py   # primo avvio: crea l'utente admin
+# apri http://localhost:8000 e fai login
 ```
 
 ## Sicurezza
 
 Nessun dato reale nel repository. `.gitignore` esclude `.mdb`, `.env`, `data/`,
 cartelle WinCar, documenti generati. Verificare con `git status` prima di ogni push.
+
+Dalla v3.0 l'app richiede login (vedi "Novità v3.0" sopra). `SECRET_KEY` in
+`.env` è **obbligatoria** in produzione (`APP_ENV=production`) — l'app non
+si avvia senza. Prima di esporre l'app su internet (port forwarding), va
+completata anche la fase 2 (reverse proxy + TLS): non pubblicare la porta
+dell'app direttamente in chiaro.
 
 ## Licenza
 

@@ -38,14 +38,17 @@ from lys_workflow_hub.integrations.imap_fetcher import (
     reextract_body,
 )
 from lys_workflow_hub.workflows.risposte.matcher import match_mail
+from lys_workflow_hub.web.auth import require_admin, template_context_processor
 
 
 logger = logging.getLogger(__name__)
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+templates = Jinja2Templates(
+    directory=str(TEMPLATES_DIR), context_processors=[template_context_processor]
+)
 
-router = APIRouter(tags=["risposte"])
+router = APIRouter(tags=["risposte"], dependencies=[Depends(require_admin)])
 
 
 def get_mail_repo(
