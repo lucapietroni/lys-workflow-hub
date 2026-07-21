@@ -50,10 +50,14 @@ qualsiasi pagina, senza login.
 - **`SECRET_KEY` obbligatoria in produzione**: l'app non si avvia senza,
   per evitare sessioni firmate con una chiave debole/assente.
 
-Fasi successive (non ancora costruite): reverse proxy + TLS per
-l'esposizione pubblica, assegnazione pratiche a utenti esterni, note di
-collaborazione condivise, calendario per pratica, notifiche reminder.
-Dettagli tecnici completi in `CONTEXT.md`.
+**Fase 2 — reverse proxy + TLS**: guida operativa pronta in
+`docs/SETUP_PRODUCTION.md` (§10) + config di riferimento in
+`deploy/Caddyfile`; esecuzione sul PC/router carrozzeria (DNS, port
+forward, Caddy) ancora da fare, richiede accesso fisico al router.
+
+Fasi successive (non ancora costruite): assegnazione pratiche a utenti
+esterni, note di collaborazione condivise, calendario per pratica,
+notifiche reminder. Dettagli tecnici completi in `CONTEXT.md`.
 
 ---
 

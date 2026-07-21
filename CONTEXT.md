@@ -286,9 +286,15 @@ Prerequisito per pubblicare l'app su internet (port forwarding dal router
 della carrozzeria): fino alla v2.2 l'app non aveva alcun login, chiunque
 sulla LAN poteva aprire qualsiasi pagina. La v3.0 introduce utenti/ruoli in
 più fasi; questa sezione copre la fase 1 (fondamenta auth), già completata.
+Fase 2 (reverse proxy + TLS) è **documentata** in `docs/SETUP_PRODUCTION.md`
+§10 e `deploy/Caddyfile`, esecuzione sul PC carrozzeria (router/DNS/Caddy)
+ancora da fare — non è lavoro di codice, richiede accesso fisico/credenziali
+che non sono disponibili da qui. Setup di riferimento: dominio `lysauto.it`
+(sito su VM separata, non toccato), sottodominio `hub.lysauto.it` via CNAME
+verso il DDNS del router officina (`lysauto.dnsitalia.org`).
 Fasi successive (non ancora costruite): assegnazione pratiche ad agenzie/
 avvocati esterni, note di collaborazione condivise, calendario per pratica,
-notifiche di reminder, reverse proxy + TLS per l'esposizione pubblica.
+notifiche di reminder.
 
 ### Modello utenti
 Tabella `utenti` (`core/utenti_repository.py`): email UNIQUE, `password_hash`
@@ -448,9 +454,13 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
   - Setup Syncthing smartphone → PC (se non già fatto)
 - Sezione danni verbali: UI grafica schema auto cliccabile
 - Franchigie verbali: definire valori default LYS Auto
+- **v3.0 fase 2** (documentata in `docs/SETUP_PRODUCTION.md` §10 +
+  `deploy/Caddyfile`, esecuzione ancora da fare sul PC/router carrozzeria):
+  DNS CNAME `hub.lysauto.it` → `lysauto.dnsitalia.org`, port forward
+  80/443 sul router, Windows Firewall, installazione Caddy + NSSM,
+  verifica esterna. CSRF esteso a tutti i form resta debito tecnico separato.
 - **v3.0 fasi successive** (non ancora costruite, vedi sezione "Autenticazione"):
-  fase 2 (deploy sicuro: reverse proxy + TLS + rate-limit + CSRF esteso a
-  tutti i form), fase 3 (assegnazione pratiche a utenti esterni), fase 4
-  (note collaborazione + calendario per pratica), fase 5 (notifiche reminder)
+  fase 3 (assegnazione pratiche a utenti esterni), fase 4 (note
+  collaborazione + calendario per pratica), fase 5 (notifiche reminder)
 - Dopo deploy v3.0 in prod: lanciare `scripts/create_admin.py` per creare il
   primo utente admin, e impostare `SECRET_KEY` in `.env` prod

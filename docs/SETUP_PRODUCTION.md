@@ -17,6 +17,7 @@ in LAN aziendale.
 7. [Trovare l'indirizzo per i tablet](#7-trovare-lindirizzo-per-i-tablet)
 8. [Aggiornare l'app](#8-aggiornare-lapp)
 9. [Risoluzione problemi](#9-risoluzione-problemi)
+10. [Pubblicazione su internet — reverse proxy + TLS (v3.0 fase 2)](#10-pubblicazione-su-internet--reverse-proxy--tls-v30-fase-2)
 
 ---
 
@@ -598,6 +599,168 @@ apri `C:\LYSApp\logs\lys-hub.log` e cerca tracebacks o errori di config
 
 ---
 
+## 10. Pubblicazione su internet — reverse proxy + TLS (v3.0 fase 2)
+
+> Prerequisito: fase 1 già installata (login funzionante, vedi §3.3 —
+> `SECRET_KEY` impostata, `scripts\create_admin.py` eseguito). **Non aprire
+> il router prima di aver completato questa sezione**: fino a qui l'app è
+> raggiungibile solo dalla LAN, il che va bene; da qui in poi diventa
+> raggiungibile da chiunque su internet trovi l'indirizzo, quindi ogni passo
+> va fatto nell'ordine indicato.
+
+Setup di riferimento per questa guida (LYS Auto):
+- Dominio principale `lysauto.it` → punta a una VM separata (sito
+  carrozzeria). Non lo tocchiamo.
+- Router dell'officina → DDNS `lysauto.dnsitalia.org` (IP pubblico
+  dinamico del router).
+- Sottodominio dedicato all'app: `hub.lysauto.it`, con un record **CNAME**
+  che punta al DDNS del router — così l'indirizzo resta stabile (sotto il
+  tuo dominio) anche se in futuro cambi provider DDNS, e non interferisce
+  in nessun modo con il sito esistente sulla VM (root `lysauto.it` e `www`
+  restano dove sono).
+
+### 10.1 DNS — CNAME verso il DDNS dell'officina
+
+Nel pannello DNS dove gestisci `lysauto.it` (registrar o provider DNS —
+qualunque cosa tu usi per gli altri record di quel dominio), aggiungi:
+
+```
+Tipo:   CNAME
+Nome:   hub
+Valore: lysauto.dnsitalia.org
+TTL:    3600 (o default)
+```
+
+Risultato: `hub.lysauto.it` risolve sempre all'IP pubblico corrente del
+router officina, tramite il DDNS. Non tocca gli altri record (`@`, `www`,
+MX, ecc.) del dominio.
+
+Verifica propagazione (può richiedere qualche minuto-ora):
+
+```powershell
+nslookup hub.lysauto.it
+```
+
+Deve restituire lo stesso IP di `nslookup lysauto.dnsitalia.org`.
+
+### 10.2 Router officina — port forward
+
+Nel pannello di amministrazione del router (indirizzo tipico `192.168.1.1`,
+credenziali sul retro del router o da chi l'ha configurato):
+
+- Inoltra **porta 80 (TCP)** → IP LAN del PC carrozzeria, porta 80
+- Inoltra **porta 443 (TCP)** → IP LAN del PC carrozzeria, porta 443
+
+**Non inoltrare la porta 8000** — quella resta riservata alla LAN (tablet,
+§6/§7), Caddy sarà l'unico punto d'ingresso pubblico.
+
+Se il PC non ha ancora un IP LAN fisso, impostalo prima (DHCP reservation
+sul router, o IP statico sul PC — vedi nota in §7) altrimenti il port
+forward smette di funzionare al primo riavvio del PC.
+
+**Verifica che l'inoltro funzioni** prima di procedere (da una rete
+diversa da quella dell'officina, es. dati mobili, o un servizio online tipo
+canyouseeme.org sulla porta 80): se non risulta raggiungibile, il problema
+è quasi sempre nel port forward o in un secondo firewall/modem a monte del
+router (chiedi al tuo ISP se c'è CGNAT — in quel caso niente port forward è
+possibile senza un IP pubblico dedicato, da richiedere all'operatore).
+
+### 10.3 Windows Firewall — porte 80/443
+
+Il port forward del router consegna comunque i pacchetti sulla scheda di
+rete LAN del PC (è NAT, non un accesso diretto) — quindi la regola va sullo
+stesso profilo `Private` già usato per la porta 8000 in §6, **non** `Public`:
+
+```powershell
+New-NetFirewallRule -DisplayName "LYS Workflow Hub (Caddy HTTP)" `
+                    -Direction Inbound -Protocol TCP -LocalPort 80 `
+                    -Action Allow -Profile Private
+
+New-NetFirewallRule -DisplayName "LYS Workflow Hub (Caddy HTTPS)" `
+                    -Direction Inbound -Protocol TCP -LocalPort 443 `
+                    -Action Allow -Profile Private
+```
+
+### 10.4 Installare Caddy
+
+Scarica `caddy_windows_amd64.zip` da <https://caddyserver.com/download>
+(scegli "Windows", "amd64", nessun plugin extra necessario). Estrai
+`caddy.exe` in `C:\LYSApp\caddy\`.
+
+Copia il file `deploy\Caddyfile` del repository in `C:\LYSApp\caddy\Caddyfile`
+e apri il file di configurazione:
+
+```
+C:\LYSApp\caddy\Caddyfile
+```
+
+```caddyfile
+hub.lysauto.it {
+	reverse_proxy 127.0.0.1:8000
+}
+```
+
+Nient'altro da configurare: Caddy ottiene e rinnova da solo il certificato
+Let's Encrypt per `hub.lysauto.it` al primo avvio (richiede che §10.1–10.3
+siano già a posto, altrimenti la validazione del certificato fallisce e
+Caddy riprova periodicamente).
+
+### 10.5 Avvio automatico di Caddy (NSSM)
+
+Stesso pattern già usato per l'app in §5.4:
+
+```powershell
+cd C:\LYSApp\caddy
+# nssm.exe già scaricato in §5.4, o riscaricalo da nssm.cc
+.\nssm install LysCaddy C:\LYSApp\caddy\caddy.exe "run" "--config" "C:\LYSApp\caddy\Caddyfile"
+.\nssm set LysCaddy AppDirectory C:\LYSApp\caddy
+.\nssm set LysCaddy Start SERVICE_AUTO_START
+.\nssm start LysCaddy
+```
+
+Verifica che sia partito: `services.msc` → `LysCaddy` → Stato "In esecuzione".
+
+### 10.6 Verifica finale
+
+Da **fuori** dalla rete dell'officina (dati mobili, non WiFi aziendale):
+
+```
+https://hub.lysauto.it/health
+```
+
+Atteso: `{"status":"ok","version":"3.0.0"}` con lucchetto verde (certificato
+valido). Poi prova `https://hub.lysauto.it/login` → deve mostrare la pagina
+di login (non un errore, non la home diretta).
+
+Verifica anche che la porta 8000 **non** sia raggiungibile dall'esterno:
+
+```
+http://hub.lysauto.it:8000/health
+```
+
+Deve **fallire** (timeout/connessione rifiutata) — se risponde, il port
+forward della porta 8000 è ancora attivo da un test precedente: rimuovilo
+dal router.
+
+I tablet in LAN continuano a usare `http://192.168.1.42:8000` come prima
+(§7) — non è stato toccato, resta più veloce (nessun overhead TLS) e
+funziona anche se internet cade.
+
+### 10.7 Nota su `APP_HOST` (opzionale, hardening aggiuntivo)
+
+Di default `APP_HOST=0.0.0.0` (§3.3): l'app ascolta su tutte le interfacce,
+ma resta comunque protetta perché il router inoltra solo 80/443 (verso
+Caddy) e Windows Firewall non apre la 8000 al profilo `Public`. Impostare
+`APP_HOST=127.0.0.1` è una difesa aggiuntiva (l'app non sarebbe
+raggiungibile nemmeno con un firewall/port-forward configurato per errore)
+ma **rompe l'accesso diretto dei tablet in LAN** (§7), che dovrebbero
+passare anch'essi da `https://hub.lysauto.it` — funziona solo se il router
+supporta "NAT loopback/hairpin" (non tutti i modelli lo fanno). Se non sei
+sicuro, lascia `0.0.0.0`: la sicurezza reale la danno router+firewall, non
+questo valore.
+
+---
+
 ## Riepilogo cartelle dopo l'installazione
 
 ```
@@ -610,7 +773,10 @@ C:\LYSApp\
 │   └── …
 ├── Cessioni_firmate\         <- archivio centrale, copia delle scansioni
 │   └── 2026\
-└── logs\                     <- log dell'app (opzionale)
+├── logs\                     <- log dell'app (opzionale)
+└── caddy\                    <- reverse proxy + TLS (fase 2, §10)
+    ├── caddy.exe
+    └── Caddyfile
 ```
 
 `C:\WinCar\Archivi\` resta dov'è — non lo tocchiamo: l'app lo legge e basta.

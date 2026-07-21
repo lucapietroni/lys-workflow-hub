@@ -1,0 +1,13 @@
+# Caddyfile — LYS Workflow Hub (v3.0 fase 2, reverse proxy + TLS)
+#
+# Gira sul PC carrozzeria, davanti all'app (che resta in ascolto solo su
+# 127.0.0.1:8000). Caddy termina TLS su 80/443 e fa da reverse proxy.
+# Certificato Let's Encrypt ottenuto e rinnovato automaticamente — nessuna
+# configurazione manuale del certificato richiesta.
+#
+# Istruzioni complete: docs/SETUP_PRODUCTION.md, sezione "Pubblicazione su
+# internet (reverse proxy + TLS)".
+
+hub.lysauto.it {
+	reverse_proxy 127.0.0.1:8000
+}
