@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Portale · LYS Workflow Hub{% endblock %}
+
+{% block content %}
+<header class="pratica-header">
+  <div>
+    <div class="hero-eyebrow">Portale collaborazione</div>
+    <h1>Le tue pratiche</h1>
+    <p class="meta">
+      Pratiche che ti sono state assegnate. Per ognuna trovi qui il riepilogo —
+      la vista completa (foto, documenti, note, calendario) arriva a breve.
+    </p>
+  </div>
+</header>
+
+<section class="card">
+  {% if not pratiche %}
+    <p class="meta" style="margin-top:0">
+      Nessuna pratica ti è ancora stata assegnata. Contatta la carrozzeria.
+    </p>
+  {% else %}
+    <table class="table">
+      <thead>
+        <tr>
+          <th>N. pratica</th>
+          <th>Cliente</th>
+          <th>Veicolo</th>
+          <th>Data sinistro</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in pratiche %}
+        <tr>
+          <td><strong>{{ p.numero }}</strong></td>
+          <td>{{ p.cliente.nominativo or "—" }}</td>
+          <td>
+            {{ p.veicolo.targa or "—" }}
+            {% if p.veicolo.marca %}<span class="meta">({{ p.veicolo.marca }} {{ p.veicolo.modello or "" }})</span>{% endif %}
+          </td>
+          <td>{{ p.sinistro.data.strftime("%d/%m/%Y") if p.sinistro.data else "—" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</section>
+{% endblock %}

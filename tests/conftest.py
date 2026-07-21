@@ -23,8 +23,9 @@ ADMIN_PASSWORD = "test-password-1234"
 _CSRF_RE = re.compile(r'name="csrf_token" value="([^"]+)"')
 
 
-def login_as_admin(client: TestClient) -> None:
-    """Esegue il flusso di login completo (GET csrf + POST credenziali)."""
+def login_as(client: TestClient, email: str, password: str) -> None:
+    """Esegue il flusso di login completo (GET csrf + POST credenziali) per
+    un utente qualunque (admin o esterno)."""
     resp = client.get("/login")
     assert resp.status_code == 200, resp.text
     match = _CSRF_RE.search(resp.text)
@@ -32,14 +33,18 @@ def login_as_admin(client: TestClient) -> None:
     resp = client.post(
         "/login",
         data={
-            "email": ADMIN_EMAIL,
-            "password": ADMIN_PASSWORD,
+            "email": email,
+            "password": password,
             "csrf_token": match.group(1),
             "next": "/",
         },
         follow_redirects=False,  # indipendente dal default del client chiamante
     )
     assert resp.status_code == 303, f"login fallito: {resp.status_code} {resp.text}"
+
+
+def login_as_admin(client: TestClient) -> None:
+    login_as(client, ADMIN_EMAIL, ADMIN_PASSWORD)
 
 
 @pytest.fixture

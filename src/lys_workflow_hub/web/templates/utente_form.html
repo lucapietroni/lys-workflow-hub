@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}
+  {% if utente %}Modifica utente{% else %}Nuovo utente{% endif %} · LYS Workflow Hub
+{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb">
+  <a href="/utenti">← Torna alla lista utenti</a>
+</nav>
+
+<header class="pratica-header">
+  <div>
+    <span class="badge">Amministrazione</span>
+    <h1>{% if utente %}Modifica utente{% else %}Nuovo utente{% endif %}</h1>
+    {% if utente %}
+      <p class="meta">
+        ID interno: {{ utente.id }}
+        · creato il {{ utente.created_at.strftime("%d/%m/%Y") if utente.created_at else "—" }}
+      </p>
+    {% endif %}
+  </div>
+</header>
+
+{% if error %}
+  <div class="alert alert-warn"><strong>Errore:</strong> {{ error }}</div>
+{% endif %}
+
+<form method="post"
+      action="{% if utente %}/utenti/{{ utente.id }}{% else %}/utenti/nuovo{% endif %}"
+      class="cessione-form">
+
+  <section class="card">
+    <h2>Identificazione</h2>
+    <div class="form-grid">
+      <div class="form-field">
+        <label for="f_email">Email <span class="req">*</span></label>
+        <input id="f_email" name="email" type="email" value="{{ values.email }}"
+               required autocomplete="off"
+               {% if utente %}readonly style="opacity:0.6;"{% endif %} />
+        {% if utente %}<small class="hint">L'email non è modificabile dopo la creazione.</small>{% endif %}
+      </div>
+      <div class="form-field">
+        <label for="f_nome">Nome visualizzato</label>
+        <input id="f_nome" name="nome" type="text" value="{{ values.nome }}" autocomplete="off" />
+      </div>
+      <div class="form-field">
+        <label for="f_ruolo">Ruolo <span class="req">*</span></label>
+        <select id="f_ruolo" name="ruolo" required>
+          {% for r in ruoli %}
+            <option value="{{ r }}" {% if values.ruolo == r %}selected{% endif %}>
+              {{ "Admin (accesso completo)" if r == "admin" else "Esterno (solo pratiche assegnate)" }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      {% if utente %}
+      <div class="form-field">
+        <label for="f_attivo" style="display:flex;align-items:center;gap:8px;">
+          <input id="f_attivo" name="attivo" type="checkbox" style="width:auto;"
+                 {% if utente.attivo %}checked{% endif %} />
+          Account attivo
+        </label>
+        <small class="hint">Disattivato: l'utente non può più fare login, i dati restano.</small>
+      </div>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Password</h2>
+    <div class="form-grid">
+      <div class="form-field">
+        <label for="f_password">
+          {% if utente %}Nuova password{% else %}Password{% endif %}
+          {% if not utente %} <span class="req">*</span>{% endif %}
+        </label>
+        <input id="f_password" name="password" type="password" autocomplete="new-password"
+               {% if not utente %}required{% endif %} minlength="8" />
+        <small class="hint">
+          {% if utente %}
+            Lascia vuoto per non cambiarla. Minimo 8 caratteri.
+          {% else %}
+            Minimo 8 caratteri. L'utente potrà cambiarla in futuro (non c'è ancora una
+            pagina self-service — per ora deve chiedere di essere reimpostata qui).
+          {% endif %}
+        </small>
+      </div>
+    </div>
+  </section>
+
+  <div class="form-actions">
+    <a href="/utenti" class="btn">Annulla</a>
+    <button type="submit" class="btn btn-primary">
+      {% if utente %}Salva modifiche{% else %}Crea utente{% endif %}
+    </button>
+  </div>
+</form>
+{% endblock %}

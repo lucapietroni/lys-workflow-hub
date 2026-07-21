@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote as _urlquote
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
@@ -29,12 +29,16 @@ from lys_workflow_hub.core.draft_repository import (
 )
 from lys_workflow_hub.core.sollecito_repository import SollecitoRepository
 from lys_workflow_hub.core.mail_in_repository import MailRepository
+from lys_workflow_hub.core.pratica_assegnazioni_repository import (
+    PraticaAssegnazioniRepository,
+)
 from lys_workflow_hub.core.pratica_files import Allegato, scan as scan_allegati
 from lys_workflow_hub.core.pratica_stato_repository import (
     PraticaStatoRepository,
     STATI,
     STATO_LABELS,
 )
+from lys_workflow_hub.core.utenti_repository import Utente, UtentiRepository
 from lys_workflow_hub.core.wincar_repository import WinCarRepository
 from lys_workflow_hub.workflows.cessione_credito import (
     PdfConversionError,
@@ -259,7 +263,49 @@ def pratica_detail(
         logger.warning("Impossibile leggere foto/documenti per %s: %s", numero, exc)
         context["foto_pratica"] = []
         context["documenti_pratica"] = []
+    # Collaboratori esterni assegnati a questa pratica (v3.0 fase 3)
+    try:
+        assegnazioni_repo = PraticaAssegnazioniRepository(db_path=settings.app_db_path)
+        # Singleton condiviso con AuthMiddleware/routes_utenti.py, non una
+        # connessione nuova — vedi app.state.utenti_repo in main.py.
+        utenti_repo: UtentiRepository = request.app.state.utenti_repo
+        assegnati_ids = set(assegnazioni_repo.list_utente_ids_per_pratica(numero))
+        tutti_utenti = utenti_repo.list_all()
+        context["collaboratori_assegnati"] = [
+            u for u in tutti_utenti if u.id in assegnati_ids
+        ]
+        context["esterni_disponibili"] = [
+            u for u in tutti_utenti
+            if u.ruolo == "esterno" and u.attivo and u.id not in assegnati_ids
+        ]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Impossibile leggere assegnazioni per %s: %s", numero, exc)
+        context["collaboratori_assegnati"] = []
+        context["esterni_disponibili"] = []
     return templates.TemplateResponse(request, "pratica_detail.html", context)
+
+
+@router.post("/pratiche/{numero}/assegna")
+def pratica_assegna(
+    numero: int,
+    utente_id: int = Form(...),
+    admin: Utente = Depends(require_admin),
+    settings: Settings = Depends(get_app_settings),
+) -> RedirectResponse:
+    repo = PraticaAssegnazioniRepository(db_path=settings.app_db_path)
+    repo.assegna(numero, utente_id, assegnato_da=admin.id)
+    return RedirectResponse(url=f"/pratiche/{numero}#collaboratori", status_code=303)
+
+
+@router.post("/pratiche/{numero}/assegna/{utente_id}/rimuovi")
+def pratica_rimuovi_assegnazione(
+    numero: int,
+    utente_id: int,
+    settings: Settings = Depends(get_app_settings),
+) -> RedirectResponse:
+    repo = PraticaAssegnazioniRepository(db_path=settings.app_db_path)
+    repo.rimuovi(numero, utente_id)
+    return RedirectResponse(url=f"/pratiche/{numero}#collaboratori", status_code=303)
 
 
 @router.get("/pratiche/{numero}/file")

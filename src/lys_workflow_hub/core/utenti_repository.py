@@ -176,6 +176,15 @@ class UtentiRepository:
             ).fetchall()
         return [self._row_to_utente(r) for r in rows]
 
+    def count_admin_attivi(self) -> int:
+        """Usato per bloccare la disattivazione/eliminazione dell'ultimo admin
+        rimasto (nessuno potrebbe più entrare per rimediare)."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) AS n FROM utenti WHERE ruolo = 'admin' AND attivo = 1"
+            ).fetchone()
+        return int(row["n"])
+
     # -- mutate ------------------------------------------------------------
 
     def create(

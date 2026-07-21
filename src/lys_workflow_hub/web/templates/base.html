@@ -10,7 +10,7 @@
   </head>
   <body>
     <header class="topbar">
-      <a class="brand" href="/">
+      <a class="brand" href="{{ '/' if current_user and current_user.is_admin else '/portale' }}">
         <img class="brand-logo" src="/static/logo-lys.jpg" alt="LYS Auto" />
         <div class="brand-text">
           <span class="brand-title">Workflow Hub</span>
@@ -18,6 +18,7 @@
         </div>
       </a>
       <nav class="topnav" id="topnav">
+        {% if current_user and current_user.is_admin %}
         <a href="/">Pratiche</a>
         <a href="/compagnie">Compagnie</a>
         <a href="/pec-inviate">PEC inviate</a>
@@ -25,8 +26,12 @@
         <a href="/bozze">Bozze</a>
         <a href="/statistiche">Statistiche</a>
         <a href="/foto">Foto</a>
+        <a href="/utenti">Utenti</a>
         <a href="/impostazioni">Impostazioni</a>
         <a href="/docs" target="_blank" rel="noopener">API</a>
+        {% elif current_user %}
+        <a href="/portale">Le mie pratiche</a>
+        {% endif %}
       </nav>
       {% if current_user %}
       <form method="post" action="/logout" class="user-box">

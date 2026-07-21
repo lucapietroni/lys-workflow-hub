@@ -5,7 +5,7 @@ con il gestionale **WinCar**. Legge le pratiche dal database WinCar in sola lett
 genera documenti precompilati, monitora le risposte delle compagnie assicurative
 via PEC/email, classifica le risposte con AI e genera alert mirati.
 
-> Branch attivo: **v2** · Versione: **3.0.0**
+> Branch attivo: **v2** · Versione: **3.1.0**
 > Branch stabile: **main** (v1.0.4)
 
 ---
@@ -15,7 +15,7 @@ via PEC/email, classifica le risposte con AI e genera alert mirati.
 | Branch | Versione | Stato |
 |--------|----------|-------|
 | `main` | **1.0.4** | Stabile — funzionalità assicurative complete + allegati email + fix re-download |
-| `v2` | **3.0.0** | Sviluppo attivo — verbali cortesia + foto lavorazioni automatiche + foto/documenti in pratica + autenticazione (fase 1) |
+| `v2` | **3.1.0** | Sviluppo attivo — verbali cortesia + foto lavorazioni automatiche + foto/documenti in pratica + autenticazione/pubblicazione internet + assegnazione pratiche |
 
 ---
 
@@ -40,9 +40,8 @@ qualsiasi pagina, senza login.
 - **Login/logout**: pagina `/login`, sessione via cookie firmato, tutte le
   route esistenti ora richiedono un utente autenticato (redirect automatico
   a `/login` se assente).
-- **Ruoli**: `admin` (accesso completo) ed `esterno` (per ora senza pagine
-  dedicate — arriveranno nelle fasi successive: portale di collaborazione
-  per agenzie pratiche auto/avvocati esterni).
+- **Ruoli**: `admin` (accesso completo) ed `esterno` (accesso limitato alle
+  sole pratiche assegnate — vedi "Novità v3.1" sotto).
 - **Anti-bruteforce**: blocco account dopo 5 tentativi falliti consecutivi
   (configurabile), sblocco automatico dopo 15 minuti.
 - **Bootstrap**: nessuna self-registration — `scripts/create_admin.py` crea
@@ -54,9 +53,29 @@ qualsiasi pagina, senza login.
 su `https://hub.lysauto.it` (Caddy + Let's Encrypt sul PC carrozzeria,
 guida in `docs/SETUP_PRODUCTION.md` §10 + `deploy/Caddyfile`).
 
-Fasi successive (non ancora costruite): assegnazione pratiche a utenti
-esterni, note di collaborazione condivise, calendario per pratica,
-notifiche reminder. Dettagli tecnici completi in `CONTEXT.md`.
+---
+
+## Novità v3.1 (fase 3) — Assegnazione pratiche e portale esterno
+
+- **Gestione utenti via UI** (`/utenti`, admin-only): crea/modifica/disattiva
+  utenti admin ed esterni, resetta password — non serve più la riga di
+  comando per tutto tranne il primissimo admin (`scripts/create_admin.py`).
+  Protezione integrata: non è possibile disattivare, retrocedere o eliminare
+  l'ultimo amministratore attivo rimasto.
+- **Assegnazione pratiche**: su `/pratiche/<n>`, card "Collaboratori
+  esterni" — l'admin assegna la pratica a uno o più utenti esterni (es.
+  agenzia pratiche auto **e** avvocato insieme sulla stessa pratica).
+- **Portale esterno** (`/portale`): l'utente esterno vede l'elenco delle
+  proprie pratiche assegnate (numero, cliente, veicolo, data sinistro).
+  Solo lettura per ora — foto/documenti/note/calendario condiviso arrivano
+  in fase 4.
+- **Navigazione condizionale per ruolo**: un utente esterno vede solo "Le
+  mie pratiche" in menu, non le voci admin (che comunque risponderebbero
+  403 se aperte direttamente).
+
+Fasi successive (non ancora costruite): note di collaborazione condivise,
+calendario per pratica, notifiche reminder. Dettagli tecnici completi in
+`CONTEXT.md`.
 
 ---
 
@@ -176,7 +195,8 @@ src/lys_workflow_hub/
 ├── core/
 │   ├── ...                         Repository SQLite (mail, pratiche, bozze, SLA)
 │   ├── foto_lavorazioni_repository.py  Log foto processate [v2.1]
-│   └── utenti_repository.py        Utenti + autenticazione (bcrypt, lockout) [v3.0]
+│   ├── utenti_repository.py        Utenti + autenticazione (bcrypt, lockout) [v3.0]
+│   └── pratica_assegnazioni_repository.py  Assegnazione pratiche↔utenti [v3.1]
 ├── integrations/
 │   ├── ...                         IMAP, SMTP, AI classifier, PDF extractor, notifier
 │   └── foto_watcher.py             Watchdog + Claude Vision + routing foto [v2.1]
@@ -192,7 +212,9 @@ src/lys_workflow_hub/
 └── web/
     ├── auth.py                     Sessione, AuthMiddleware, require_admin, CSRF [v3.0]
     ├── routes_auth.py              GET/POST /login, POST /logout [v3.0]
-    ├── routes.py                   Pratica + Workflow A (admin-only)
+    ├── routes_utenti.py            CRUD utenti /utenti (admin-only) [v3.1]
+    ├── routes_portale.py           Portale esterno /portale (NON admin-only) [v3.1]
+    ├── routes.py                   Pratica + Workflow A + assegnazione (admin-only)
     ├── routes_vandalismo.py        Workflow B (admin-only)
     ├── routes_risposte.py          Workflow C (admin-only)
     ├── routes_bozze.py             Bozze risposta (admin-only)

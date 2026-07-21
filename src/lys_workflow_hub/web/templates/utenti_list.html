@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Utenti · LYS Workflow Hub{% endblock %}
+
+{% block content %}
+<header class="pratica-header">
+  <div>
+    <div class="hero-eyebrow">Amministrazione</div>
+    <h1>Utenti</h1>
+    <p class="meta">
+      Account applicativi. <strong>Admin</strong>: accesso completo. <strong>Esterno</strong>:
+      accesso limitato alle pratiche assegnate (agenzie pratiche auto, avvocati) —
+      assegnale dalla pagina della singola pratica.
+    </p>
+  </div>
+  <div class="pratica-actions">
+    <a class="btn btn-primary" href="/utenti/nuovo">+ Nuovo utente</a>
+  </div>
+</header>
+
+<section class="card">
+  {% if not utenti %}
+    <p class="meta" style="margin-top:0">Nessun utente. Clicca su <strong>Nuovo utente</strong>.</p>
+  {% else %}
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Nome</th>
+          <th>Email</th>
+          <th>Ruolo</th>
+          <th>Stato</th>
+          <th>Ultimo accesso</th>
+          <th class="col-actions"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in utenti %}
+        <tr>
+          <td><strong>{{ u.nome or "—" }}</strong></td>
+          <td><code>{{ u.email }}</code></td>
+          <td>
+            {% if u.is_admin %}
+              <span class="tag" style="background:var(--lys-gold-light);color:var(--lys-gold);">Admin</span>
+            {% else %}
+              <span class="tag">Esterno</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if u.attivo %}
+              <span style="color:var(--lys-success);">Attivo</span>
+            {% else %}
+              <span style="color:var(--lys-grey-500);">Disattivato</span>
+            {% endif %}
+          </td>
+          <td class="meta">
+            {{ u.last_login.strftime("%d/%m/%Y %H:%M") if u.last_login else "mai" }}
+          </td>
+          <td class="col-actions">
+            <a class="btn btn-sm" href="/utenti/{{ u.id }}">Modifica</a>
+            <form method="post"
+                  action="/utenti/{{ u.id }}/elimina"
+                  style="display:inline"
+                  onsubmit='return confirm("Eliminare definitivamente " + {{ u.email|tojson }} + "? Non reversibile.");'>
+              <button type="submit" class="btn btn-sm btn-danger">Elimina</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</section>
+{% endblock %}

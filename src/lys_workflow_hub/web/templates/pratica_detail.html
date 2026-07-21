@@ -100,6 +100,45 @@
   </div>
 </header>
 
+<section class="card" id="collaboratori">
+  <h2>Collaboratori esterni <span class="tag">{{ collaboratori_assegnati|length }}</span></h2>
+  <p class="meta" style="margin-top:0">
+    Agenzie pratiche auto / avvocati con accesso a questa pratica dal portale esterno.
+  </p>
+  {% if collaboratori_assegnati %}
+    <ul style="list-style:none; padding:0; margin:0 0 12px;">
+      {% for u in collaboratori_assegnati %}
+        <li style="display:flex; align-items:center; gap:10px; padding:6px 0; border-bottom:1px solid var(--glass-border);">
+          <span style="flex:1;"><strong>{{ u.nome or u.email }}</strong> <span class="meta">{{ u.email }}</span></span>
+          <form method="post" action="/pratiche/{{ pratica.numero }}/assegna/{{ u.id }}/rimuovi" style="display:inline">
+            <button type="submit" class="btn btn-sm btn-danger">Rimuovi</button>
+          </form>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="meta">Nessun collaboratore assegnato.</p>
+  {% endif %}
+
+  {% if esterni_disponibili %}
+    <form method="post" action="/pratiche/{{ pratica.numero }}/assegna" style="display:flex; gap:8px; align-items:flex-end;">
+      <div class="form-field" style="flex:1; margin:0;">
+        <label for="f_assegna_utente">Assegna a</label>
+        <select id="f_assegna_utente" name="utente_id" required>
+          {% for u in esterni_disponibili %}
+            <option value="{{ u.id }}">{{ u.nome or u.email }} ({{ u.email }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="btn btn-primary">Assegna</button>
+    </form>
+  {% elif not collaboratori_assegnati %}
+    <p class="meta">
+      Nessun utente esterno disponibile. Creane uno in <a href="/utenti">Utenti</a>.
+    </p>
+  {% endif %}
+</section>
+
 {% if verbali_cortesia %}
 {% set ns = namespace(uscite=[], rientri=[]) %}
 {% for v in verbali_cortesia %}

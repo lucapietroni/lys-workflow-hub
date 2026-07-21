@@ -1,6 +1,6 @@
 # LYS Workflow Hub — Contesto di sviluppo
 
-> Branch: **v2** · Versione: **3.0.0** (base: v1.0.4 / main)
+> Branch: **v2** · Versione: **3.1.0** (base: v1.0.4 / main)
 
 ---
 
@@ -306,9 +306,9 @@ scheda oggi o in futuro. Sul PC risultava anche un server WireGuard
 installato: non c'entrava (la sua regola ha già scope proprio, indipendente
 dalla classificazione della scheda LAN), ma vale la pena ricontrollare
 `Get-NetConnectionProfile` dopo qualsiasi installazione software di rete.
-Fasi successive (non ancora costruite): assegnazione pratiche ad agenzie/
-avvocati esterni, note di collaborazione condivise, calendario per pratica,
-notifiche di reminder.
+Fase 3 (assegnazione pratiche) **completata** — vedi sezione dedicata più
+sotto. Fasi successive (non ancora costruite): note di collaborazione
+condivise, calendario per pratica, notifiche di reminder.
 
 ### Modello utenti
 Tabella `utenti` (`core/utenti_repository.py`): email UNIQUE, `password_hash`
@@ -362,7 +362,9 @@ sopravvivono al riavvio — comodo per non dover configurare nulla in dev).
 Nessuna self-registration. `scripts/create_admin.py` crea (o promuove a
 admin resettando la password) un utente via CLI interattiva
 (`getpass`, password non echeggiata) o non interattiva (`--email --nome
---password --yes`) — necessario da lanciare una volta dopo il deploy v3.0.
+--password --yes`) — necessario **una sola volta**, al primo deploy
+(problema dell'uovo e della gallina: serve un admin per accedere alla UI
+`/utenti` che gestisce tutti gli altri account). Da lì in poi si usa la UI.
 
 ### Route (routes_auth.py)
 ```
@@ -370,6 +372,72 @@ GET  /login     Form di accesso (pubblico)
 POST /login     Verifica credenziali (rate-limited via lockout), apre sessione
 POST /logout    Chiude la sessione
 ```
+
+---
+
+## Assegnazione pratiche [v3.0 fase 3]
+
+Decide sempre l'admin chi assegnare (mai self-service per l'esterno).
+Relazione **many-to-many**: una pratica può avere più collaboratori esterni
+insieme (es. agenzia pratiche auto E avvocato sulla stessa pratica).
+
+### Gestione utenti — UI (`routes_utenti.py`, admin-only)
+```
+GET  /utenti                    Lista (nome, email, ruolo, stato, ultimo accesso)
+GET  /utenti/nuovo              Form creazione
+POST /utenti/nuovo              Crea (email, nome, ruolo, password ≥8 caratteri)
+GET  /utenti/{id}                Form modifica
+POST /utenti/{id}                Aggiorna nome/ruolo/attivo/password (password vuota = invariata)
+POST /utenti/{id}/elimina        Hard delete
+```
+**Guard "ultimo admin"**: `UtentiRepository.count_admin_attivi()` blocca
+(400, non silenzioso) la disattivazione/retrocessione/eliminazione
+dell'ultimo admin attivo rimasto — altrimenti nessuno potrebbe più entrare
+per rimediare. Email non modificabile dopo la creazione (readonly nel form)
+— evita di dover gestire history/uniqueness in corsa con la sessione attiva.
+
+### Tabella `pratica_assegnazioni` (`core/pratica_assegnazioni_repository.py`)
+`pratica_numero`, `utente_id`, `assegnato_da`, `assegnato_at`. Indice
+UNIQUE su `(pratica_numero, utente_id)` → `assegna()` è idempotente
+(`INSERT OR IGNORE`), niente errore se l'admin clicca "Assegna" due volte.
+
+### UI su `pratica_detail.html`
+Card "Collaboratori esterni" (ancora `#collaboratori`, usata dal redirect
+post-azione): lista dei collaboratori assegnati con bottone "Rimuovi" per
+ciascuno, più un form "Assegna a" con dropdown degli utenti esterni attivi
+**non già assegnati** a quella pratica (calcolato server-side,
+`esterni_disponibili` nel context di `routes.py:pratica_detail`).
+
+### Portale esterno (`routes_portale.py`, `/portale`)
+**Unico router del progetto senza `dependencies=[Depends(require_admin)]`**
+— eccezione voluta (vedi commento in testa al file). Protetto comunque da
+`AuthMiddleware` (serve essere loggati); la query è filtrata per
+`current_user.id` lato server, quindi un admin che apre `/portale` vede
+semplicemente una lista vuota (normalmente non gli è assegnato nulla) — non
+serve un guard esplicito sul ruolo. Naviga per numero pratica assegnato →
+`WinCarRepository.get_pratica(numero)` per il riepilogo (N chiamate, N
+piccolo per il volume atteso — stesso compromesso già accettato altrove nel
+progetto, es. thumbnail foto in §"Foto e documenti in pratica").
+Solo lista in sola lettura per ora: **niente** foto/documenti/note/calendario
+qui, quello è fase 4.
+
+### Nav condizionale per ruolo (`base.html`)
+Il link "brand" (logo) e le voci di navigazione cambiano in base a
+`current_user.is_admin`: admin vede tutta la nav esistente + "Utenti";
+esterno vede solo "Le mie pratiche" (→ `/portale`). Evita di mostrare link
+che darebbero comunque 403 a un utente esterno.
+
+### Pattern riusato: repository come singleton su `app.state`
+Stesso principio già stabilito per `utenti_repo` in fase 1 (vedi sopra) —
+`get_utenti_repo` in `routes_utenti.py` legge da
+`request.app.state.utenti_repo`, **non** costruisce una connessione propria
+da `Settings`. Lo stesso vale per l'uso di `utenti_repo` dentro
+`pratica_detail` (`routes.py`). Motivo: i test devono poter sostituire il
+repository con un DB temporaneo senza toccare la cache di `get_settings()`
+— un `UtentiRepository` costruito al volo da `Depends(get_settings)`
+punterebbe silenziosamente al DB reale anche durante i test, con risultati
+falsati (bug reale trovato e corretto durante l'implementazione di questa
+fase, stesso pattern di quello preso dal code-reviewer in fase 1).
 
 ---
 
@@ -456,7 +524,8 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 | 2.0.0 | v2 | + Verbali cortesia con auto di cortesia DB, dichiarazione necessità, timbro LYS |
 | 2.1.0 | v2 | + Foto lavorazioni: Syncthing + watchdog + Claude Vision → routing automatico per targa |
 | 2.2.0 | v2 | + Foto/documenti in pratica (anteprima inline) + lettura targa a due passaggi (locate+zoom), toggle copia-pratica, fix orario UTC |
-| 3.0.0 | v2 | + Autenticazione fase 1: utenti/ruoli, login/logout, sessione cookie, route admin-only, lockout anti-bruteforce, bootstrap CLI |
+| 3.0.0 | v2 | + Autenticazione fase 1: utenti/ruoli, login/logout, sessione cookie, route admin-only, lockout anti-bruteforce, bootstrap CLI. Fase 2: reverse proxy + TLS (Caddy), app pubblicata su `hub.lysauto.it` |
+| 3.1.0 | v2 | + Assegnazione pratiche fase 3: UI gestione utenti (`/utenti`), assegnazione pratiche many-to-many (`pratica_assegnazioni`), portale esterno di sola lettura (`/portale`), nav condizionale per ruolo |
 
 ---
 
