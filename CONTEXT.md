@@ -286,12 +286,26 @@ Prerequisito per pubblicare l'app su internet (port forwarding dal router
 della carrozzeria): fino alla v2.2 l'app non aveva alcun login, chiunque
 sulla LAN poteva aprire qualsiasi pagina. La v3.0 introduce utenti/ruoli in
 più fasi; questa sezione copre la fase 1 (fondamenta auth), già completata.
-Fase 2 (reverse proxy + TLS) è **documentata** in `docs/SETUP_PRODUCTION.md`
-§10 e `deploy/Caddyfile`, esecuzione sul PC carrozzeria (router/DNS/Caddy)
-ancora da fare — non è lavoro di codice, richiede accesso fisico/credenziali
-che non sono disponibili da qui. Setup di riferimento: dominio `lysauto.it`
-(sito su VM separata, non toccato), sottodominio `hub.lysauto.it` via CNAME
-verso il DDNS del router officina (`lysauto.dnsitalia.org`).
+Fase 2 (reverse proxy + TLS) **completata** — app raggiungibile da internet
+su `https://hub.lysauto.it` (CNAME verso il DDNS del router officina,
+`lysauto.dnsitalia.org`; dominio `lysauto.it` resta sulla VM separata del
+sito, non toccato). Setup: Caddy su `C:\LYSApp\caddy\` (NSSM, auto-start),
+reverse proxy verso `127.0.0.1:8000`, cert Let's Encrypt automatico.
+Procedura in `docs/SETUP_PRODUCTION.md` §10 + `deploy/Caddyfile`.
+
+**Gotcha reale incontrato in produzione**: la scheda LAN del PC carrozzeria
+risultava classificata `NetworkCategory=Public` da Windows (non `Private`
+come assunto), quindi le regole firewall `-Profile Private` per le porte
+80/443 non si applicavano — porta chiusa dall'esterno nonostante DNS e
+router corretti. Fix applicato: **non** riclassificare l'interfaccia
+(avrebbe esposto anche altre regole `Private` — condivisione file, network
+discovery — sulla LAN), ma scopare le due regole Caddy a `-Profile Any`
+(`Set-NetFirewallRule -DisplayName "LYS Workflow Hub (Caddy HTTP/HTTPS)"
+-Profile Any`) — chirurgico, indipendente da come Windows classifica la
+scheda oggi o in futuro. Sul PC risultava anche un server WireGuard
+installato: non c'entrava (la sua regola ha già scope proprio, indipendente
+dalla classificazione della scheda LAN), ma vale la pena ricontrollare
+`Get-NetConnectionProfile` dopo qualsiasi installazione software di rete.
 Fasi successive (non ancora costruite): assegnazione pratiche ad agenzie/
 avvocati esterni, note di collaborazione condivise, calendario per pratica,
 notifiche di reminder.
@@ -454,11 +468,9 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
   - Setup Syncthing smartphone → PC (se non già fatto)
 - Sezione danni verbali: UI grafica schema auto cliccabile
 - Franchigie verbali: definire valori default LYS Auto
-- **v3.0 fase 2** (documentata in `docs/SETUP_PRODUCTION.md` §10 +
-  `deploy/Caddyfile`, esecuzione ancora da fare sul PC/router carrozzeria):
-  DNS CNAME `hub.lysauto.it` → `lysauto.dnsitalia.org`, port forward
-  80/443 sul router, Windows Firewall, installazione Caddy + NSSM,
-  verifica esterna. CSRF esteso a tutti i form resta debito tecnico separato.
+- **v3.0 fase 2** completata — app raggiungibile su `https://hub.lysauto.it`
+  (dettagli/gotcha firewall in sezione "Autenticazione" sopra). CSRF esteso
+  a tutti i form (oggi solo sul login) resta debito tecnico separato.
 - **v3.0 fasi successive** (non ancora costruite, vedi sezione "Autenticazione"):
   fase 3 (assegnazione pratiche a utenti esterni), fase 4 (note
   collaborazione + calendario per pratica), fase 5 (notifiche reminder)

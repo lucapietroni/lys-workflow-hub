@@ -50,10 +50,9 @@ qualsiasi pagina, senza login.
 - **`SECRET_KEY` obbligatoria in produzione**: l'app non si avvia senza,
   per evitare sessioni firmate con una chiave debole/assente.
 
-**Fase 2 — reverse proxy + TLS**: guida operativa pronta in
-`docs/SETUP_PRODUCTION.md` (§10) + config di riferimento in
-`deploy/Caddyfile`; esecuzione sul PC/router carrozzeria (DNS, port
-forward, Caddy) ancora da fare, richiede accesso fisico al router.
+**Fase 2 — reverse proxy + TLS: completata.** App raggiungibile da internet
+su `https://hub.lysauto.it` (Caddy + Let's Encrypt sul PC carrozzeria,
+guida in `docs/SETUP_PRODUCTION.md` §10 + `deploy/Caddyfile`).
 
 Fasi successive (non ancora costruite): assegnazione pratiche a utenti
 esterni, note di collaborazione condivise, calendario per pratica,
@@ -240,9 +239,9 @@ cartelle WinCar, documenti generati. Verificare con `git status` prima di ogni p
 
 Dalla v3.0 l'app richiede login (vedi "Novità v3.0" sopra). `SECRET_KEY` in
 `.env` è **obbligatoria** in produzione (`APP_ENV=production`) — l'app non
-si avvia senza. Prima di esporre l'app su internet (port forwarding), va
-completata anche la fase 2 (reverse proxy + TLS): non pubblicare la porta
-dell'app direttamente in chiaro.
+si avvia senza. L'esposizione su internet passa da Caddy (reverse proxy +
+TLS, fase 2): la porta 8000 dell'app non è mai raggiungibile direttamente
+dall'esterno, solo 443/80 verso Caddy.
 
 ## Licenza
 

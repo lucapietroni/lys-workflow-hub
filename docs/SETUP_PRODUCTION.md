@@ -668,18 +668,40 @@ possibile senza un IP pubblico dedicato, da richiedere all'operatore).
 ### 10.3 Windows Firewall — porte 80/443
 
 Il port forward del router consegna comunque i pacchetti sulla scheda di
-rete LAN del PC (è NAT, non un accesso diretto) — quindi la regola va sullo
-stesso profilo `Private` già usato per la porta 8000 in §6, **non** `Public`:
+rete LAN del PC (è NAT, non un accesso diretto), quindi in teoria basterebbe
+il profilo `Private` come per la porta 8000 (§6). **In pratica**, verifica
+prima come Windows classifica quella scheda:
+
+```powershell
+Get-NetConnectionProfile
+```
+
+Se `NetworkCategory` risulta `Public` invece di `Private` (capita — non è
+detto che coincida con l'aspettativa, es. dopo l'installazione di software
+VPN come WireGuard che può aggiungere schede/toccare le classificazioni),
+**non riclassificare l'intera interfaccia**: cambierebbe anche lo scope di
+tutte le altre regole Windows già esistenti con profilo `Private`
+(condivisione file, network discovery, ecc.), un effetto collaterale più
+ampio del necessario. Molto più chirurgico: apri solo queste due regole a
+tutti i profili, così funzionano indipendentemente da come è classificata
+la scheda oggi o in futuro:
 
 ```powershell
 New-NetFirewallRule -DisplayName "LYS Workflow Hub (Caddy HTTP)" `
                     -Direction Inbound -Protocol TCP -LocalPort 80 `
-                    -Action Allow -Profile Private
+                    -Action Allow -Profile Any
 
 New-NetFirewallRule -DisplayName "LYS Workflow Hub (Caddy HTTPS)" `
                     -Direction Inbound -Protocol TCP -LocalPort 443 `
-                    -Action Allow -Profile Private
+                    -Action Allow -Profile Any
 ```
+
+(Se le regole esistono già con `-Profile Private` e non funzionano,
+aggiornale invece di ricrearle: `Set-NetFirewallRule -DisplayName "LYS
+Workflow Hub (Caddy HTTP)" -Profile Any` e lo stesso per HTTPS.)
+
+Verifica: `Get-NetFirewallRule -DisplayName "LYS Workflow Hub (Caddy*" |
+Select DisplayName,Profile,Enabled,Action`.
 
 ### 10.4 Installare Caddy
 
