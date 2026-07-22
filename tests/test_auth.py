@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from lys_workflow_hub.core.utenti_repository import AuthError, UtentiRepository
 from lys_workflow_hub.main import app
-from tests.conftest import ADMIN_EMAIL, ADMIN_PASSWORD, login_as_admin
+from tests.conftest import ADMIN_EMAIL, ADMIN_PASSWORD, login_as, login_as_admin
 
 
 _CSRF_RE = re.compile(r'name="csrf_token" value="([^"]+)"')
@@ -143,3 +143,33 @@ def test_login_success_then_logout(authenticated_app) -> None:
     resp = client.get("/")
     assert resp.status_code == 303
     assert resp.headers["location"].startswith("/login")
+
+
+def test_login_esterno_senza_next_atterra_su_portale(authenticated_app) -> None:
+    """"/" è admin-only: un esterno senza `next` esplicito deve finire su
+    /portale, non su "/" (altrimenti prenderebbe un 403, vedi bug in prod)."""
+    authenticated_app.create(
+        email="esterno@test.local", password="password1234", nome="Esterno Test", ruolo="esterno"
+    )
+    client = TestClient(app, follow_redirects=False)
+    resp = client.get("/login")
+    csrf = _CSRF_RE.search(resp.text).group(1)
+
+    resp = client.post(
+        "/login",
+        data={"email": "esterno@test.local", "password": "password1234", "csrf_token": csrf},
+    )
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/portale"
+
+
+def test_login_form_esterno_gia_autenticato_redirige_a_portale(authenticated_app) -> None:
+    authenticated_app.create(
+        email="esterno2@test.local", password="password1234", nome="Esterno2", ruolo="esterno"
+    )
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, "esterno2@test.local", "password1234")
+
+    resp = client.get("/login")
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/portale"

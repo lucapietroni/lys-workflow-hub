@@ -15,7 +15,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from lys_workflow_hub import __version__
-from lys_workflow_hub.core.utenti_repository import AuthError, UtentiRepository
+from lys_workflow_hub.core.utenti_repository import AuthError, Utente, UtentiRepository
 from lys_workflow_hub.web.auth import new_csrf_token, verify_csrf
 
 
@@ -39,10 +39,21 @@ def _safe_next(next_path: str | None) -> str:
     return "/"
 
 
+def _default_landing(utente: Utente) -> str:
+    """Pagina di atterraggio quando non è stato richiesto un `next` esplicito.
+
+    "/" è admin-only (routes.py monta require_admin a livello di router),
+    quindi gli utenti esterni vanno mandati su /portale.
+    """
+    return "/" if utente.is_admin else "/portale"
+
+
 @router.get("/login", response_class=HTMLResponse)
 def login_form(request: Request, next: str = "") -> HTMLResponse:
-    if getattr(request.state, "current_user", None) is not None:
-        return RedirectResponse(url=_safe_next(next), status_code=303)
+    current_user = getattr(request.state, "current_user", None)
+    if current_user is not None:
+        redirect_to = _safe_next(next) if next else _default_landing(current_user)
+        return RedirectResponse(url=redirect_to, status_code=303)
     return templates.TemplateResponse(
         request,
         "login.html",
@@ -64,7 +75,8 @@ async def login_submit(
     email = str(form.get("email") or "").strip()
     password = str(form.get("password") or "")
     csrf_token = str(form.get("csrf_token") or "")
-    next_path = _safe_next(str(form.get("next") or ""))
+    next_raw = str(form.get("next") or "")
+    next_path = _safe_next(next_raw)
 
     if not verify_csrf(request, csrf_token):
         error = "Sessione scaduta, riprova."
@@ -78,7 +90,8 @@ async def login_submit(
             request.session.clear()
             request.session["user_id"] = utente.id
             logger.info("Login riuscito: %s (ruolo=%s)", utente.email, utente.ruolo)
-            return RedirectResponse(url=next_path, status_code=303)
+            redirect_to = next_path if next_raw else _default_landing(utente)
+            return RedirectResponse(url=redirect_to, status_code=303)
 
     return templates.TemplateResponse(
         request,
