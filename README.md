@@ -5,7 +5,7 @@ con il gestionale **WinCar**. Legge le pratiche dal database WinCar in sola lett
 genera documenti precompilati, monitora le risposte delle compagnie assicurative
 via PEC/email, classifica le risposte con AI e genera alert mirati.
 
-> Branch attivo: **v2** · Versione: **3.1.0**
+> Branch attivo: **v2** · Versione: **3.2.0**
 > Branch stabile: **main** (v1.0.4)
 
 ---
@@ -15,7 +15,7 @@ via PEC/email, classifica le risposte con AI e genera alert mirati.
 | Branch | Versione | Stato |
 |--------|----------|-------|
 | `main` | **1.0.4** | Stabile — funzionalità assicurative complete + allegati email + fix re-download |
-| `v2` | **3.1.0** | Sviluppo attivo — verbali cortesia + foto lavorazioni automatiche + foto/documenti in pratica + autenticazione/pubblicazione internet + assegnazione pratiche |
+| `v2` | **3.2.0** | Sviluppo attivo — verbali cortesia + foto lavorazioni automatiche + foto/documenti in pratica + autenticazione/pubblicazione internet + assegnazione pratiche + note/calendario condivisi |
 
 ---
 
@@ -66,16 +66,36 @@ guida in `docs/SETUP_PRODUCTION.md` §10 + `deploy/Caddyfile`).
   esterni" — l'admin assegna la pratica a uno o più utenti esterni (es.
   agenzia pratiche auto **e** avvocato insieme sulla stessa pratica).
 - **Portale esterno** (`/portale`): l'utente esterno vede l'elenco delle
-  proprie pratiche assegnate (numero, cliente, veicolo, data sinistro).
-  Solo lettura per ora — foto/documenti/note/calendario condiviso arrivano
-  in fase 4.
+  proprie pratiche assegnate (numero, cliente, veicolo, data sinistro);
+  cliccando il numero apre il dettaglio completo — vedi "Novità v3.2" sotto.
 - **Navigazione condizionale per ruolo**: un utente esterno vede solo "Le
   mie pratiche" in menu, non le voci admin (che comunque risponderebbero
   403 se aperte direttamente).
 
-Fasi successive (non ancora costruite): note di collaborazione condivise,
-calendario per pratica, notifiche reminder. Dettagli tecnici completi in
-`CONTEXT.md`.
+Dettagli tecnici completi in `CONTEXT.md`.
+
+---
+
+## Novità v3.2 (fase 4) — Note e calendario condivisi
+
+- **Note condivise per pratica**: thread unico (non un canale per utente) tra
+  admin e collaboratori esterni assegnati — es. "preso app.to con perito",
+  "servono foto lavorazione", "serve preventivo". Visibile e scrivibile su
+  `/pratiche/<n>` (admin) e `/portale/pratiche/<n>` (esterno assegnato).
+- **Calendario condiviso per pratica**: appuntamenti (es. data della perizia),
+  aggiungibili/eliminabili da chiunque abbia accesso alla pratica.
+- **Dettaglio pratica nel portale esterno** (`/portale/pratiche/<n>`): non
+  più solo un elenco — l'esterno assegnato vede ora cliente, veicolo,
+  sinistro, controparte, foto, documenti, note e calendario della pratica,
+  in sola lettura per i dati WinCar e in scrittura per note/calendario.
+  Un esterno non assegnato riceve 404 (non 403, per non rivelare l'esistenza
+  della pratica).
+- **Fix redirect post-login**: un utente esterno senza pratiche precedenti
+  finiva su `/` dopo il login (route admin-only → 403). Ora atterra su
+  `/portale`; gli admin continuano ad atterrare su `/`.
+
+Fase successiva (non ancora costruita): notifiche/reminder (es. "domani c'è
+una perizia"). Dettagli tecnici completi in `CONTEXT.md`.
 
 ---
 
@@ -196,7 +216,9 @@ src/lys_workflow_hub/
 │   ├── ...                         Repository SQLite (mail, pratiche, bozze, SLA)
 │   ├── foto_lavorazioni_repository.py  Log foto processate [v2.1]
 │   ├── utenti_repository.py        Utenti + autenticazione (bcrypt, lockout) [v3.0]
-│   └── pratica_assegnazioni_repository.py  Assegnazione pratiche↔utenti [v3.1]
+│   ├── pratica_assegnazioni_repository.py  Assegnazione pratiche↔utenti [v3.1]
+│   ├── pratica_note_repository.py  Note condivise per pratica [v3.2]
+│   └── pratica_eventi_repository.py  Calendario condiviso per pratica [v3.2]
 ├── integrations/
 │   ├── ...                         IMAP, SMTP, AI classifier, PDF extractor, notifier
 │   └── foto_watcher.py             Watchdog + Claude Vision + routing foto [v2.1]
@@ -213,8 +235,8 @@ src/lys_workflow_hub/
     ├── auth.py                     Sessione, AuthMiddleware, require_admin, CSRF [v3.0]
     ├── routes_auth.py              GET/POST /login, POST /logout [v3.0]
     ├── routes_utenti.py            CRUD utenti /utenti (admin-only) [v3.1]
-    ├── routes_portale.py           Portale esterno /portale (NON admin-only) [v3.1]
-    ├── routes.py                   Pratica + Workflow A + assegnazione (admin-only)
+    ├── routes_portale.py           Portale esterno /portale + dettaglio + note/calendario (NON admin-only) [v3.1/v3.2]
+    ├── routes.py                   Pratica + Workflow A + assegnazione + note/calendario (admin-only)
     ├── routes_vandalismo.py        Workflow B (admin-only)
     ├── routes_risposte.py          Workflow C (admin-only)
     ├── routes_bozze.py             Bozze risposta (admin-only)

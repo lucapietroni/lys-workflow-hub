@@ -7,8 +7,8 @@
     <div class="hero-eyebrow">Portale collaborazione</div>
     <h1>Le tue pratiche</h1>
     <p class="meta">
-      Pratiche che ti sono state assegnate. Per ognuna trovi qui il riepilogo —
-      la vista completa (foto, documenti, note, calendario) arriva a breve.
+      Pratiche che ti sono state assegnate. Apri una pratica per vedere foto,
+      documenti, note e calendario condivisi.
     </p>
   </div>
 </header>
@@ -31,7 +31,7 @@
       <tbody>
         {% for p in pratiche %}
         <tr>
-          <td><strong>{{ p.numero }}</strong></td>
+          <td><strong><a href="/portale/pratiche/{{ p.numero }}">{{ p.numero }}</a></strong></td>
           <td>{{ p.cliente.nominativo or "—" }}</td>
           <td>
             {{ p.veicolo.targa or "—" }}

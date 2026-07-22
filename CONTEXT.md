@@ -1,6 +1,6 @@
 # LYS Workflow Hub — Contesto di sviluppo
 
-> Branch: **v2** · Versione: **3.1.0** (base: v1.0.4 / main)
+> Branch: **v2** · Versione: **3.2.0** (base: v1.0.4 / main)
 
 ---
 
@@ -418,8 +418,9 @@ serve un guard esplicito sul ruolo. Naviga per numero pratica assegnato →
 `WinCarRepository.get_pratica(numero)` per il riepilogo (N chiamate, N
 piccolo per il volume atteso — stesso compromesso già accettato altrove nel
 progetto, es. thumbnail foto in §"Foto e documenti in pratica").
-Solo lista in sola lettura per ora: **niente** foto/documenti/note/calendario
-qui, quello è fase 4.
+La lista è ora solo un indice: cliccando il numero pratica si apre
+`/portale/pratiche/{numero}` (fase 4, vedi sezione dedicata) con la vista
+completa — foto, documenti, note e calendario condivisi.
 
 ### Nav condizionale per ruolo (`base.html`)
 Il link "brand" (logo) e le voci di navigazione cambiano in base a
@@ -438,6 +439,80 @@ repository con un DB temporaneo senza toccare la cache di `get_settings()`
 punterebbe silenziosamente al DB reale anche durante i test, con risultati
 falsati (bug reale trovato e corretto durante l'implementazione di questa
 fase, stesso pattern di quello preso dal code-reviewer in fase 1).
+
+---
+
+## Note e calendario condivisi [v3.0 fase 4]
+
+Thread di note e calendario **condivisi** tra admin e collaboratori esterni
+sulla stessa pratica — non un canale separato per utente. Sia l'admin
+(`/pratiche/{numero}`) sia l'esterno assegnato (`/portale/pratiche/{numero}`)
+leggono e scrivono sulle stesse due tabelle.
+
+### Tabella `pratica_note` (`core/pratica_note_repository.py`)
+`pratica_numero`, `utente_id`, `autore_nome`, `testo`, `created_at`.
+`autore_nome` è uno **snapshot** del nome al momento dell'invio (non un JOIN
+live su `utenti`): la nota resta leggibile anche se l'utente viene poi
+rinominato o disattivato. Nessun delete: log immutabile, in linea con l'uso
+previsto (thread di collaborazione, non editor di testo).
+
+### Tabella `pratica_eventi` (`core/pratica_eventi_repository.py`)
+`pratica_numero`, `titolo`, `data_evento`, `creato_da`, `creato_da_nome`,
+`created_at`. Calendario leggero (niente ricorrenza, niente notifiche —
+quello è fase 5): chiunque abbia accesso alla pratica può aggiungere o
+eliminare un evento, non solo chi lo ha creato.
+
+**IDOR prevenuto in `delete()`**: la firma è
+`delete(evento_id, pratica_numero)`, non solo `delete(evento_id)` — altrimenti
+un esterno assegnato alla pratica A potrebbe cancellare un evento della
+pratica B semplicemente indovinando/incrementando l'id, dato che l'unico
+controllo lato route è "l'utente ha accesso a *questa* pratica nell'URL",
+non "l'evento richiesto appartiene a questa pratica". Coperto da test
+(`test_pratica_collaborazione_ui.py::test_portale_non_puo_eliminare_evento_di_altra_pratica`).
+
+### Route
+Admin (`routes.py`, dentro il router `require_admin`):
+```
+POST /pratiche/{numero}/note                     Aggiungi nota
+POST /pratiche/{numero}/eventi                    Aggiungi evento
+POST /pratiche/{numero}/eventi/{id}/elimina       Elimina evento
+```
+Esterno (`routes_portale.py`, nessun `require_admin`):
+```
+GET  /portale/pratiche/{numero}                   Dettaglio (sola lettura WinCar + note/calendario)
+GET  /portale/pratiche/{numero}/file              Anteprima foto/documento (verifica assegnazione)
+POST /portale/pratiche/{numero}/note              Aggiungi nota
+POST /portale/pratiche/{numero}/eventi            Aggiungi evento
+POST /portale/pratiche/{numero}/eventi/{id}/elimina  Elimina evento
+```
+**Bug reale trovato dal code-reviewer prima del commit**: la prima versione
+riusava `_allegati_con_url()` di `routes.py` così com'era, che genera URL
+fissi su `/pratiche/{numero}/file` — route admin-only. Un utente esterno
+apriva `/portale/pratiche/{numero}` e vedeva la pagina, ma ogni foto/doc
+rispondeva 403 (middleware `require_admin` sulla route sbagliata), rompendo
+proprio la funzionalità che questa fase doveva aggiungere. Non intercettato
+dai primi test perché usavano un `wincar_repo` mockato senza file reali su
+disco. Fix: `_allegati_con_url()` ha ora un parametro `base` (default
+`/pratiche`, portale passa `/portale/pratiche`); la logica di risoluzione
+file è stata estratta in `resolve_pratica_file()` (pubblica, non più
+annidata nella route) così `routes_portale.py` la riusa con
+`_verifica_accesso()` al posto di `require_admin`. Test di regressione con
+un file reale su disco:
+`test_pratica_collaborazione_ui.py::test_portale_foto_pratica_serve_file_reale_non_403`.
+`_verifica_accesso()` in `routes_portale.py` fa 404 (non 403 — non
+riveliamo che la pratica esiste) se l'utente esterno non è assegnatario;
+un admin che apre `/portale/pratiche/{numero}` passa sempre (comodo per
+verificare cosa vede un collaboratore).
+
+### Settings dedicate (`get_portale_settings`)
+`routes_portale.py` ora ha un proprio wrapper `get_portale_settings()`
+(stesso ruolo di `get_app_settings` in `routes.py`): le route di
+note/calendario/scan-allegati lo usano per costruire `PraticaNoteRepository`,
+`PraticaEventiRepository` e per `scan_allegati(settings.wincar_archivio, …)`.
+Serve per poter sovrascrivere le Settings nei test di questo router senza
+toccare il `get_settings()` globale usato altrove (es. da
+`get_assegnazioni_repo`/`get_wincar_repo`, che i test bypassano già a un
+livello più alto).
 
 ---
 
@@ -526,6 +601,7 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 | 2.2.0 | v2 | + Foto/documenti in pratica (anteprima inline) + lettura targa a due passaggi (locate+zoom), toggle copia-pratica, fix orario UTC |
 | 3.0.0 | v2 | + Autenticazione fase 1: utenti/ruoli, login/logout, sessione cookie, route admin-only, lockout anti-bruteforce, bootstrap CLI. Fase 2: reverse proxy + TLS (Caddy), app pubblicata su `hub.lysauto.it` |
 | 3.1.0 | v2 | + Assegnazione pratiche fase 3: UI gestione utenti (`/utenti`), assegnazione pratiche many-to-many (`pratica_assegnazioni`), portale esterno di sola lettura (`/portale`), nav condizionale per ruolo |
+| 3.2.0 | v2 | + Note e calendario condivisi fase 4: thread note (`pratica_note`) e calendario (`pratica_eventi`) tra admin e collaboratori esterni, su `/pratiche/{numero}` e nuova `/portale/pratiche/{numero}` (dettaglio completo esterno: WinCar + note + calendario), fix redirect post-login esterno (`/portale` invece di `/`, admin-only) |
 
 ---
 
@@ -540,8 +616,9 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 - **v3.0 fase 2** completata — app raggiungibile su `https://hub.lysauto.it`
   (dettagli/gotcha firewall in sezione "Autenticazione" sopra). CSRF esteso
   a tutti i form (oggi solo sul login) resta debito tecnico separato.
-- **v3.0 fasi successive** (non ancora costruite, vedi sezione "Autenticazione"):
-  fase 3 (assegnazione pratiche a utenti esterni), fase 4 (note
-  collaborazione + calendario per pratica), fase 5 (notifiche reminder)
+- **v3.0 fase 3** completata — vedi sezione "Assegnazione pratiche".
+- **v3.0 fase 4** completata — vedi sezione "Note e calendario condivisi".
+- **v3.0 fase 5** (non ancora costruita): notifiche/reminder (es. "domani
+  c'è una perizia").
 - Dopo deploy v3.0 in prod: lanciare `scripts/create_admin.py` per creare il
   primo utente admin, e impostare `SECRET_KEY` in `.env` prod

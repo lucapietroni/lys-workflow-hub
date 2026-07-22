@@ -32,7 +32,9 @@ from lys_workflow_hub.core.mail_in_repository import MailRepository
 from lys_workflow_hub.core.pratica_assegnazioni_repository import (
     PraticaAssegnazioniRepository,
 )
+from lys_workflow_hub.core.pratica_eventi_repository import PraticaEventiRepository
 from lys_workflow_hub.core.pratica_files import Allegato, scan as scan_allegati
+from lys_workflow_hub.core.pratica_note_repository import PraticaNoteRepository
 from lys_workflow_hub.core.pratica_stato_repository import (
     PraticaStatoRepository,
     STATI,
@@ -98,15 +100,25 @@ _PREVIEW_MIME: dict[str, str] = {
 _NON_RENDERIZZABILI = {".heic", ".heif"}
 
 
-def _allegati_con_url(numero: int, items: list[Allegato]) -> list[dict[str, Any]]:
-    """Arricchisce gli Allegato con l'URL di anteprima inline per il template."""
+def _allegati_con_url(
+    numero: int, items: list[Allegato], base: str = "/pratiche"
+) -> list[dict[str, Any]]:
+    """Arricchisce gli Allegato con l'URL di anteprima inline per il template.
+
+    `base` seleziona la route che servirà il file: `/pratiche` (admin-only,
+    default) oppure `/portale/pratiche` (verifica assegnazione invece di
+    require_admin) — vedi `routes_portale.py:portale_pratica_file_preview`.
+    Un utente esterno con URL costruiti sul prefisso admin prenderebbe
+    sempre 403 dal middleware require_admin, anche se autorizzato alla
+    pratica.
+    """
     return [
         {
             "nome_file": a.nome_file,
             "size_label": a.size_label,
             "data_modifica": a.data_modifica,
             "categoria": a.categoria,
-            "url": f"/pratiche/{numero}/file?path={_urlquote(str(a.path))}",
+            "url": f"{base}/{numero}/file?path={_urlquote(str(a.path))}",
         }
         for a in items
     ]
@@ -282,7 +294,63 @@ def pratica_detail(
         logger.warning("Impossibile leggere assegnazioni per %s: %s", numero, exc)
         context["collaboratori_assegnati"] = []
         context["esterni_disponibili"] = []
+    # Note e calendario condivisi con i collaboratori esterni (v3.0 fase 4)
+    try:
+        note_repo = PraticaNoteRepository(db_path=settings.app_db_path)
+        eventi_repo = PraticaEventiRepository(db_path=settings.app_db_path)
+        context["note_pratica"] = note_repo.list_per_pratica(numero)
+        context["eventi_pratica"] = eventi_repo.list_per_pratica(numero)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Impossibile leggere note/calendario per %s: %s", numero, exc)
+        context["note_pratica"] = []
+        context["eventi_pratica"] = []
     return templates.TemplateResponse(request, "pratica_detail.html", context)
+
+
+@router.post("/pratiche/{numero}/note")
+def pratica_aggiungi_nota(
+    numero: int,
+    testo: str = Form(...),
+    admin: Utente = Depends(require_admin),
+    settings: Settings = Depends(get_app_settings),
+) -> RedirectResponse:
+    repo = PraticaNoteRepository(db_path=settings.app_db_path)
+    try:
+        repo.add(numero, admin.id, admin.nome or admin.email, testo)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return RedirectResponse(url=f"/pratiche/{numero}#note", status_code=303)
+
+
+@router.post("/pratiche/{numero}/eventi")
+def pratica_aggiungi_evento(
+    numero: int,
+    titolo: str = Form(...),
+    data_evento: str = Form(...),
+    admin: Utente = Depends(require_admin),
+    settings: Settings = Depends(get_app_settings),
+) -> RedirectResponse:
+    data = _parse_date(data_evento)
+    if data is None:
+        raise HTTPException(400, "Data evento non valida.")
+    repo = PraticaEventiRepository(db_path=settings.app_db_path)
+    try:
+        repo.add(numero, titolo, data, admin.id, admin.nome or admin.email)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return RedirectResponse(url=f"/pratiche/{numero}#calendario", status_code=303)
+
+
+@router.post("/pratiche/{numero}/eventi/{evento_id}/elimina")
+def pratica_elimina_evento(
+    numero: int,
+    evento_id: int,
+    admin: Utente = Depends(require_admin),
+    settings: Settings = Depends(get_app_settings),
+) -> RedirectResponse:
+    repo = PraticaEventiRepository(db_path=settings.app_db_path)
+    repo.delete(evento_id, numero)
+    return RedirectResponse(url=f"/pratiche/{numero}#calendario", status_code=303)
 
 
 @router.post("/pratiche/{numero}/assegna")
@@ -308,17 +376,17 @@ def pratica_rimuovi_assegnazione(
     return RedirectResponse(url=f"/pratiche/{numero}#collaboratori", status_code=303)
 
 
-@router.get("/pratiche/{numero}/file")
-def pratica_file_preview(
-    numero: int,
-    path: str = Query(..., description="Path assoluto del file (deve appartenere alla pratica)"),
-    settings: Settings = Depends(get_app_settings),
-) -> FileResponse:
-    """Serve un file di Pubblici/Foto o Pubblici/Allegati per anteprima inline.
+def resolve_pratica_file(numero: int, path: str, settings: Settings) -> FileResponse:
+    """Risolve e serve un file di Pubblici/Foto o Pubblici/Allegati.
 
     Sicurezza: il path richiesto deve corrispondere ESATTAMENTE a uno dei file
     trovati dalla scansione delle cartelle di questa pratica. Niente path
     traversal, niente file al di fuori delle cartelle WinCar della pratica.
+
+    Estratta come funzione a sé (non solo la route `/pratiche/{numero}/file`)
+    così `routes_portale.py` può riusarla con un controllo di accesso diverso
+    (assegnazione invece di require_admin) senza duplicare la logica di
+    validazione path — vedi `portale_pratica_file_preview`.
     """
     try:
         allegati = scan_allegati(settings.wincar_archivio, numero)
@@ -343,6 +411,15 @@ def pratica_file_preview(
             headers={"content-disposition": f'inline; filename="{file_path.name}"'},
         )
     return FileResponse(path=file_path, filename=file_path.name)
+
+
+@router.get("/pratiche/{numero}/file")
+def pratica_file_preview(
+    numero: int,
+    path: str = Query(..., description="Path assoluto del file (deve appartenere alla pratica)"),
+    settings: Settings = Depends(get_app_settings),
+) -> FileResponse:
+    return resolve_pratica_file(numero, path, settings)
 
 
 # --------------------------------------------------------------------------- #
