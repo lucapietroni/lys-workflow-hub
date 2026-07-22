@@ -163,6 +163,40 @@ def test_login_esterno_senza_next_atterra_su_portale(authenticated_app) -> None:
     assert resp.headers["location"] == "/portale"
 
 
+def test_login_form_next_hidden_field_vuoto_senza_query_param(authenticated_app) -> None:
+    """Il campo hidden "next" NON deve mai essere pre-valorizzato con "/":
+    altrimenti il browser reale lo rispedisce sempre nel POST e il redirect
+    per-ruolo (_default_landing) non scatta mai — bug reale già visto in prod."""
+    resp = TestClient(app).get("/login")
+    assert 'name="next" value=""' in resp.text
+
+
+def test_login_esterno_flusso_browser_reale_atterra_su_portale(authenticated_app) -> None:
+    """Replica esatta del flusso browser: legge il campo hidden "next" dalla
+    pagina (invece di ometterlo) e lo rispedisce nel POST, come farebbe un
+    form HTML reale."""
+    authenticated_app.create(
+        email="esterno3@test.local", password="password1234", nome="Esterno3", ruolo="esterno"
+    )
+    client = TestClient(app, follow_redirects=False)
+    resp = client.get("/login")
+    csrf = _CSRF_RE.search(resp.text).group(1)
+    next_match = re.search(r'name="next" value="([^"]*)"', resp.text)
+    assert next_match, "campo hidden next non trovato"
+
+    resp = client.post(
+        "/login",
+        data={
+            "email": "esterno3@test.local",
+            "password": "password1234",
+            "csrf_token": csrf,
+            "next": next_match.group(1),
+        },
+    )
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/portale"
+
+
 def test_login_form_esterno_gia_autenticato_redirige_a_portale(authenticated_app) -> None:
     authenticated_app.create(
         email="esterno2@test.local", password="password1234", nome="Esterno2", ruolo="esterno"

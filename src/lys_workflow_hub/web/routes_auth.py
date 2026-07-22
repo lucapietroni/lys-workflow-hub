@@ -32,11 +32,16 @@ def get_utenti_repo(request: Request) -> UtentiRepository:
     return request.app.state.utenti_repo
 
 
-def _safe_next(next_path: str | None) -> str:
-    """Evita open-redirect: accetta solo path locali (`/qualcosa`)."""
+def _sanitize_next(next_path: str | None) -> str:
+    """Evita open-redirect: accetta solo path locali (`/qualcosa`).
+
+    Ritorna stringa vuota se assente/non valido — NON un fallback a "/",
+    altrimenti il campo hidden "next" nel form finirebbe sempre valorizzato
+    e il redirect di default per-ruolo (`_default_landing`) non scatterebbe
+    mai (bug reale osservato: esterno sempre rimandato su "/" → 403)."""
     if next_path and next_path.startswith("/") and not next_path.startswith("//"):
         return next_path
-    return "/"
+    return ""
 
 
 def _default_landing(utente: Utente) -> str:
@@ -52,7 +57,7 @@ def _default_landing(utente: Utente) -> str:
 def login_form(request: Request, next: str = "") -> HTMLResponse:
     current_user = getattr(request.state, "current_user", None)
     if current_user is not None:
-        redirect_to = _safe_next(next) if next else _default_landing(current_user)
+        redirect_to = _sanitize_next(next) or _default_landing(current_user)
         return RedirectResponse(url=redirect_to, status_code=303)
     return templates.TemplateResponse(
         request,
@@ -60,7 +65,7 @@ def login_form(request: Request, next: str = "") -> HTMLResponse:
         {
             "version": __version__,
             "csrf_token": new_csrf_token(request),
-            "next": _safe_next(next),
+            "next": _sanitize_next(next),
             "error": None,
         },
     )
@@ -75,8 +80,7 @@ async def login_submit(
     email = str(form.get("email") or "").strip()
     password = str(form.get("password") or "")
     csrf_token = str(form.get("csrf_token") or "")
-    next_raw = str(form.get("next") or "")
-    next_path = _safe_next(next_raw)
+    next_path = _sanitize_next(str(form.get("next") or ""))
 
     if not verify_csrf(request, csrf_token):
         error = "Sessione scaduta, riprova."
@@ -90,7 +94,7 @@ async def login_submit(
             request.session.clear()
             request.session["user_id"] = utente.id
             logger.info("Login riuscito: %s (ruolo=%s)", utente.email, utente.ruolo)
-            redirect_to = next_path if next_raw else _default_landing(utente)
+            redirect_to = next_path or _default_landing(utente)
             return RedirectResponse(url=redirect_to, status_code=303)
 
     return templates.TemplateResponse(
