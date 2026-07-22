@@ -301,8 +301,8 @@ def test_notifier_push_solo_per_action_required(tmp_path: Path):
         action_required=False, key_facts={}, ai_model="haiku", ai_cost_eur=0,
     )
 
-    with patch("lys_workflow_hub.integrations.notifier._send_push") as mock_push, \
-         patch("lys_workflow_hub.integrations.notifier._send_summary_email") as mock_mail:
+    with patch("lys_workflow_hub.integrations.notifier.send_push") as mock_push, \
+         patch("lys_workflow_hub.integrations.notifier.send_email") as mock_mail:
         mock_push.return_value = (True, "")
         mock_mail.return_value = (True, "")
         r = notify_batch(

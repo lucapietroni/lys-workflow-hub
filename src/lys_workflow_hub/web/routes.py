@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import quote as _urlquote
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
@@ -42,6 +42,7 @@ from lys_workflow_hub.core.pratica_stato_repository import (
 )
 from lys_workflow_hub.core.utenti_repository import Utente, UtentiRepository
 from lys_workflow_hub.core.wincar_repository import WinCarRepository
+from lys_workflow_hub.integrations.notifier import notify_esterno_nuova_attivita
 from lys_workflow_hub.workflows.cessione_credito import (
     PdfConversionError,
     docx_bytes_to_pdf_bytes,
@@ -166,6 +167,14 @@ def home(
         context["kpi_bozze"] = 0
         context["kpi_risposte_ar"] = 0
         context["kpi_sla_breach"] = 0
+
+    # Prossimi appuntamenti (v3.0 fase 5) — calendario condiviso, tutte le pratiche.
+    try:
+        eventi_repo = PraticaEventiRepository(db_path=settings.app_db_path)
+        context["prossimi_eventi"] = eventi_repo.list_prossimi(entro_giorni=7)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Impossibile leggere prossimi eventi: %s", exc)
+        context["prossimi_eventi"] = []
 
     if q and q.strip():
         q_clean = q.strip()
@@ -307,9 +316,49 @@ def pratica_detail(
     return templates.TemplateResponse(request, "pratica_detail.html", context)
 
 
+def _notifica_esterni_assegnati(
+    request: Request,
+    settings: Settings,
+    numero: int,
+    costruisci_messaggio: Callable[[], tuple[str, str]],
+) -> None:
+    """Email a ogni utente esterno assegnato alla pratica (v3.0 fase 5).
+
+    `costruisci_messaggio` (subject, body) è chiamato QUI DENTRO, non dal
+    chiamante: così anche un errore nella costruzione del testo (f-string,
+    `settings.public_url`, `strftime`, ecc.) resta contenuto in questo
+    try/except e non può far fallire la request — la nota/evento è già
+    salvato quando questa funzione gira, la notifica è best-effort.
+    """
+    try:
+        assegnazioni_repo = PraticaAssegnazioniRepository(db_path=settings.app_db_path)
+        utenti_repo: UtentiRepository = request.app.state.utenti_repo
+        assegnati_ids = set(assegnazioni_repo.list_utente_ids_per_pratica(numero))
+        if not assegnati_ids:
+            return
+        subject, body_text = costruisci_messaggio()
+        for u in utenti_repo.list_all():
+            if u.id in assegnati_ids and u.attivo and u.email:
+                notify_esterno_nuova_attivita(
+                    smtp_host=settings.smtp_host,
+                    smtp_port=settings.smtp_port,
+                    smtp_user=settings.smtp_user,
+                    smtp_password=settings.smtp_password,
+                    smtp_sender=settings.smtp_from,
+                    recipient=u.email,
+                    subject=subject,
+                    body_text=body_text,
+                    smtp_tls=settings.smtp_tls,
+                    disabled=settings.notify_disabled,
+                )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Impossibile notificare esterni assegnati a %s: %s", numero, exc)
+
+
 @router.post("/pratiche/{numero}/note")
 def pratica_aggiungi_nota(
     numero: int,
+    request: Request,
     testo: str = Form(...),
     admin: Utente = Depends(require_admin),
     settings: Settings = Depends(get_app_settings),
@@ -319,12 +368,24 @@ def pratica_aggiungi_nota(
         repo.add(numero, admin.id, admin.nome or admin.email, testo)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+    _notifica_esterni_assegnati(
+        request,
+        settings,
+        numero,
+        costruisci_messaggio=lambda: (
+            f"[LYS Hub] Nuova nota sulla pratica {numero}",
+            f"{admin.nome or admin.email} ha scritto una nuova nota sulla pratica {numero}:\n\n"
+            f"{testo}\n\n"
+            f"Apri la pratica: {settings.public_url(f'/portale/pratiche/{numero}#note')}",
+        ),
+    )
     return RedirectResponse(url=f"/pratiche/{numero}#note", status_code=303)
 
 
 @router.post("/pratiche/{numero}/eventi")
 def pratica_aggiungi_evento(
     numero: int,
+    request: Request,
     titolo: str = Form(...),
     data_evento: str = Form(...),
     admin: Utente = Depends(require_admin),
@@ -338,6 +399,17 @@ def pratica_aggiungi_evento(
         repo.add(numero, titolo, data, admin.id, admin.nome or admin.email)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+    _notifica_esterni_assegnati(
+        request,
+        settings,
+        numero,
+        costruisci_messaggio=lambda: (
+            f"[LYS Hub] Nuovo evento sulla pratica {numero}",
+            f"{admin.nome or admin.email} ha aggiunto un evento sulla pratica {numero}:\n\n"
+            f"{titolo} — {data.strftime('%d/%m/%Y')}\n\n"
+            f"Apri la pratica: {settings.public_url(f'/portale/pratiche/{numero}#calendario')}",
+        ),
+    )
     return RedirectResponse(url=f"/pratiche/{numero}#calendario", status_code=303)
 
 

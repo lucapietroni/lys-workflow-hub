@@ -5,7 +5,7 @@ con il gestionale **WinCar**. Legge le pratiche dal database WinCar in sola lett
 genera documenti precompilati, monitora le risposte delle compagnie assicurative
 via PEC/email, classifica le risposte con AI e genera alert mirati.
 
-> Branch attivo: **v2** · Versione: **3.2.0**
+> Branch attivo: **v2** · Versione: **3.3.0**
 > Branch stabile: **main** (v1.0.4)
 
 ---
@@ -15,7 +15,7 @@ via PEC/email, classifica le risposte con AI e genera alert mirati.
 | Branch | Versione | Stato |
 |--------|----------|-------|
 | `main` | **1.0.4** | Stabile — funzionalità assicurative complete + allegati email + fix re-download |
-| `v2` | **3.2.0** | Sviluppo attivo — verbali cortesia + foto lavorazioni automatiche + foto/documenti in pratica + autenticazione/pubblicazione internet + assegnazione pratiche + note/calendario condivisi |
+| `v2` | **3.3.0** | Sviluppo attivo — verbali cortesia + foto lavorazioni automatiche + foto/documenti in pratica + autenticazione/pubblicazione internet + assegnazione pratiche + note/calendario condivisi + notifiche collaborazione |
 
 ---
 
@@ -94,8 +94,31 @@ Dettagli tecnici completi in `CONTEXT.md`.
   finiva su `/` dopo il login (route admin-only → 403). Ora atterra su
   `/portale`; gli admin continuano ad atterrare su `/`.
 
-Fase successiva (non ancora costruita): notifiche/reminder (es. "domani c'è
-una perizia"). Dettagli tecnici completi in `CONTEXT.md`.
+Dettagli tecnici completi in `CONTEXT.md`.
+
+---
+
+## Novità v3.3 (fase 5, parte A+C) — Notifiche di collaborazione
+
+- **Notifiche in tempo reale**: quando un esterno scrive una nota o aggiunge
+  un evento, l'admin riceve una push sul telefono (ntfy.sh, stesso canale
+  già usato per gli alert PEC). Quando l'admin scrive una nota o aggiunge un
+  evento su una pratica con collaboratori assegnati, ciascun esterno
+  assegnato riceve un'email.
+- **"Prossimi appuntamenti"**: nuovo widget su home (admin, tutte le
+  pratiche) e su `/portale` (esterno, solo le proprie pratiche assegnate) —
+  eventi di calendario nei prossimi 7 giorni, calcolato al caricamento
+  pagina, nessuno scheduler richiesto.
+- **`PUBLIC_BASE_URL`** (nuova variabile `.env`): i link nelle notifiche
+  push/email ora puntano all'URL pubblico dell'app (`https://hub.lysauto.it`)
+  invece che a `http://APP_HOST:APP_PORT` (utilizzabile solo da dentro la
+  LAN) — impostala in produzione perché i link funzionino dal telefono o
+  in un'email a un esterno.
+
+Fase successiva (non ancora costruita): reminder schedulati "il giorno
+prima" per gli eventi di calendario (richiede una nuova voce Task Scheduler
+sul PC carrozzeria, stesso pattern di `run_polling.py`). Dettagli tecnici
+completi in `CONTEXT.md`.
 
 ---
 

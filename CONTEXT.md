@@ -1,6 +1,6 @@
 # LYS Workflow Hub — Contesto di sviluppo
 
-> Branch: **v2** · Versione: **3.2.0** (base: v1.0.4 / main)
+> Branch: **v2** · Versione: **3.3.0** (base: v1.0.4 / main)
 
 ---
 
@@ -516,6 +516,56 @@ livello più alto).
 
 ---
 
+## Notifiche di collaborazione + prossimi appuntamenti [v3.0 fase 5, parte A+C]
+
+Due pezzi, entrambi **live** (nessun job schedulato — vedi nota sotto sulla
+parte B, non ancora costruita):
+
+**A) Notifiche in tempo reale**, triggerate dalle stesse route POST di nota/
+evento di fase 4, subito dopo il salvataggio:
+- Esterno scrive nota/evento su una pratica → **push all'admin** (ntfy.sh,
+  stesso canale/topic già usato per gli alert PEC in `run_polling.py`).
+- Admin scrive nota/evento su una pratica con collaboratori assegnati →
+  **email a ciascun esterno assegnato attivo** (stesso SMTP di
+  `notify_batch`).
+- Scope deliberatamente limitato a nota/evento (non copre cambio stato,
+  nuovi documenti WinCar, ecc. — deciso con l'utente prima di implementare).
+
+**B) Widget "Prossimi appuntamenti"**: card su home (admin, tutte le
+pratiche) e su `/portale` (esterno, solo pratiche assegnate — filtrate via
+`PraticaEventiRepository.list_prossimi(pratica_numeri=...)`), eventi nei
+prossimi 7 giorni. Calcolato al caricamento pagina, stesso pattern del
+banner SLA già esistente in home — non serve alcuno scheduler.
+
+### `integrations/notifier.py` — funzioni pubbliche
+`send_push`/`send_email` erano `_send_push`/`_send_summary_email` (private,
+usate solo da `notify_batch`): rinominate pubbliche perché ora servono anche
+a `notify_admin_nuova_attivita`/`notify_esterno_nuova_attivita`, le due
+funzioni "fire-and-forget" chiamate dalle route — **non sollevano mai**
+(try/except a monte + logging), perché una nota/evento è già salvato quando
+girano: un errore SMTP/ntfy non deve mai far fallire la richiesta HTTP che
+li ha innescati.
+
+### `Settings.public_url()` (nuovo campo `public_base_url`)
+I link nelle notifiche (click push, link nell'email) puntavano prima a
+`http://APP_HOST:APP_PORT` — corretto solo da dentro la LAN. Da quando
+l'app è pubblicata (fase 2, `hub.lysauto.it`), un push toccato dal telefono
+fuori casa o un'email a un esterno con quel link non avrebbero funzionato.
+`public_base_url` (env `PUBLIC_BASE_URL`) risolve l'URL corretto; vuoto =
+comportamento precedente (fallback LAN). `scripts/run_polling.py` è stato
+aggiornato per usare lo stesso helper (stesso problema, mai notato prima
+perché quei link erano cliccati solo da dentro la LAN finora).
+
+### Fase 5 parte B (non ancora costruita): reminder schedulati
+Reminder "il giorno prima" con lead time configurabile per evento, inviati
+via uno script schedulato (stesso pattern di `run_polling.py` — Task
+Scheduler, non un processo in background nell'app) più una tabella di dedup
+(come `pec_sla_reminder`) per non ri-notificare lo stesso evento ad ogni
+esecuzione. Rimandata a un secondo step per non richiedere subito una nuova
+voce Task Scheduler sul PC carrozzeria.
+
+---
+
 ## Decisioni tecniche chiave
 
 ### PEC InfoCert — struttura messaggi
@@ -602,6 +652,7 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 | 3.0.0 | v2 | + Autenticazione fase 1: utenti/ruoli, login/logout, sessione cookie, route admin-only, lockout anti-bruteforce, bootstrap CLI. Fase 2: reverse proxy + TLS (Caddy), app pubblicata su `hub.lysauto.it` |
 | 3.1.0 | v2 | + Assegnazione pratiche fase 3: UI gestione utenti (`/utenti`), assegnazione pratiche many-to-many (`pratica_assegnazioni`), portale esterno di sola lettura (`/portale`), nav condizionale per ruolo |
 | 3.2.0 | v2 | + Note e calendario condivisi fase 4: thread note (`pratica_note`) e calendario (`pratica_eventi`) tra admin e collaboratori esterni, su `/pratiche/{numero}` e nuova `/portale/pratiche/{numero}` (dettaglio completo esterno: WinCar + note + calendario), fix redirect post-login esterno (`/portale` invece di `/`, admin-only) |
+| 3.3.0 | v2 | + Notifiche collaborazione fase 5 (parte A+C): push admin/email esterno in tempo reale su nuova nota/evento, widget "Prossimi appuntamenti" su home e `/portale`, `Settings.public_url()`/`PUBLIC_BASE_URL` per link corretti fuori LAN nelle notifiche |
 
 ---
 
@@ -618,7 +669,12 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
   a tutti i form (oggi solo sul login) resta debito tecnico separato.
 - **v3.0 fase 3** completata — vedi sezione "Assegnazione pratiche".
 - **v3.0 fase 4** completata — vedi sezione "Note e calendario condivisi".
-- **v3.0 fase 5** (non ancora costruita): notifiche/reminder (es. "domani
-  c'è una perizia").
+- **v3.0 fase 5 parte A+C** completata — vedi sezione "Notifiche di
+  collaborazione + prossimi appuntamenti". Ricorda di impostare
+  `PUBLIC_BASE_URL` in `.env` prod perché i link nelle notifiche funzionino
+  fuori LAN.
+- **v3.0 fase 5 parte B** (non ancora costruita): reminder schedulati "il
+  giorno prima" (es. "domani c'è una perizia"), richiede una nuova voce
+  Task Scheduler sul PC carrozzeria.
 - Dopo deploy v3.0 in prod: lanciare `scripts/create_admin.py` per creare il
   primo utente admin, e impostare `SECRET_KEY` in `.env` prod

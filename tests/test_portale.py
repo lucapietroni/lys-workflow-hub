@@ -19,8 +19,13 @@ from lys_workflow_hub.core.wincar_repository import (
     Sinistro,
     Veicolo,
 )
+from lys_workflow_hub.config import Settings
 from lys_workflow_hub.main import app
-from lys_workflow_hub.web.routes_portale import get_assegnazioni_repo, get_wincar_repo
+from lys_workflow_hub.web.routes_portale import (
+    get_assegnazioni_repo,
+    get_portale_settings,
+    get_wincar_repo,
+)
 from tests.conftest import login_as, login_as_admin
 
 
@@ -41,14 +46,17 @@ def portale_client(tmp_path: Path, authenticated_app):
     assegnazioni_repo = PraticaAssegnazioniRepository(db_path=tmp_path / "assegnazioni.db")
     wincar_repo = MagicMock()
     wincar_repo.get_pratica.side_effect = lambda n: _sample_pratica(n) if n == 766 else None
+    settings = Settings(wincar_archivio=tmp_path, app_db_path=tmp_path / "app.db")
 
     app.dependency_overrides[get_assegnazioni_repo] = lambda: assegnazioni_repo
     app.dependency_overrides[get_wincar_repo] = lambda: wincar_repo
+    app.dependency_overrides[get_portale_settings] = lambda: settings
     try:
         yield assegnazioni_repo
     finally:
         app.dependency_overrides.pop(get_assegnazioni_repo, None)
         app.dependency_overrides.pop(get_wincar_repo, None)
+        app.dependency_overrides.pop(get_portale_settings, None)
 
 
 def test_portale_vuoto_senza_assegnazioni(authenticated_app, portale_client) -> None:

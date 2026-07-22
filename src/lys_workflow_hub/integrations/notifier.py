@@ -45,7 +45,7 @@ class NotifyResult:
 # --------------------------------------------------------------------------- #
 
 
-def _send_push(
+def send_push(
     *,
     server: str,
     topic: str,
@@ -91,7 +91,7 @@ def _send_push(
 # --------------------------------------------------------------------------- #
 
 
-def _send_summary_email(
+def send_email(
     *,
     smtp_host: str,
     smtp_port: int,
@@ -272,7 +272,7 @@ def notify_batch(
                 f"{base_url.rstrip('/')}/risposte/{mail.id}"
                 if base_url and mail.id else ""
             )
-            ok, err = _send_push(
+            ok, err = send_push(
                 server=ntfy_server,
                 topic=ntfy_topic,
                 title=title,
@@ -299,7 +299,7 @@ def notify_batch(
     if alert_email and smtp_host and da_mostrare:
         subject = f"[LYS Hub] {len(da_mostrare)} nuove risposte assicurazioni"
         body = _format_summary_body(da_mostrare)
-        ok, err = _send_summary_email(
+        ok, err = send_email(
             smtp_host=smtp_host,
             smtp_port=smtp_port,
             smtp_user=smtp_user,
@@ -317,3 +317,77 @@ def notify_batch(
         logger.info("alert_email o SMTP vuoti: skip email riassuntiva")
 
     return NotifyResult(push_sent=push_sent, email_sent=email_sent, errors=errors)
+
+
+# --------------------------------------------------------------------------- #
+#  Notifiche di collaborazione (v3.0 fase 5) — note/eventi su pratica
+# --------------------------------------------------------------------------- #
+#
+# A differenza di `notify_batch` (batch a fine ciclo di polling), queste sono
+# chiamate in tempo reale dalle route POST di note/eventi (routes.py,
+# routes_portale.py), subito dopo il salvataggio. Non devono MAI far fallire
+# la richiesta HTTP che le ha innescate: qualunque errore è loggato e
+# inghiottito qui, non propagato al chiamante.
+
+
+def notify_admin_nuova_attivita(
+    *,
+    ntfy_server: str,
+    ntfy_topic: str,
+    titolo: str,
+    messaggio: str,
+    click_url: str = "",
+    disabled: bool = False,
+) -> None:
+    """Push all'admin (stesso canale ntfy.sh degli alert PEC) quando un
+    utente esterno scrive una nota o aggiunge un evento su una pratica."""
+    if disabled or not (ntfy_topic and ntfy_server):
+        return
+    try:
+        ok, err = send_push(
+            server=ntfy_server,
+            topic=ntfy_topic,
+            title=titolo,
+            message=messaggio,
+            tags=["speech_balloon"],
+            click_url=click_url,
+        )
+        if not ok:
+            logger.warning("Notifica push admin (collaborazione) fallita: %s", err)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Notifica push admin (collaborazione) fallita: %s", exc)
+
+
+def notify_esterno_nuova_attivita(
+    *,
+    smtp_host: str,
+    smtp_port: int,
+    smtp_user: str,
+    smtp_password: str,
+    smtp_sender: str,
+    recipient: str,
+    subject: str,
+    body_text: str,
+    smtp_tls: str = "",
+    disabled: bool = False,
+) -> None:
+    """Email al collaboratore esterno assegnato quando l'admin scrive una
+    nota o aggiunge un evento sulla sua pratica."""
+    if disabled or not recipient:
+        return
+    try:
+        ok, err = send_email(
+            smtp_host=smtp_host,
+            smtp_port=smtp_port,
+            smtp_user=smtp_user,
+            smtp_password=smtp_password,
+            sender=smtp_sender or smtp_user,
+            recipient=recipient,
+            subject=subject,
+            body_text=body_text,
+            smtp_tls=smtp_tls,
+        )
+        if not ok:
+            logger.warning("Notifica email esterno (collaborazione) fallita: %s", err)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Notifica email esterno (collaborazione) fallita: %s", exc)

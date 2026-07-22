@@ -131,6 +131,30 @@ class PraticaEventiRepository:
             ).fetchall()
         return [self._row_to_evento(r) for r in rows]
 
+    def list_prossimi(
+        self, entro_giorni: int = 7, pratica_numeri: list[int] | None = None
+    ) -> list[Evento]:
+        """Eventi tra oggi e oggi+`entro_giorni`, opzionalmente filtrati a un
+        sottoinsieme di pratiche (usato dal portale esterno per mostrare solo
+        gli eventi delle proprie pratiche assegnate). `pratica_numeri=None`
+        significa "tutte" (vista admin); `pratica_numeri=[]` ritorna sempre
+        lista vuota senza interrogare il DB."""
+        if pratica_numeri is not None and not pratica_numeri:
+            return []
+        query = (
+            "SELECT * FROM pratica_eventi "
+            "WHERE date(data_evento) BETWEEN date('now') AND date('now', ?) "
+        )
+        params: list = [f"+{int(entro_giorni)} days"]
+        if pratica_numeri is not None:
+            placeholders = ",".join("?" for _ in pratica_numeri)
+            query += f"AND pratica_numero IN ({placeholders}) "
+            params.extend(int(n) for n in pratica_numeri)
+        query += "ORDER BY data_evento, created_at LIMIT 20"
+        with self._connect() as conn:
+            rows = conn.execute(query, params).fetchall()
+        return [self._row_to_evento(r) for r in rows]
+
     def delete(self, evento_id: int, pratica_numero: int) -> bool:
         """`pratica_numero` è obbligatorio: senza, un utente esterno con
         accesso alla pratica A potrebbe cancellare un evento della pratica B

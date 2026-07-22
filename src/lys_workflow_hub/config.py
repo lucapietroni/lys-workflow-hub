@@ -153,6 +153,18 @@ class Settings(BaseSettings):
     # Se True, niente push e niente email riassuntiva (modalità "silenziosa"
     # per il rodaggio o per il dev). Utile soprattutto in pytest.
     notify_disabled: bool = Field(default=False)
+    # URL pubblico dell'app usato nei link delle notifiche push/email (es.
+    # "https://hub.lysauto.it"). Vuoto = usa http://APP_HOST:APP_PORT, che
+    # funziona solo da dentro la LAN — sbagliato per un link su cui l'admin
+    # tocca dal telefono fuori casa, o per un'email a un utente esterno.
+    public_base_url: str = Field(default="")
+
+    def public_url(self, path: str) -> str:
+        """Costruisce un URL assoluto per link in notifiche push/email."""
+        base = self.public_base_url.rstrip("/") if self.public_base_url else (
+            f"http://{self.app_host}:{self.app_port}"
+        )
+        return f"{base}{path}"
 
     # --- Autenticazione (v3.0) ---
     # Chiave usata per firmare il cookie di sessione (SessionMiddleware).

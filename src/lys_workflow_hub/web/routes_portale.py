@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Callable
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
@@ -30,6 +31,7 @@ from lys_workflow_hub.core.pratica_files import scan as scan_allegati
 from lys_workflow_hub.core.pratica_note_repository import PraticaNoteRepository
 from lys_workflow_hub.core.utenti_repository import Utente
 from lys_workflow_hub.core.wincar_repository import WinCarRepository
+from lys_workflow_hub.integrations.notifier import notify_admin_nuova_attivita
 from lys_workflow_hub.web.auth import get_current_user, template_context_processor
 from lys_workflow_hub.web.routes import (
     _allegati_con_url,
@@ -87,6 +89,7 @@ def portale_list(
     current_user: Utente | None = Depends(get_current_user),
     assegnazioni_repo: PraticaAssegnazioniRepository = Depends(get_assegnazioni_repo),
     wincar_repo: WinCarRepository = Depends(get_wincar_repo),
+    settings: Settings = Depends(get_portale_settings),
 ) -> HTMLResponse:
     numeri = (
         assegnazioni_repo.list_pratica_numeri_per_utente(current_user.id)
@@ -104,6 +107,17 @@ def portale_list(
             pratiche.append(pratica)
 
     context = {"version": __version__, "pratiche": pratiche}
+
+    # Prossimi appuntamenti (v3.0 fase 5) — solo pratiche assegnate a questo utente.
+    try:
+        eventi_repo = PraticaEventiRepository(db_path=settings.app_db_path)
+        context["prossimi_eventi"] = eventi_repo.list_prossimi(
+            entro_giorni=7, pratica_numeri=numeri
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Portale: impossibile leggere prossimi eventi: %s", exc)
+        context["prossimi_eventi"] = []
+
     return templates.TemplateResponse(request, "portale_list.html", context)
 
 
@@ -173,6 +187,31 @@ def portale_pratica_file_preview(
     return resolve_pratica_file(numero, path, settings)
 
 
+def _notifica_admin(
+    settings: Settings, costruisci_messaggio: Callable[[], tuple[str, str, str]]
+) -> None:
+    """Push all'admin (v3.0 fase 5).
+
+    `costruisci_messaggio` (titolo, messaggio, click_url) è chiamato QUI
+    DENTRO: così anche un errore nella costruzione del testo (f-string,
+    `settings.public_url`, `strftime`, ecc.) resta contenuto in questo
+    try/except e non può far fallire la request — la nota/evento è già
+    salvato quando questa funzione gira, la notifica è best-effort.
+    """
+    try:
+        push_titolo, messaggio, click_url = costruisci_messaggio()
+        notify_admin_nuova_attivita(
+            ntfy_server=settings.ntfy_server,
+            ntfy_topic=settings.ntfy_topic,
+            titolo=push_titolo,
+            messaggio=messaggio,
+            click_url=click_url,
+            disabled=settings.notify_disabled,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Impossibile notificare admin: %s", exc)
+
+
 @router.post("/portale/pratiche/{numero}/note")
 def portale_aggiungi_nota(
     numero: int,
@@ -188,6 +227,14 @@ def portale_aggiungi_nota(
         repo.add(numero, utente.id, utente.nome or utente.email, testo)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+    _notifica_admin(
+        settings,
+        costruisci_messaggio=lambda: (
+            f"Nuova nota · Pratica {numero}",
+            f"{utente.nome or utente.email}: {testo}",
+            settings.public_url(f"/pratiche/{numero}#note"),
+        ),
+    )
     return RedirectResponse(url=f"/portale/pratiche/{numero}#note", status_code=303)
 
 
@@ -210,6 +257,14 @@ def portale_aggiungi_evento(
         repo.add(numero, titolo, data, utente.id, utente.nome or utente.email)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+    _notifica_admin(
+        settings,
+        costruisci_messaggio=lambda: (
+            f"Nuovo evento · Pratica {numero}",
+            f"{utente.nome or utente.email}: {titolo} — {data.strftime('%d/%m/%Y')}",
+            settings.public_url(f"/pratiche/{numero}#calendario"),
+        ),
+    )
     return RedirectResponse(url=f"/portale/pratiche/{numero}#calendario", status_code=303)
 
 

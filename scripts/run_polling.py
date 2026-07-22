@@ -589,7 +589,7 @@ def run_once() -> int:
             ]
             log.info("Da notificare: %d", len(nuove_da_notificare))
 
-            base_url = f"http://{settings.app_host}:{settings.app_port}"
+            base_url = settings.public_url("")
             notify_result = notify_batch(
                 nuove=nuove_da_notificare,
                 ntfy_server=settings.ntfy_server,
@@ -651,7 +651,7 @@ def run_once() -> int:
                         "SLA escalation: %d combinazioni (pec, livello) da gestire",
                         len(escalation_alerts),
                     )
-                    base_url = f"http://{settings.app_host}:{settings.app_port}"
+                    base_url = settings.public_url("")
                     for alert in escalation_alerts:
                         try:
                             livello = alert.livello_richiesto

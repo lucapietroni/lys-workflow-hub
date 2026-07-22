@@ -1,7 +1,7 @@
 """Test di PraticaEventiRepository (v3.0 fase 4)."""
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
@@ -45,3 +45,30 @@ def test_delete_scoped_a_pratica(tmp_path: Path) -> None:
 
     assert repo.delete(evento.id, pratica_numero=766) is True
     assert repo.list_per_pratica(766) == []
+
+
+def test_list_prossimi_filtra_per_finestra_giorni(tmp_path: Path) -> None:
+    repo = PraticaEventiRepository(db_path=tmp_path / "eventi.db")
+    oggi = date.today()
+    repo.add(766, "Domani", oggi + timedelta(days=1), 1, "Admin")
+    repo.add(766, "Tra 10 giorni", oggi + timedelta(days=10), 1, "Admin")
+    repo.add(766, "Ieri (passato)", oggi - timedelta(days=1), 1, "Admin")
+
+    prossimi = repo.list_prossimi(entro_giorni=7)
+    assert [e.titolo for e in prossimi] == ["Domani"]
+
+
+def test_list_prossimi_filtra_per_pratiche(tmp_path: Path) -> None:
+    repo = PraticaEventiRepository(db_path=tmp_path / "eventi.db")
+    oggi = date.today()
+    repo.add(766, "Mia pratica", oggi + timedelta(days=1), 1, "Admin")
+    repo.add(999, "Altra pratica", oggi + timedelta(days=1), 1, "Admin")
+
+    assert [e.titolo for e in repo.list_prossimi(pratica_numeri=[766])] == ["Mia pratica"]
+    assert repo.list_prossimi(pratica_numeri=[]) == []
+    assert len(repo.list_prossimi(pratica_numeri=None)) == 2
+
+
+def test_list_prossimi_vuota_senza_eventi(tmp_path: Path) -> None:
+    repo = PraticaEventiRepository(db_path=tmp_path / "eventi.db")
+    assert repo.list_prossimi() == []
