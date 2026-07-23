@@ -101,42 +101,48 @@
 </header>
 
 <section class="card" id="collaboratori">
-  <h2>Collaboratori esterni <span class="tag">{{ collaboratori_assegnati|length }}</span></h2>
-  <p class="meta" style="margin-top:0">
-    Agenzie pratiche auto / avvocati con accesso a questa pratica dal portale esterno.
-  </p>
-  {% if collaboratori_assegnati %}
-    <ul style="list-style:none; padding:0; margin:0 0 12px;">
-      {% for u in collaboratori_assegnati %}
-        <li style="display:flex; align-items:center; gap:10px; padding:6px 0; border-bottom:1px solid var(--glass-border);">
-          <span style="flex:1;"><strong>{{ u.nome or u.email }}</strong> <span class="meta">{{ u.email }}</span></span>
-          <form method="post" action="/pratiche/{{ pratica.numero }}/assegna/{{ u.id }}/rimuovi" style="display:inline">
-            <button type="submit" class="btn btn-sm btn-danger">Rimuovi</button>
-          </form>
-        </li>
-      {% endfor %}
-    </ul>
-  {% else %}
-    <p class="meta">Nessun collaboratore assegnato.</p>
-  {% endif %}
-
-  {% if esterni_disponibili %}
-    <form method="post" action="/pratiche/{{ pratica.numero }}/assegna" style="display:flex; gap:8px; align-items:flex-end;">
-      <div class="form-field" style="flex:1; margin:0;">
-        <label for="f_assegna_utente">Assegna a</label>
-        <select id="f_assegna_utente" name="utente_id" required>
-          {% for u in esterni_disponibili %}
-            <option value="{{ u.id }}">{{ u.nome or u.email }} ({{ u.email }})</option>
-          {% endfor %}
-        </select>
-      </div>
-      <button type="submit" class="btn btn-primary">Assegna</button>
-    </form>
-  {% elif not collaboratori_assegnati %}
-    <p class="meta">
-      Nessun utente esterno disponibile. Creane uno in <a href="/utenti">Utenti</a>.
+  <details>
+    <summary style="cursor:pointer; list-style:none;">
+      <h2 style="display:inline;">Collaboratori esterni <span class="tag">{{ collaboratori_assegnati|length }}</span></h2>
+    </summary>
+    <p class="meta" style="margin-top:10px">
+      Agenzie pratiche auto / avvocati con accesso a questa pratica dal portale esterno.
     </p>
-  {% endif %}
+    {% if collaboratori_assegnati %}
+      <ul style="list-style:none; padding:0; margin:0 0 12px;">
+        {% for u in collaboratori_assegnati %}
+          <li style="display:flex; align-items:center; gap:10px; padding:6px 0; border-bottom:1px solid var(--glass-border);">
+            <span style="flex:1;"><strong>{{ u.nome or u.email }}</strong> <span class="meta">{{ u.email }}</span></span>
+            <form method="post" action="/pratiche/{{ pratica.numero }}/assegna/{{ u.id }}/rimuovi" style="display:inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+              <button type="submit" class="btn btn-sm btn-danger">Rimuovi</button>
+            </form>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="meta">Nessun collaboratore assegnato.</p>
+    {% endif %}
+
+    {% if esterni_disponibili %}
+      <form method="post" action="/pratiche/{{ pratica.numero }}/assegna" style="display:flex; gap:8px; align-items:flex-end;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <div class="form-field" style="flex:1; margin:0;">
+          <label for="f_assegna_utente">Assegna a</label>
+          <select id="f_assegna_utente" name="utente_id" required>
+            {% for u in esterni_disponibili %}
+              <option value="{{ u.id }}">{{ u.nome or u.email }} ({{ u.email }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <button type="submit" class="btn btn-primary">Assegna</button>
+      </form>
+    {% elif not collaboratori_assegnati %}
+      <p class="meta">
+        Nessun utente esterno disponibile. Creane uno in <a href="/utenti">Utenti</a>.
+      </p>
+    {% endif %}
+  </details>
 </section>
 
 <section class="card" id="note">
@@ -161,6 +167,7 @@
     <p class="meta">Nessuna nota ancora.</p>
   {% endif %}
   <form method="post" action="/pratiche/{{ pratica.numero }}/note" style="display:flex; gap:8px; align-items:flex-end;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
     <div class="form-field" style="flex:1; margin:0;">
       <label for="f_nota_testo">Nuova nota</label>
       <textarea id="f_nota_testo" name="testo" rows="2" required style="width:100%; resize:vertical;"></textarea>
@@ -181,6 +188,7 @@
           <span class="badge">{{ e.data_evento.strftime("%d/%m/%Y") if e.data_evento else "—" }}</span>
           <span style="flex:1;">{{ e.titolo }} <span class="meta">— {{ e.creato_da_nome }}</span></span>
           <form method="post" action="/pratiche/{{ pratica.numero }}/eventi/{{ e.id }}/elimina" style="display:inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
             <button type="submit" class="btn btn-sm btn-danger">Elimina</button>
           </form>
         </li>
@@ -190,6 +198,7 @@
     <p class="meta">Nessun evento in calendario.</p>
   {% endif %}
   <form method="post" action="/pratiche/{{ pratica.numero }}/eventi" style="display:flex; gap:8px; align-items:flex-end;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
     <div class="form-field" style="margin:0;">
       <label for="f_evento_titolo">Titolo</label>
       <input type="text" id="f_evento_titolo" name="titolo" required placeholder="es. Perizia" />
@@ -363,6 +372,7 @@
         enctype="multipart/form-data"
         class="upload-form"
         id="upload-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
     <label for="file_upload" class="dropzone" id="dropzone">
       <span class="dropzone-title">Carica scansione firmata</span>
       <span class="dropzone-hint">Trascina qui il PDF, oppure clicca per scegliere il file.</span>
@@ -395,6 +405,7 @@
   </div>
 
   <form method="post" action="/pratiche/{{ pratica.numero }}/stato" class="form-inline-stato">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
     <select name="stato" class="select-inline">
       {% for s in stati_disponibili %}
       <option value="{{ s }}"{% if s == stato_corrente %} selected{% endif %}>

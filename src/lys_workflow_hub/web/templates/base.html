@@ -3,6 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    {% if csrf_token %}<meta name="csrf-token" content="{{ csrf_token }}" />{% endif %}
     <title>{% block title %}LYS Workflow Hub{% endblock %}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -36,6 +37,7 @@
       </nav>
       {% if current_user %}
       <form method="post" action="/logout" class="user-box">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
         <span class="user-box-name">{{ current_user.nome or current_user.email }}</span>
         <button type="submit" class="btn-link">Esci</button>
       </form>

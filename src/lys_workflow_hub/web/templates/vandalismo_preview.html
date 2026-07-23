@@ -87,6 +87,7 @@
 {% endif %}
 
 <form method="post" action="/pratiche/{{ pratica.numero }}/vandalismo" class="cessione-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
   <input type="hidden" id="compagnia_id_hidden" name="compagnia_id"
          value="{{ compagnia_match.id if compagnia_match else '' }}" />
 

@@ -25,7 +25,7 @@ from lys_workflow_hub.core.wincar_repository import (
 )
 from lys_workflow_hub.main import app
 from lys_workflow_hub.web.routes import get_app_settings, get_repository
-from tests.conftest import login_as, login_as_admin
+from tests.conftest import get_csrf, login_as, login_as_admin
 
 
 def _sample_pratica(numero: int = 766) -> Pratica:
@@ -147,7 +147,11 @@ def test_portale_impostazioni_post_salva_e_persiste(authenticated_app) -> None:
 
     resp = client.post(
         "/portale/impostazioni",
-        data={"notify_push_enabled": "on", "ntfy_topic": "lys-agenzia-9f3a"},
+        data={
+            "notify_push_enabled": "on",
+            "ntfy_topic": "lys-agenzia-9f3a",
+            "csrf_token": get_csrf(client, "/portale/impostazioni"),
+        },
     )
     assert resp.status_code == 303
 
@@ -164,7 +168,13 @@ def test_portale_impostazioni_post_push_senza_topic_mostra_errore(authenticated_
     client = TestClient(app, follow_redirects=False)
     login_as(client, "agenzia@esempio.it", "password1234")
 
-    resp = client.post("/portale/impostazioni", data={"notify_push_enabled": "on"})
+    resp = client.post(
+        "/portale/impostazioni",
+        data={
+            "notify_push_enabled": "on",
+            "csrf_token": get_csrf(client, "/portale/impostazioni"),
+        },
+    )
     assert resp.status_code == 400
     assert "topic" in resp.text.lower()
 
@@ -191,7 +201,10 @@ def test_admin_nota_non_manda_email_se_esterno_ha_disattivato(
     assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
 
     with patch("lys_workflow_hub.web.routes.notify_esterno_nuova_attivita") as mock_email:
-        resp = client.post("/pratiche/766/note", data={"testo": "aggiornamento"})
+        resp = client.post(
+            "/pratiche/766/note",
+            data={"testo": "aggiornamento", "csrf_token": get_csrf(client, "/pratiche/766")},
+        )
         assert resp.status_code == 303
         mock_email.assert_not_called()
 
@@ -211,7 +224,10 @@ def test_admin_nota_manda_push_se_esterno_ha_attivato(admin_client, authenticate
     assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
 
     with patch("lys_workflow_hub.web.routes.notify_push_nuova_attivita") as mock_push:
-        resp = client.post("/pratiche/766/note", data={"testo": "aggiornamento"})
+        resp = client.post(
+            "/pratiche/766/note",
+            data={"testo": "aggiornamento", "csrf_token": get_csrf(client, "/pratiche/766")},
+        )
         assert resp.status_code == 303
         mock_push.assert_called_once()
         assert mock_push.call_args.kwargs["ntfy_topic"] == "lys-agenzia-9f3a"

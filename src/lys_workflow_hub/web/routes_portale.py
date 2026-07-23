@@ -31,6 +31,7 @@ from lys_workflow_hub.core.pratica_eventi_repository import PraticaEventiReposit
 from lys_workflow_hub.core.pratica_files import scan as scan_allegati
 from lys_workflow_hub.core.pratica_note_repository import PraticaNoteRepository
 from lys_workflow_hub.core.pratica_stato_repository import (
+    STATI,
     STATO_LABELS,
     PraticaStatoRepository,
 )
@@ -186,6 +187,19 @@ def portale_pratica_detail(
     context["note_pratica"] = note_repo.list_per_pratica(numero)
     context["eventi_pratica"] = eventi_repo.list_per_pratica(numero)
 
+    # Stato pratica (v3.0 fase 5, parte F): l'esterno assegnato vede e può
+    # aggiornare lo stato, stesso widget dell'admin su /pratiche/{numero}.
+    try:
+        stato_repo = PraticaStatoRepository(db_path=settings.app_db_path)
+        context["pratica_stato"] = stato_repo.get_stato(numero)
+        context["pratica_stato_storia"] = stato_repo.storia(numero, limit=5)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Portale: impossibile leggere stato pratica %s: %s", numero, exc)
+        context["pratica_stato"] = None
+        context["pratica_stato_storia"] = []
+    context["stati_disponibili"] = STATI
+    context["stato_labels"] = STATO_LABELS
+
     return templates.TemplateResponse(request, "portale_pratica_detail.html", context)
 
 
@@ -296,6 +310,39 @@ def portale_elimina_evento(
     repo = PraticaEventiRepository(db_path=settings.app_db_path)
     repo.delete(evento_id, numero)
     return RedirectResponse(url=f"/portale/pratiche/{numero}#calendario", status_code=303)
+
+
+@router.post("/portale/pratiche/{numero}/stato")
+def portale_cambia_stato(
+    numero: int,
+    stato: str = Form(...),
+    note: str = Form(""),
+    current_user: Utente | None = Depends(get_current_user),
+    assegnazioni_repo: PraticaAssegnazioniRepository = Depends(get_assegnazioni_repo),
+    settings: Settings = Depends(get_portale_settings),
+) -> RedirectResponse:
+    utente = _require_user(current_user)
+    _verifica_accesso(utente, numero, assegnazioni_repo)
+
+    stato = stato.strip()
+    if stato not in STATI:
+        raise HTTPException(400, "Stato non valido.")
+
+    stato_repo = PraticaStatoRepository(db_path=settings.app_db_path)
+    stato_repo.set_stato(
+        numero, stato, changed_by=utente.nome or utente.email, note=note.strip()
+    )
+    _notifica_admin(
+        settings,
+        costruisci_messaggio=lambda: (
+            f"Stato aggiornato · Pratica {numero}",
+            f"{utente.nome or utente.email} ha impostato lo stato "
+            f"\"{STATO_LABELS.get(stato, stato)}\" sulla pratica {numero}"
+            + (f": {note.strip()}" if note.strip() else ""),
+            settings.public_url(f"/pratiche/{numero}"),
+        ),
+    )
+    return RedirectResponse(url=f"/portale/pratiche/{numero}?stato_aggiornato=1", status_code=303)
 
 
 def get_utenti_repo(request: Request) -> UtentiRepository:

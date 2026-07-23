@@ -21,6 +21,20 @@ ADMIN_EMAIL = "admin@test.local"
 ADMIN_PASSWORD = "test-password-1234"
 
 _CSRF_RE = re.compile(r'name="csrf_token" value="([^"]+)"')
+_META_CSRF_RE = re.compile(r'name="csrf-token" content="([^"]+)"')
+
+
+def get_csrf(client: TestClient, url: str) -> str:
+    """Estrae il csrf_token corrente della sessione leggendo una pagina
+    qualunque già raggiungibile dal client (iniettato in ogni pagina via
+    `template_context_processor` + meta tag in `base.html`). Da usare per
+    popolare `data={"csrf_token": ...}` nelle POST dei test, dato che
+    `AuthMiddleware` ora verifica il token su ogni richiesta POST tranne
+    `/login` (che ha il proprio flusso, vedi `login_as`)."""
+    resp = client.get(url)
+    match = _META_CSRF_RE.search(resp.text)
+    assert match, f"csrf-token non trovato in GET {url} (status {resp.status_code})"
+    return match.group(1)
 
 
 def login_as(client: TestClient, email: str, password: str) -> None:

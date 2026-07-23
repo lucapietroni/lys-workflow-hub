@@ -55,6 +55,7 @@
                   action="/compagnie/{{ c.id }}/elimina"
                   style="display:inline"
                   onsubmit='return confirm("Eliminare definitivamente " + {{ c.nome|tojson }} + "?");'>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
               <button type="submit" class="btn btn-sm btn-danger">Elimina</button>
             </form>
           </td>

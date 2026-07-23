@@ -66,6 +66,7 @@
 {% endif %}
 
 <form method="post" action="/bozze/{{ d.id }}/salva" class="cessione-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
   <section class="card">
     <h2>Destinatario e oggetto</h2>
     <div class="form-grid">

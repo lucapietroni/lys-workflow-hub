@@ -19,7 +19,7 @@ from lys_workflow_hub.core.wincar_repository import (
 )
 from lys_workflow_hub.main import app
 from lys_workflow_hub.web.routes import get_app_settings, get_repository
-from tests.conftest import login_as_admin
+from tests.conftest import get_csrf, login_as_admin
 
 
 MINI_PDF = b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\ntrailer\n%%EOF\n"
@@ -61,6 +61,7 @@ def test_upload_signed_pdf_saves_to_pratica_folder(client_with_mocks):
     client, repo, settings, tmp_path = client_with_mocks
     response = client.post(
         "/pratiche/12/cessione/firmata",
+        data={"csrf_token": get_csrf(client, "/pratiche/12")},
         files={"file": ("scan.pdf", MINI_PDF, "application/pdf")},
         follow_redirects=False,
     )
@@ -76,6 +77,7 @@ def test_upload_signed_pdf_redirects_with_uploaded_param(client_with_mocks):
     client, *_ = client_with_mocks
     response = client.post(
         "/pratiche/12/cessione/firmata",
+        data={"csrf_token": get_csrf(client, "/pratiche/12")},
         files={"file": ("scan.pdf", MINI_PDF, "application/pdf")},
         follow_redirects=False,
     )
@@ -88,6 +90,7 @@ def test_upload_rejects_non_pdf_content_type(client_with_mocks):
     client, *_ = client_with_mocks
     response = client.post(
         "/pratiche/12/cessione/firmata",
+        data={"csrf_token": get_csrf(client, "/pratiche/12")},
         files={"file": ("scan.jpg", b"\x89PNG", "image/jpeg")},
     )
     assert response.status_code == 400
@@ -97,6 +100,7 @@ def test_upload_rejects_invalid_pdf_bytes(client_with_mocks):
     client, *_ = client_with_mocks
     response = client.post(
         "/pratiche/12/cessione/firmata",
+        data={"csrf_token": get_csrf(client, "/pratiche/12")},
         files={"file": ("scan.pdf", b"not a real pdf", "application/pdf")},
     )
     assert response.status_code == 400
@@ -104,9 +108,33 @@ def test_upload_rejects_invalid_pdf_bytes(client_with_mocks):
 
 def test_upload_404_when_pratica_missing(client_with_mocks):
     client, repo, *_ = client_with_mocks
+    token = get_csrf(client, "/pratiche/12")
     repo.get_pratica.return_value = None
     response = client.post(
         "/pratiche/9999/cessione/firmata",
+        data={"csrf_token": token},
         files={"file": ("scan.pdf", MINI_PDF, "application/pdf")},
     )
     assert response.status_code == 404
+
+
+def test_upload_senza_csrf_token_rifiutato(client_with_mocks):
+    """Le route multipart verificano il CSRF da sole (il middleware le
+    esclude, vedi `_is_multipart` in `web/auth.py`) — deve comunque bloccare
+    un upload senza token, non limitarsi a inoltrarlo."""
+    client, *_ = client_with_mocks
+    response = client.post(
+        "/pratiche/12/cessione/firmata",
+        files={"file": ("scan.pdf", MINI_PDF, "application/pdf")},
+    )
+    assert response.status_code == 403
+
+
+def test_upload_con_csrf_token_falso_rifiutato(client_with_mocks):
+    client, *_ = client_with_mocks
+    response = client.post(
+        "/pratiche/12/cessione/firmata",
+        data={"csrf_token": "token-falso"},
+        files={"file": ("scan.pdf", MINI_PDF, "application/pdf")},
+    )
+    assert response.status_code == 403

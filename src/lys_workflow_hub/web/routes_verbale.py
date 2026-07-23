@@ -15,7 +15,7 @@ import json
 import logging
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
@@ -38,7 +38,7 @@ from lys_workflow_hub.workflows.verbale_cortesia.data import (
     TIPO_RIENTRO,
     TIPO_USCITA,
 )
-from lys_workflow_hub.web.auth import require_admin, template_context_processor
+from lys_workflow_hub.web.auth import require_admin, template_context_processor, verify_csrf
 
 
 logger = logging.getLogger(__name__)
@@ -212,9 +212,15 @@ async def verbale_uscita_pdf(
 @router.post("/pratiche/{numero}/verbale/uscita/firmata")
 async def verbale_uscita_firmata(
     numero: int,
+    request: Request,
     file: UploadFile = File(...),
+    csrf_token: str = Form(""),
     settings: Settings = Depends(_settings),
 ) -> RedirectResponse:
+    # Verifica CSRF esplicita (non delegata al middleware, che salta i body
+    # multipart — vedi commento su `_is_multipart` in web/auth.py).
+    if not verify_csrf(request, csrf_token):
+        raise HTTPException(403, "Token di sicurezza mancante o scaduto. Ricarica la pagina e riprova.")
     raw = await file.read()
     try:
         save_verbale(
@@ -314,9 +320,13 @@ async def verbale_rientro_pdf(
 @router.post("/pratiche/{numero}/verbale/rientro/firmata")
 async def verbale_rientro_firmata(
     numero: int,
+    request: Request,
     file: UploadFile = File(...),
+    csrf_token: str = Form(""),
     settings: Settings = Depends(_settings),
 ) -> RedirectResponse:
+    if not verify_csrf(request, csrf_token):
+        raise HTTPException(403, "Token di sicurezza mancante o scaduto. Ricarica la pagina e riprova.")
     raw = await file.read()
     try:
         save_verbale(

@@ -23,6 +23,7 @@
 
 <section class="card">
   <form method="post" action="/portale/impostazioni">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
     <div class="form-field">
       <label style="display:flex;align-items:center;gap:8px;">
         <input name="notify_email_enabled" type="checkbox" style="width:auto;"

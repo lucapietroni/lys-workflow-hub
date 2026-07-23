@@ -21,11 +21,13 @@
     <a class="btn" href="/risposte/{{ mail.id }}/scarica">Scarica .eml</a>
     {% if classificazione %}
       <form method="post" action="/risposte/{{ mail.id }}/genera-bozza" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
         <button type="submit" class="btn btn-primary">Genera bozza →</button>
       </form>
     {% endif %}
     <form method="post" action="/risposte/{{ mail.id }}/riclassifica" style="display:inline;"
           title="Re-legge il .eml dal filesystem (fix PDF M5.3) e riclassifica con AI. Comporta una chiamata all'API Anthropic.">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
       <button type="submit" class="btn">🔄 Riclassifica</button>
     </form>
     <details class="inline-confirm" style="display:inline-block; position:relative;">
@@ -35,6 +37,7 @@
            <small class="meta">Il file .eml rimane su filesystem. La mail non verrà riscaricata se ha Message-ID.</small>
         </p>
         <form method="post" action="/risposte/{{ mail.id }}/elimina" style="display:flex; gap:8px; margin-top:8px;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
           <button type="submit" class="btn btn-danger">Sì, elimina</button>
           <button type="button" class="btn" onclick="this.closest('details').removeAttribute('open')">Annulla</button>
         </form>
@@ -136,6 +139,7 @@
           <small class="meta">({{ classificazione.match_method }})</small>
         </span>
         <form method="post" action="/risposte/{{ mail.id }}/scollega" style="margin:0;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
           <button type="submit" class="btn btn-danger-outline"
                   onclick="return confirm('Rimuovere il collegamento a questa PEC?')"
                   style="font-size:0.82rem; padding:3px 10px;">
@@ -216,6 +220,7 @@
   {% if cerca_pratica is not none %}
     {% if pec_candidates %}
       <form method="post" action="/risposte/{{ mail.id }}/collega" style="display:flex; gap:8px; align-items:flex-end;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
         <div class="field" style="margin:0; flex:1;">
           <label class="field-label" for="pec_select">PEC inviate per pratica {{ cerca_pratica }}</label>
           <select id="pec_select" name="pec_inviata_id"

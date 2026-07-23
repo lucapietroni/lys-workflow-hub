@@ -25,6 +25,56 @@
 </header>
 
 <section class="card">
+  <h2>Stato pratica</h2>
+
+  {% set stato_corrente = pratica_stato.stato if pratica_stato else "aperta" %}
+  {% set stato_label = stato_labels.get(stato_corrente, stato_corrente) %}
+
+  <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px;">
+    <span class="badge badge-stato badge-{{ stato_corrente }}">{{ stato_label }}</span>
+    {% if pratica_stato %}
+      <span class="meta">
+        Aggiornato il {{ pratica_stato.changed_at.strftime("%d/%m/%Y %H:%M") }}
+        da {{ pratica_stato.changed_by }}
+        {% if pratica_stato.note %} — {{ pratica_stato.note }}{% endif %}
+      </span>
+    {% else %}
+      <span class="meta">Nessuno stato registrato — predefinito: Aperta</span>
+    {% endif %}
+  </div>
+
+  <form method="post" action="/portale/pratiche/{{ pratica.numero }}/stato" class="form-inline-stato">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <select name="stato" class="select-inline">
+      {% for s in stati_disponibili %}
+      <option value="{{ s }}"{% if s == stato_corrente %} selected{% endif %}>
+        {{ stato_labels.get(s, s) }}
+      </option>
+      {% endfor %}
+    </select>
+    <input type="text" name="note" placeholder="Note (opzionale)" style="flex:1; padding:6px 10px;" />
+    <button type="submit" class="btn">Aggiorna stato</button>
+  </form>
+
+  {% if pratica_stato_storia and pratica_stato_storia|length > 1 %}
+  <details style="margin-top:12px;">
+    <summary class="meta" style="cursor:pointer;">Storico ultimi cambi</summary>
+    <ul class="files-list" style="margin-top:8px;">
+      {% for s in pratica_stato_storia %}
+      <li>
+        <span class="file-name">{{ stato_labels.get(s.stato, s.stato) }}</span>
+        <span class="file-meta">
+          {{ s.changed_at.strftime("%d/%m/%Y %H:%M") }} · {{ s.changed_by }}
+          {% if s.note %} · {{ s.note }}{% endif %}
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+</section>
+
+<section class="card">
   <h2>Cliente</h2>
   <div class="grid">
     {{ row("Nominativo / Ragione sociale", pratica.cliente.nominativo) }}
@@ -128,6 +178,7 @@
     <p class="meta">Nessuna nota ancora.</p>
   {% endif %}
   <form method="post" action="/portale/pratiche/{{ pratica.numero }}/note" style="display:flex; gap:8px; align-items:flex-end;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
     <div class="form-field" style="flex:1; margin:0;">
       <label for="f_nota_testo">Nuova nota</label>
       <textarea id="f_nota_testo" name="testo" rows="2" required style="width:100%; resize:vertical;"></textarea>
@@ -148,6 +199,7 @@
           <span class="badge">{{ e.data_evento.strftime("%d/%m/%Y") if e.data_evento else "—" }}</span>
           <span style="flex:1;">{{ e.titolo }} <span class="meta">— {{ e.creato_da_nome }}</span></span>
           <form method="post" action="/portale/pratiche/{{ pratica.numero }}/eventi/{{ e.id }}/elimina" style="display:inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
             <button type="submit" class="btn btn-sm btn-danger">Elimina</button>
           </form>
         </li>
@@ -157,6 +209,7 @@
     <p class="meta">Nessun evento in calendario.</p>
   {% endif %}
   <form method="post" action="/portale/pratiche/{{ pratica.numero }}/eventi" style="display:flex; gap:8px; align-items:flex-end;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
     <div class="form-field" style="margin:0;">
       <label for="f_evento_titolo">Titolo</label>
       <input type="text" id="f_evento_titolo" name="titolo" required placeholder="es. Perizia" />

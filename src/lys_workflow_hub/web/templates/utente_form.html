@@ -28,6 +28,7 @@
 <form method="post"
       action="{% if utente %}/utenti/{{ utente.id }}{% else %}/utenti/nuovo{% endif %}"
       class="cessione-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
 
   <section class="card">
     <h2>Identificazione</h2>

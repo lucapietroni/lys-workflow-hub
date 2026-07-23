@@ -29,6 +29,7 @@
 </header>
 
 <form method="post" action="/pratiche/{{ pratica.numero }}/verbale/uscita/pdf">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
   <input type="hidden" name="tipo" value="uscita" />
 
   <section class="card">
@@ -221,6 +222,7 @@
         action="/pratiche/{{ pratica.numero }}/verbale/uscita/firmata"
         enctype="multipart/form-data"
         style="margin-top: 12px;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
     <label for="file_verbale_u" class="dropzone" id="dropzone-verbale">
       <span class="dropzone-title">Carica verbale firmato (PDF)</span>
       <span class="dropzone-hint">Trascina il PDF scansionato o clicca per scegliere.</span>

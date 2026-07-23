@@ -56,7 +56,7 @@ from lys_workflow_hub.workflows.cessione_credito import (
     save_signed_pdf,
 )
 from lys_workflow_hub.workflows.verbale_cortesia.archive import list_verbali
-from lys_workflow_hub.web.auth import require_admin, template_context_processor
+from lys_workflow_hub.web.auth import require_admin, template_context_processor, verify_csrf
 
 
 logger = logging.getLogger(__name__)
@@ -618,11 +618,20 @@ async def cessione_generate_pdf(
 @router.post("/pratiche/{numero}/cessione/firmata")
 async def cessione_upload_signed(
     numero: int,
+    request: Request,
     file: UploadFile = File(...),
+    csrf_token: str = Form(""),
     repo: WinCarRepository = Depends(get_repository),
     settings: Settings = Depends(get_app_settings),
 ) -> Response:
-    """Carica la scansione firmata e la salva in Pratiche/<n>/Privati/."""
+    """Carica la scansione firmata e la salva in Pratiche/<n>/Privati/.
+
+    Verifica CSRF esplicita (non delegata al middleware): un body
+    `multipart/form-data` letto da `AuthMiddleware` romperebbe l'upload —
+    vedi il commento in `web/auth.py` su `_is_multipart`.
+    """
+    if not verify_csrf(request, csrf_token):
+        raise HTTPException(403, "Token di sicurezza mancante o scaduto. Ricarica la pagina e riprova.")
     pratica = repo.get_pratica(numero)
     if pratica is None:
         raise HTTPException(404, "Pratica non trovata.")

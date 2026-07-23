@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from lys_workflow_hub.core.utenti_repository import AuthError, UtentiRepository
 from lys_workflow_hub.main import app
-from tests.conftest import ADMIN_EMAIL, ADMIN_PASSWORD, login_as, login_as_admin
+from tests.conftest import ADMIN_EMAIL, ADMIN_PASSWORD, get_csrf, login_as, login_as_admin
 
 
 _CSRF_RE = re.compile(r'name="csrf_token" value="([^"]+)"')
@@ -127,6 +127,30 @@ def test_login_bad_csrf_rejected(authenticated_app) -> None:
     assert "scaduta" in resp.text
 
 
+def test_post_generico_senza_csrf_token_rifiutato(authenticated_app) -> None:
+    """`AuthMiddleware` verifica il csrf_token su OGNI POST autenticato
+    (tranne /login, che ha il proprio test dedicato sopra) — qui su /logout,
+    scelto perché non richiede dati applicativi."""
+    client = TestClient(app, follow_redirects=False)
+    login_as_admin(client)
+
+    resp = client.post("/logout")  # niente csrf_token nel body
+    assert resp.status_code == 403
+    assert "sicurezza" in resp.json()["detail"].lower()
+
+    # La sessione deve restare valida: il logout NON deve essere avvenuto.
+    resp = client.get("/")
+    assert resp.status_code != 303
+
+
+def test_post_generico_con_csrf_token_falso_rifiutato(authenticated_app) -> None:
+    client = TestClient(app, follow_redirects=False)
+    login_as_admin(client)
+
+    resp = client.post("/logout", data={"csrf_token": "token-falso"})
+    assert resp.status_code == 403
+
+
 def test_login_success_then_logout(authenticated_app) -> None:
     client = TestClient(app, follow_redirects=False)
     login_as_admin(client)
@@ -135,7 +159,7 @@ def test_login_success_then_logout(authenticated_app) -> None:
     resp = client.get("/")
     assert resp.status_code != 303
 
-    resp = client.post("/logout")
+    resp = client.post("/logout", data={"csrf_token": get_csrf(client, "/")})
     assert resp.status_code == 303
     assert resp.headers["location"] == "/login"
 

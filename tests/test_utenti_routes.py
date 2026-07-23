@@ -4,7 +4,7 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from lys_workflow_hub.main import app
-from tests.conftest import ADMIN_EMAIL, ADMIN_PASSWORD, login_as, login_as_admin
+from tests.conftest import ADMIN_EMAIL, ADMIN_PASSWORD, get_csrf, login_as, login_as_admin
 
 
 def test_utenti_list_richiede_login(authenticated_app) -> None:
@@ -28,6 +28,7 @@ def test_crea_utente_esterno(authenticated_app) -> None:
             "nome": "Agenzia Pratiche SRL",
             "ruolo": "esterno",
             "password": "password1234",
+            "csrf_token": get_csrf(client, "/utenti/nuovo"),
         },
     )
     assert resp.status_code == 303
@@ -48,6 +49,7 @@ def test_utente_esterno_creato_puo_fare_login(authenticated_app) -> None:
             "nome": "Esterno Test",
             "ruolo": "esterno",
             "password": "password1234",
+            "csrf_token": get_csrf(client_admin, "/utenti/nuovo"),
         },
     )
 
@@ -70,7 +72,11 @@ def test_non_si_puo_disattivare_ultimo_admin(authenticated_app) -> None:
     admin = authenticated_app.get_by_email(ADMIN_EMAIL)
     resp = client.post(
         f"/utenti/{admin.id}",
-        data={"nome": "Admin Test", "ruolo": "admin"},  # niente "attivo" = checkbox non spuntata
+        data={
+            "nome": "Admin Test",
+            "ruolo": "admin",  # niente "attivo" = checkbox non spuntata
+            "csrf_token": get_csrf(client, "/utenti"),
+        },
     )
     assert resp.status_code == 400
     assert "ultimo amministratore" in resp.text
@@ -84,7 +90,9 @@ def test_non_si_puo_eliminare_ultimo_admin(authenticated_app) -> None:
     login_as_admin(client)
 
     admin = authenticated_app.get_by_email(ADMIN_EMAIL)
-    resp = client.post(f"/utenti/{admin.id}/elimina")
+    resp = client.post(
+        f"/utenti/{admin.id}/elimina", data={"csrf_token": get_csrf(client, "/utenti")}
+    )
     assert resp.status_code == 400
     assert authenticated_app.get(admin.id) is not None
 
@@ -99,13 +107,18 @@ def test_secondo_admin_permette_di_disattivare_il_primo(authenticated_app) -> No
             "nome": "Admin Due",
             "ruolo": "admin",
             "password": "password1234",
+            "csrf_token": get_csrf(client, "/utenti/nuovo"),
         },
     )
 
     admin = authenticated_app.get_by_email(ADMIN_EMAIL)
     resp = client.post(
         f"/utenti/{admin.id}",
-        data={"nome": "Admin Test", "ruolo": "admin"},  # checkbox "attivo" assente
+        data={
+            "nome": "Admin Test",
+            "ruolo": "admin",  # checkbox "attivo" assente
+            "csrf_token": get_csrf(client, "/utenti"),
+        },
     )
     assert resp.status_code == 303
     assert authenticated_app.get(admin.id).attivo is False

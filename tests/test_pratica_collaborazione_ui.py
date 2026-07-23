@@ -20,6 +20,7 @@ from lys_workflow_hub.core.pratica_assegnazioni_repository import (
     PraticaAssegnazioniRepository,
 )
 from lys_workflow_hub.core.pratica_eventi_repository import PraticaEventiRepository
+from lys_workflow_hub.core.pratica_stato_repository import PraticaStatoRepository
 from lys_workflow_hub.core.wincar_repository import (
     Cliente,
     CompagniaCliente,
@@ -35,7 +36,7 @@ from lys_workflow_hub.web.routes_portale import (
     get_portale_settings,
     get_wincar_repo,
 )
-from tests.conftest import login_as, login_as_admin
+from tests.conftest import get_csrf, login_as, login_as_admin
 
 
 def _sample_pratica(numero: int = 766) -> Pratica:
@@ -92,12 +93,16 @@ def portale_setup(tmp_path: Path, authenticated_app):
 
 def test_admin_aggiunge_nota_e_evento(admin_client) -> None:
     client, _ = admin_client
+    token = get_csrf(client, "/pratiche/766")
 
-    resp = client.post("/pratiche/766/note", data={"testo": "servono foto lavorazione"})
+    resp = client.post(
+        "/pratiche/766/note", data={"testo": "servono foto lavorazione", "csrf_token": token}
+    )
     assert resp.status_code == 303
 
     resp = client.post(
-        "/pratiche/766/eventi", data={"titolo": "Perizia", "data_evento": "2026-08-05"}
+        "/pratiche/766/eventi",
+        data={"titolo": "Perizia", "data_evento": "2026-08-05", "csrf_token": token},
     )
     assert resp.status_code == 303
 
@@ -109,13 +114,17 @@ def test_admin_aggiunge_nota_e_evento(admin_client) -> None:
 
 def test_admin_elimina_evento(admin_client) -> None:
     client, _ = admin_client
-    client.post("/pratiche/766/eventi", data={"titolo": "Perizia", "data_evento": "2026-08-05"})
+    token = get_csrf(client, "/pratiche/766")
+    client.post(
+        "/pratiche/766/eventi",
+        data={"titolo": "Perizia", "data_evento": "2026-08-05", "csrf_token": token},
+    )
     resp = client.get("/pratiche/766")
     assert "Perizia" in resp.text
 
     match = re.search(r'/pratiche/766/eventi/(\d+)/elimina', resp.text)
     assert match, "azione di eliminazione evento non trovata"
-    resp = client.post(match.group(0))
+    resp = client.post(match.group(0), data={"csrf_token": token})
     assert resp.status_code == 303
 
     resp = client.get("/pratiche/766")
@@ -151,18 +160,133 @@ def test_portale_detail_e_collaborazione_utente_assegnato(authenticated_app, por
     resp = client.get("/portale/pratiche/766")
     assert resp.status_code == 200
     assert "ROSSI MARIO" in resp.text
+    token = get_csrf(client, "/portale/pratiche/766")
 
-    resp = client.post("/portale/pratiche/766/note", data={"testo": "preso app.to con perito"})
+    resp = client.post(
+        "/portale/pratiche/766/note",
+        data={"testo": "preso app.to con perito", "csrf_token": token},
+    )
     assert resp.status_code == 303
 
     resp = client.post(
-        "/portale/pratiche/766/eventi", data={"titolo": "Perizia", "data_evento": "2026-08-05"}
+        "/portale/pratiche/766/eventi",
+        data={"titolo": "Perizia", "data_evento": "2026-08-05", "csrf_token": token},
     )
     assert resp.status_code == 303
 
     resp = client.get("/portale/pratiche/766")
     assert "preso app.to con perito" in resp.text
     assert "Perizia" in resp.text
+
+
+def test_portale_mostra_stato_default_aperta(authenticated_app, portale_setup) -> None:
+    assegnazioni_repo, _ = portale_setup
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
+
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, "agenzia@esempio.it", "password1234")
+
+    resp = client.get("/portale/pratiche/766")
+    assert resp.status_code == 200
+    assert "Aperta" in resp.text
+    assert "Aggiorna stato" in resp.text
+
+
+def test_portale_puo_cambiare_stato_pratica_assegnata(authenticated_app, portale_setup) -> None:
+    assegnazioni_repo, settings = portale_setup
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
+
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, "agenzia@esempio.it", "password1234")
+
+    resp = client.post(
+        "/portale/pratiche/766/stato",
+        data={
+            "stato": "in_gestione",
+            "note": "preso in carico",
+            "csrf_token": get_csrf(client, "/portale/pratiche/766"),
+        },
+    )
+    assert resp.status_code == 303
+
+    stato_repo = PraticaStatoRepository(db_path=settings.app_db_path)
+    stato = stato_repo.get_stato(766)
+    assert stato.stato == "in_gestione"
+    assert stato.changed_by == "Agenzia"
+    assert stato.note == "preso in carico"
+
+
+def test_portale_dropdown_stato_include_periziata(authenticated_app, portale_setup) -> None:
+    assegnazioni_repo, _ = portale_setup
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
+
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, "agenzia@esempio.it", "password1234")
+
+    resp = client.get("/portale/pratiche/766")
+    assert resp.status_code == 200
+    assert '<option value="periziata"' in resp.text
+    assert "Periziata" in resp.text
+
+
+def test_portale_puo_impostare_stato_periziata(authenticated_app, portale_setup) -> None:
+    assegnazioni_repo, settings = portale_setup
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
+
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, "agenzia@esempio.it", "password1234")
+
+    resp = client.post(
+        "/portale/pratiche/766/stato",
+        data={"stato": "periziata", "csrf_token": get_csrf(client, "/portale/pratiche/766")},
+    )
+    assert resp.status_code == 303
+
+    stato_repo = PraticaStatoRepository(db_path=settings.app_db_path)
+    assert stato_repo.get_stato(766).stato == "periziata"
+
+
+def test_portale_cambia_stato_rifiuta_valore_non_valido(authenticated_app, portale_setup) -> None:
+    assegnazioni_repo, _ = portale_setup
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
+
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, "agenzia@esempio.it", "password1234")
+
+    resp = client.post(
+        "/portale/pratiche/766/stato",
+        data={"stato": "non-esiste", "csrf_token": get_csrf(client, "/portale/pratiche/766")},
+    )
+    assert resp.status_code == 400
+
+
+def test_portale_non_assegnato_non_puo_cambiare_stato(authenticated_app, portale_setup) -> None:
+    authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, "agenzia@esempio.it", "password1234")
+
+    resp = client.post(
+        "/portale/pratiche/766/stato",
+        data={"stato": "chiusa", "csrf_token": get_csrf(client, "/portale")},
+    )
+    assert resp.status_code == 404
 
 
 def test_portale_non_assegnato_non_puo_scrivere_note(authenticated_app, portale_setup) -> None:
@@ -172,7 +296,10 @@ def test_portale_non_assegnato_non_puo_scrivere_note(authenticated_app, portale_
     client = TestClient(app, follow_redirects=False)
     login_as(client, "agenzia@esempio.it", "password1234")
 
-    resp = client.post("/portale/pratiche/766/note", data={"testo": "non dovrei poterlo fare"})
+    resp = client.post(
+        "/portale/pratiche/766/note",
+        data={"testo": "non dovrei poterlo fare", "csrf_token": get_csrf(client, "/portale")},
+    )
     assert resp.status_code == 404
 
 
@@ -228,6 +355,9 @@ def test_portale_non_puo_eliminare_evento_di_altra_pratica(authenticated_app, po
 
     # 766 è assegnata ad A: la route risponde 303 (non 403/404 sulla richiesta
     # in sé, perché A ha accesso a 766), ma l'evento di 999 resta intatto.
-    resp = client.post(f"/portale/pratiche/766/eventi/{evento_999.id}/elimina")
+    resp = client.post(
+        f"/portale/pratiche/766/eventi/{evento_999.id}/elimina",
+        data={"csrf_token": get_csrf(client, "/portale/pratiche/766")},
+    )
     assert resp.status_code == 303
     assert eventi_repo.list_per_pratica(999) != []

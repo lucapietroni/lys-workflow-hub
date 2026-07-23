@@ -1,6 +1,6 @@
 # LYS Workflow Hub — Contesto di sviluppo
 
-> Branch: **v2** · Versione: **3.5.0** (base: v1.0.4 / main)
+> Branch: **v2** · Versione: **3.6.0** (base: v1.0.4 / main)
 
 ---
 
@@ -612,6 +612,69 @@ logica in `pratica_detail.html`). Pratiche con stato `chiusa` ricevono la
 classe riga `row-chiusa` (`style.css`: `opacity: 0.55`, `0.8` in hover) per
 distinguerle visivamente dalle pratiche ancora attive.
 
+## Stato pratica modificabile dall'esterno + nuovo stato "periziata" [v3.0 fase 5, parte F]
+
+`routes_portale.py::portale_pratica_detail()` carica anche `pratica_stato`/
+`pratica_stato_storia`/`stati_disponibili`; `portale_pratica_detail.html`
+replica esattamente la card "Stato pratica" di `pratica_detail.html`
+(stesso markup, stesso dropdown, stesso campo note). Nuova route
+`POST /portale/pratiche/{numero}/stato` (IDOR-safe via `_verifica_accesso`,
+stesso pattern di note/eventi), `changed_by=utente.nome or utente.email`
+(non hardcoded `"operatore"` come la route admin equivalente in
+`routes_impostazioni.py` — piccola incoerenza pre-esistente, non toccata).
+Ogni cambio stato dall'esterno notifica l'admin via push (`_notifica_admin`,
+stesso helper già usato per nota/evento).
+
+`pratica_stato_repository.py`: nuovo `STATO_PERIZIATA = "periziata"`
+inserito in `STATI` tra `perito_nominato` e `in_liquidazione` — la
+posizione nella tupla conta, `auto_transition()` fa "upgrade" solo in
+avanti basandosi sull'indice. Nessuna auto-transizione AI verso questo
+stato (resta manuale, come già per aperta/chiusa). Nuova classe CSS
+`badge-periziata`/`badge-teal` (teal, per non confondersi con l'arancio di
+"perito nominato" o il viola di "in liquidazione").
+
+## CSRF su tutti i form [v3.0 fase 5, parte G — hardening]
+
+Prima esteso solo al login (debito tecnico segnalato fin dalla fase 2).
+`template_context_processor` in `web/auth.py` ora inietta `csrf_token` in
+ogni pagina renderizzata (tutti i router tranne `routes_auth.py`, che
+gestisce il proprio); `base.html` lo espone anche come
+`<meta name="csrf-token">` nell'head, presente su ogni pagina. Tutti i 41
+form `<form method="post">` del progetto portano un campo hidden
+`csrf_token`.
+
+`AuthMiddleware.dispatch()` verifica il token su ogni richiesta POST
+(tranne `/login`, che ha la propria verifica dedicata con errore mostrato
+sulla pagina invece del 403 generico).
+
+**Bug Starlette scoperto e risolto durante l'implementazione** (non
+teorico — rompeva silenziosamente OGNI form della app, non solo gli
+upload): `BaseHTTPMiddleware` di Starlette usa `_CachedRequest`, che
+replica il body verso l'app downstream SOLO se in `dispatch()` è stato
+chiamato `Request.body()` (mette in cache `request._body`). Se invece si
+chiama solo `Request.form()` — che usa `Request.stream()` internamente,
+**anche per `application/x-www-form-urlencoded`**, non solo multipart —
+lo stream risulta "consumato" ma NON cache-ato, e la route sottostante
+riceve un body VUOTO: ogni `Form(...)` richiesto sparisce, 422 "Field
+required". Fix in `_submitted_csrf_token()`: chiamare `await
+request.body()` PRIMA di `await request.form()` — mette in cache i byte
+grezzi, che `.form()` userà al posto dello stream live, e che la route
+downstream riceverà intatti.
+
+I form `multipart/form-data` (i 3 upload PDF: cessione firmata, verbale
+uscita/rientro firmato) restano ESCLUSI dal controllo a livello di
+middleware (`_is_multipart()` guarda il Content-Type) per non bufferizzare
+in memoria l'intero file (fino a 20MB) ad ogni richiesta solo per leggere
+un campo di testo. Verificano il CSRF da sole, con un parametro
+`csrf_token: str = Form("")` e `verify_csrf()` esplicito a inizio route.
+
+Test di regressione (non solo "il form passa col token giusto", anche "un
+POST senza/con token falso viene bloccato"): `test_post_generico_senza_
+csrf_token_rifiutato`/`..._con_csrf_token_falso_rifiutato` in
+`test_auth.py` per il path generico, `test_upload_senza_csrf_token_
+rifiutato`/`..._con_csrf_token_falso_rifiutato` in
+`test_cessione_upload_route.py` per il path multipart.
+
 ### Fase 5 parte B (non ancora costruita): reminder schedulati
 Reminder "il giorno prima" con lead time configurabile per evento, inviati
 via uno script schedulato (stesso pattern di `run_polling.py` — Task
@@ -711,6 +774,7 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 | 3.3.0 | v2 | + Notifiche collaborazione fase 5 (parte A+C): push admin/email esterno in tempo reale su nuova nota/evento, widget "Prossimi appuntamenti" su home e `/portale`, `Settings.public_url()`/`PUBLIC_BASE_URL` per link corretti fuori LAN nelle notifiche |
 | 3.4.0 | v2 | + Notifiche self-service fase 5 (parte D): pagina `/portale/impostazioni`, ogni esterno sceglie email on/off e push on/off con proprio topic ntfy personale, `notify_admin_nuova_attivita` rinominata `notify_push_nuova_attivita` (generica per topic) |
 | 3.5.0 | v2 | + Stato pratica fase 5 (parte E): colonna "Stato" nell'elenco `/portale` con badge colorato, pratiche chiuse evidenziate (riga attenuata) |
+| 3.6.0 | v2 | + Fase 5 parte F: l'esterno può cambiare (non solo vedere) lo stato pratica dal portale, nuovo stato "periziata". Parte G: CSRF esteso a tutti i 41 form dell'app (era solo login), fix bug Starlette `BaseHTTPMiddleware`/body consumption. UI: sezione "Collaboratori esterni" a tendina |
 
 ---
 
@@ -724,7 +788,7 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 - Franchigie verbali: definire valori default LYS Auto
 - **v3.0 fase 2** completata — app raggiungibile su `https://hub.lysauto.it`
   (dettagli/gotcha firewall in sezione "Autenticazione" sopra). CSRF esteso
-  a tutti i form (oggi solo sul login) resta debito tecnico separato.
+  a tutti i form: vedi fase 5 parte G più sotto (v3.6.0).
 - **v3.0 fase 3** completata — vedi sezione "Assegnazione pratiche".
 - **v3.0 fase 4** completata — vedi sezione "Note e calendario condivisi".
 - **v3.0 fase 5 parte A+C** completata — vedi sezione "Notifiche di
@@ -735,6 +799,11 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
   self-service".
 - **v3.0 fase 5 parte E** completata — vedi sezione "Stato pratica nel
   portale esterno".
+- **v3.0 fase 5 parte F** completata — vedi sezione "Stato pratica
+  modificabile dall'esterno + nuovo stato periziata".
+- **v3.0 fase 5 parte G** completata (CSRF hardening) — vedi sezione "CSRF
+  su tutti i form". Debito tecnico chiuso: era l'ultimo punto aperto della
+  sezione "Autenticazione" fin dalla fase 2.
 - **v3.0 fase 5 parte B** (non ancora costruita): reminder schedulati "il
   giorno prima" (es. "domani c'è una perizia"), richiede una nuova voce
   Task Scheduler sul PC carrozzeria.

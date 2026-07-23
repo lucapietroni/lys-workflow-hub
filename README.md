@@ -5,7 +5,7 @@ con il gestionale **WinCar**. Legge le pratiche dal database WinCar in sola lett
 genera documenti precompilati, monitora le risposte delle compagnie assicurative
 via PEC/email, classifica le risposte con AI e genera alert mirati.
 
-> Branch attivo: **v2** · Versione: **3.5.0**
+> Branch attivo: **v2** · Versione: **3.6.0**
 > Branch stabile: **main** (v1.0.4)
 
 ---
@@ -15,7 +15,7 @@ via PEC/email, classifica le risposte con AI e genera alert mirati.
 | Branch | Versione | Stato |
 |--------|----------|-------|
 | `main` | **1.0.4** | Stabile — funzionalità assicurative complete + allegati email + fix re-download |
-| `v2` | **3.5.0** | Sviluppo attivo — verbali cortesia + foto lavorazioni automatiche + foto/documenti in pratica + autenticazione/pubblicazione internet + assegnazione pratiche + note/calendario condivisi + notifiche collaborazione (real-time + self-service) + stato pratica nel portale |
+| `v2` | **3.6.0** | Sviluppo attivo — verbali cortesia + foto lavorazioni automatiche + foto/documenti in pratica + autenticazione/pubblicazione internet + assegnazione pratiche + note/calendario condivisi + notifiche collaborazione (real-time + self-service) + stato pratica nel portale (vista + modifica) + CSRF su tutti i form |
 
 ---
 
@@ -141,6 +141,22 @@ Dettagli tecnici completi in `CONTEXT.md`.
   già usati su `/pratiche/<n>`), default "Aperta" se non ancora impostato.
 - **Pratiche chiuse evidenziate**: riga visivamente attenuata, per
   distinguerle a colpo d'occhio dalle pratiche ancora attive.
+
+Dettagli tecnici completi in `CONTEXT.md`.
+
+---
+
+## Novità v3.6 (fase 5, parte F+G) — Stato modificabile dall'esterno + CSRF ovunque
+
+- **L'esterno assegnato può cambiare lo stato pratica**, non solo vederlo:
+  stesso widget dell'admin (dropdown + note) su `/portale/pratiche/<n>`.
+  Ogni cambio notifica l'admin via push.
+- **Nuovo stato "Periziata"**, tra "Perito nominato" e "In liquidazione".
+- **Collaboratori esterni a tendina** su `/pratiche/<n>`: sezione collassata
+  di default, si apre al click sul titolo.
+- **CSRF esteso a tutti i form** (prima solo il login): ogni `POST`
+  autenticato verifica un token legato alla sessione. Debito tecnico
+  segnalato e rimandato a più riprese, chiuso in questa fase.
 
 Dettagli tecnici completi in `CONTEXT.md`.
 

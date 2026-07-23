@@ -25,6 +25,7 @@
 {% endif %}
 
 <form method="post" action="/pec-inviate/{{ record.id }}/invia-email">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
 
   <section class="card">
     <h2>Intestazione</h2>

@@ -116,6 +116,7 @@
 
   <form method="post" action="/pratiche/{{ pratica.numero }}/vandalismo/invia"
         onsubmit="return confirm('Confermare invio PEC a ' + {{ data.compagnia_pec|tojson }} + ' ?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
     {# Replico tutti i campi del form vandalismo per mantenere lo stato. #}
     {% for k, v in form_values.items() %}
       <input type="hidden" name="{{ k }}" value="{{ v if v is not none else '' }}" />

@@ -40,7 +40,7 @@ from lys_workflow_hub.web.routes_portale import (
     get_portale_settings,
     get_wincar_repo,
 )
-from tests.conftest import login_as, login_as_admin
+from tests.conftest import get_csrf, login_as, login_as_admin
 
 # --------------------------------------------------------------------------- #
 #  notifier.py — funzioni di basso livello
@@ -181,7 +181,10 @@ def test_admin_aggiunge_nota_notifica_esterno_assegnato(admin_client, authentica
     assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
 
     with patch("lys_workflow_hub.web.routes.notify_esterno_nuova_attivita") as mock_notify:
-        resp = client.post("/pratiche/766/note", data={"testo": "servono foto lavorazione"})
+        resp = client.post(
+            "/pratiche/766/note",
+            data={"testo": "servono foto lavorazione", "csrf_token": get_csrf(client, "/pratiche/766")},
+        )
         assert resp.status_code == 303
         mock_notify.assert_called_once()
         assert mock_notify.call_args.kwargs["recipient"] == "agenzia@esempio.it"
@@ -191,7 +194,10 @@ def test_admin_aggiunge_nota_notifica_esterno_assegnato(admin_client, authentica
 def test_admin_aggiunge_nota_non_notifica_se_nessun_assegnato(admin_client) -> None:
     client, _ = admin_client
     with patch("lys_workflow_hub.web.routes.notify_esterno_nuova_attivita") as mock_notify:
-        resp = client.post("/pratiche/766/note", data={"testo": "nota interna"})
+        resp = client.post(
+            "/pratiche/766/note",
+            data={"testo": "nota interna", "csrf_token": get_csrf(client, "/pratiche/766")},
+        )
         assert resp.status_code == 303
         mock_notify.assert_not_called()
 
@@ -206,9 +212,11 @@ def test_esterno_aggiunge_nota_notifica_admin(authenticated_app, portale_setup) 
     client = TestClient(app, follow_redirects=False)
     login_as(client, "agenzia@esempio.it", "password1234")
 
+    token = get_csrf(client, "/portale/pratiche/766")
     with patch("lys_workflow_hub.web.routes_portale.notify_push_nuova_attivita") as mock_notify:
         resp = client.post(
-            "/portale/pratiche/766/note", data={"testo": "preso app.to con perito"}
+            "/portale/pratiche/766/note",
+            data={"testo": "preso app.to con perito", "csrf_token": token},
         )
         assert resp.status_code == 303
         mock_notify.assert_called_once()
@@ -226,12 +234,36 @@ def test_esterno_aggiunge_evento_notifica_admin(authenticated_app, portale_setup
     client = TestClient(app, follow_redirects=False)
     login_as(client, "agenzia@esempio.it", "password1234")
 
+    token = get_csrf(client, "/portale/pratiche/766")
     with patch("lys_workflow_hub.web.routes_portale.notify_push_nuova_attivita") as mock_notify:
         resp = client.post(
-            "/portale/pratiche/766/eventi", data={"titolo": "Perizia", "data_evento": "2026-08-05"}
+            "/portale/pratiche/766/eventi",
+            data={"titolo": "Perizia", "data_evento": "2026-08-05", "csrf_token": token},
         )
         assert resp.status_code == 303
         mock_notify.assert_called_once()
+
+
+def test_esterno_cambia_stato_notifica_admin(authenticated_app, portale_setup) -> None:
+    assegnazioni_repo, _ = portale_setup
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
+
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, "agenzia@esempio.it", "password1234")
+
+    token = get_csrf(client, "/portale/pratiche/766")
+    with patch("lys_workflow_hub.web.routes_portale.notify_push_nuova_attivita") as mock_notify:
+        resp = client.post(
+            "/portale/pratiche/766/stato",
+            data={"stato": "in_liquidazione", "csrf_token": token},
+        )
+        assert resp.status_code == 303
+        mock_notify.assert_called_once()
+        assert "766" in mock_notify.call_args.kwargs["titolo"]
+        assert "Agenzia" in mock_notify.call_args.kwargs["messaggio"]
 
 
 # --------------------------------------------------------------------------- #

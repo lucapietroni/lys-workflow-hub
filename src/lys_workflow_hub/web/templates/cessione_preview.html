@@ -47,6 +47,7 @@
 {% endif %}
 
 <form method="post" action="/pratiche/{{ pratica.numero }}/cessione" class="cessione-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
 
   <section class="card">
     <h2>Cedente</h2>

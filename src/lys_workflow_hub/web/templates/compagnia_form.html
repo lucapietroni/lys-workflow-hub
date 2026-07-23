@@ -47,6 +47,7 @@
 <form method="post"
       action="{% if compagnia %}/compagnie/{{ compagnia.id }}{% else %}/compagnie/nuova{% endif %}"
       class="cessione-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
 
   <section class="card">
     <h2>Identificazione</h2>

@@ -12,6 +12,7 @@
     </p>
   </div>
   <form method="post" action="/foto/copia-pratica">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
     <button type="submit" class="btn {% if copia_pratica_abilitata %}btn-sm{% else %}btn-sm btn-danger-outline{% endif %}">
       {% if copia_pratica_abilitata %}
         Copia in pratica: attiva — clic per disattivare

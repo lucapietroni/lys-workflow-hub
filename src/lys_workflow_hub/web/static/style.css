@@ -454,11 +454,13 @@ code {
 .badge-aperta          { background: rgba(59,130,246,0.15);  color: #93C5FD; border: 1px solid rgba(59,130,246,0.20); }
 .badge-in_gestione     { background: rgba(251,191,36,0.12);  color: #FCD34D; border: 1px solid rgba(251,191,36,0.20); }
 .badge-perito_nominato { background: rgba(251,146,60,0.12);  color: #FDBA74; border: 1px solid rgba(251,146,60,0.20); }
+.badge-periziata       { background: rgba(45,212,191,0.12);  color: #5EEAD4; border: 1px solid rgba(45,212,191,0.20); }
 .badge-in_liquidazione { background: rgba(167,139,250,0.12); color: #C4B5FD; border: 1px solid rgba(167,139,250,0.20); }
 .badge-chiusa          { background: rgba(148,163,184,0.10); color: #94A3B8; border: 1px solid rgba(148,163,184,0.15); }
 .badge-blue   { background: rgba(59,130,246,0.15);  color: #93C5FD; border: 1px solid rgba(59,130,246,0.20); }
 .badge-yellow { background: rgba(251,191,36,0.12);  color: #FCD34D; border: 1px solid rgba(251,191,36,0.20); }
 .badge-orange { background: rgba(251,146,60,0.12);  color: #FDBA74; border: 1px solid rgba(251,146,60,0.20); }
+.badge-teal   { background: rgba(45,212,191,0.12);  color: #5EEAD4; border: 1px solid rgba(45,212,191,0.20); }
 .badge-purple { background: rgba(167,139,250,0.12); color: #C4B5FD; border: 1px solid rgba(167,139,250,0.20); }
 .badge-gray   { background: rgba(148,163,184,0.10); color: #94A3B8; border: 1px solid rgba(148,163,184,0.15); }
 

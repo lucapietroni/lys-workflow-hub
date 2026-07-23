@@ -60,6 +60,7 @@
     {% if count_non_matchate > 0 %}
     <form method="post" action="/risposte/ignora-non-matchate"
           onsubmit="return confirm('Ignorare tutte le {{ count_non_matchate }} mail non collegate? Il numeretto scomparirà ma le mail rimarranno visibili in questo tab.')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
       <button type="submit" class="btn btn-danger-outline" style="white-space:nowrap;">
         Ignora tutte ({{ count_non_matchate }})
       </button>
@@ -144,12 +145,14 @@
                 <form method="post" action="/risposte/{{ r.mail.id }}/ignora"
                       style="display:inline;"
                       onsubmit="return confirm('Ignorare questa mail? Il numeretto scomparirà ma la mail rimarrà visibile in questo tab.')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
                   <button type="submit" class="btn btn-sm btn-danger-outline">Ignora</button>
                 </form>
               {% endif %}
               <form method="post" action="/risposte/{{ r.mail.id }}/elimina"
                     style="display:inline;"
                     onsubmit="return confirm('Eliminare definitivamente questa mail dal DB? Azione irreversibile.')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
                 <button type="submit" class="btn btn-sm btn-danger-outline">Elimina</button>
               </form>
             {% endif %}

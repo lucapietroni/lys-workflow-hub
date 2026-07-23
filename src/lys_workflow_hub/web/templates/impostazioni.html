@@ -24,6 +24,7 @@
   </p>
 
   <form method="post" action="/impostazioni">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
     <table class="results-table">
       <thead>
         <tr>
@@ -110,6 +111,7 @@
                 action="/impostazioni/auto-cortesia/{{ auto.id }}/elimina"
                 style="display:inline;"
                 onsubmit="return confirm('Eliminare {{ auto.targa }}?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
             <button type="submit" class="btn btn-sm btn-danger">Elimina</button>
           </form>
         </td>
@@ -119,6 +121,7 @@
           <form method="post"
                 action="/impostazioni/auto-cortesia/{{ auto.id }}/modifica"
                 style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
             <div class="form-field" style="min-width:90px;">
               <label>Targa</label>
               <input name="targa" type="text" value="{{ auto.targa }}" required autocomplete="off" />
@@ -166,6 +169,7 @@
     <summary style="cursor:pointer; font-weight:600; margin-bottom:10px;">+ Aggiungi auto di cortesia</summary>
     <form method="post" action="/impostazioni/auto-cortesia"
           style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-top:10px;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
       <div class="form-field" style="min-width:90px;">
         <label>Targa *</label>
         <input name="targa" type="text" required autocomplete="off" placeholder="AB123CD" />

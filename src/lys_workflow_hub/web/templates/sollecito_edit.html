@@ -67,6 +67,7 @@
 {# ── EDITOR (pending) ─────────────────────────────────────────────────────── #}
 {% else %}
   <form method="post" action="/solleciti/{{ s.id }}/invia" class="cessione-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
 
     <section class="card">
       <h2>Destinatario e oggetto</h2>
@@ -113,6 +114,7 @@
     <details>
       <summary>Annulla sollecito</summary>
       <form method="post" action="/solleciti/{{ s.id }}/annulla" style="margin-top:12px;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
         <div class="form-field">
           <label for="f_reason">Motivo (opzionale)</label>
           <input id="f_reason" name="reason" type="text" placeholder="es. pratica chiusa, compagnia ha risposto" />

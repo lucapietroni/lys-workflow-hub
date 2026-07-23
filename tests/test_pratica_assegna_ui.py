@@ -19,7 +19,7 @@ from lys_workflow_hub.core.wincar_repository import (
 )
 from lys_workflow_hub.main import app
 from lys_workflow_hub.web.routes import get_app_settings, get_repository
-from tests.conftest import login_as_admin
+from tests.conftest import get_csrf, login_as_admin
 
 
 def _sample_pratica(numero: int = 766) -> Pratica:
@@ -63,14 +63,19 @@ def test_assegna_e_rimuovi_collaboratore(client_pratica, authenticated_app) -> N
         email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
     )
 
-    resp = client_pratica.post("/pratiche/766/assegna", data={"utente_id": esterno.id})
+    token = get_csrf(client_pratica, "/pratiche/766")
+    resp = client_pratica.post(
+        "/pratiche/766/assegna", data={"utente_id": esterno.id, "csrf_token": token}
+    )
     assert resp.status_code == 303
 
     resp = client_pratica.get("/pratiche/766")
     assert "Agenzia" in resp.text
     assert "agenzia@esempio.it" in resp.text
 
-    resp = client_pratica.post(f"/pratiche/766/assegna/{esterno.id}/rimuovi")
+    resp = client_pratica.post(
+        f"/pratiche/766/assegna/{esterno.id}/rimuovi", data={"csrf_token": token}
+    )
     assert resp.status_code == 303
 
     resp = client_pratica.get("/pratiche/766")
