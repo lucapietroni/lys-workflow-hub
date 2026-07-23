@@ -160,11 +160,21 @@ class Settings(BaseSettings):
     public_base_url: str = Field(default="")
 
     def public_url(self, path: str) -> str:
-        """Costruisce un URL assoluto per link in notifiche push/email."""
-        base = self.public_base_url.rstrip("/") if self.public_base_url else (
-            f"http://{self.app_host}:{self.app_port}"
-        )
-        return f"{base}{path}"
+        """Costruisce un URL assoluto per link in notifiche push/email.
+
+        Se `public_base_url` non è impostato, il fallback usa `app_host` —
+        ma `app_host` è tipicamente `0.0.0.0` (bind su tutte le interfacce,
+        vedi §10.7 in docs/SETUP_PRODUCTION.md), un indirizzo valido per
+        *ascoltare* ma non per *navigare*: un link `http://0.0.0.0:8000/...`
+        toccato da un browser reale non porta da nessuna parte. In quel
+        caso usiamo `localhost` — comunque utile solo da dentro la LAN
+        (come già documentato), ma almeno un link che si apre davvero
+        invece di un indirizzo insensato. La soluzione vera resta impostare
+        `PUBLIC_BASE_URL` in produzione."""
+        if self.public_base_url:
+            return f"{self.public_base_url.rstrip('/')}{path}"
+        host = "localhost" if self.app_host == "0.0.0.0" else self.app_host
+        return f"http://{host}:{self.app_port}{path}"
 
     # --- Autenticazione (v3.0) ---
     # Chiave usata per firmare il cookie di sessione (SessionMiddleware).

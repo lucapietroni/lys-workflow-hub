@@ -5,7 +5,7 @@ con il gestionale **WinCar**. Legge le pratiche dal database WinCar in sola lett
 genera documenti precompilati, monitora le risposte delle compagnie assicurative
 via PEC/email, classifica le risposte con AI e genera alert mirati.
 
-> Branch attivo: **v2** · Versione: **3.7.1**
+> Branch attivo: **v2** · Versione: **3.7.2**
 > Branch stabile: **main** (v1.0.4)
 
 ---
@@ -15,7 +15,7 @@ via PEC/email, classifica le risposte con AI e genera alert mirati.
 | Branch | Versione | Stato |
 |--------|----------|-------|
 | `main` | **1.0.4** | Stabile — funzionalità assicurative complete + allegati email + fix re-download |
-| `v2` | **3.7.1** | Sviluppo attivo — verbali cortesia + foto lavorazioni automatiche + foto/documenti in pratica + autenticazione/pubblicazione internet + assegnazione pratiche + note/calendario condivisi + notifiche collaborazione (real-time + self-service + reminder schedulati) + stato pratica nel portale (vista + modifica) + CSRF su tutti i form + calendario mensile |
+| `v2` | **3.7.2** | Sviluppo attivo — verbali cortesia + foto lavorazioni automatiche + foto/documenti in pratica + autenticazione/pubblicazione internet + assegnazione pratiche + note/calendario condivisi + notifiche collaborazione (real-time + self-service + reminder schedulati) + stato pratica nel portale (vista + modifica) + CSRF su tutti i form + calendario mensile |
 
 ---
 

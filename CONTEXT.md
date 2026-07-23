@@ -1,6 +1,6 @@
 # LYS Workflow Hub — Contesto di sviluppo
 
-> Branch: **v2** · Versione: **3.7.1** (base: v1.0.4 / main)
+> Branch: **v2** · Versione: **3.7.2** (base: v1.0.4 / main)
 
 ---
 
@@ -556,6 +556,17 @@ comportamento precedente (fallback LAN). `scripts/run_polling.py` è stato
 aggiornato per usare lo stesso helper (stesso problema, mai notato prima
 perché quei link erano cliccati solo da dentro la LAN finora).
 
+**v3.7.2**: il fallback (`PUBLIC_BASE_URL` non impostato) usava `app_host`
+letterale — ma `app_host` in produzione è `0.0.0.0` (bind su tutte le
+interfacce, §10.7), un indirizzo valido per *ascoltare*, non per
+*navigare*: un tap su una notifica push produceva `http://0.0.0.0:8000/...`,
+un link che nessun browser sa aprire. Bug reale segnalato in produzione
+(prima ancora di impostare `PUBLIC_BASE_URL` sul PC carrozzeria). Fix:
+`app_host == "0.0.0.0"` → usa `localhost` nel fallback. **La soluzione
+vera resta impostare `PUBLIC_BASE_URL=https://hub.lysauto.it` in prod
+`.env`** — il fallback a `localhost` è solo difesa in profondità, funziona
+comunque solo da dentro la LAN (e nemmeno da lì se non sei sullo stesso PC).
+
 ## Preferenze di notifica self-service [v3.0 fase 5, parte D]
 
 Motivazione: parte A manda **sempre** email all'esterno assegnato e **sempre**
@@ -825,6 +836,7 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 | 3.6.0 | v2 | + Fase 5 parte F: l'esterno può cambiare (non solo vedere) lo stato pratica dal portale, nuovo stato "periziata". Parte G: CSRF esteso a tutti i 41 form dell'app (era solo login), fix bug Starlette `BaseHTTPMiddleware`/body consumption. UI: sezione "Collaboratori esterni" a tendina |
 | 3.7.0 | v2 | + Fase 5 parte B: reminder schedulati "il giorno prima" (`scripts/send_event_reminders.py`, Task Scheduler). Parte H: pagina calendario mensile (`/calendario` admin, `/portale/calendario` esterno), modifica/eliminazione note (admin), home admin mostra ultime 20 pratiche invece di suggerimenti statici |
 | 3.7.1 | v2 | Fix: un esterno con sessione già valida che apriva "/" (bookmark, home browser) riceveva il 403 JSON grezzo di `require_admin` invece del redirect a `/portale` — bug reale segnalato in produzione, `AuthMiddleware` ora tratta "/" come caso speciale |
+| 3.7.2 | v2 | Fix: `Settings.public_url()` senza `PUBLIC_BASE_URL` impostato produceva link tipo `http://0.0.0.0:8000/...` nelle notifiche push (APP_HOST=0.0.0.0 è un indirizzo di bind, non navigabile) — bug reale segnalato in produzione, fallback ora usa `localhost` in quel caso |
 
 ---
 

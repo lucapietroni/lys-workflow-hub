@@ -1,3 +1,3 @@
 """LYS Workflow Hub - piattaforma di automazione documentale per Carrozzeria LYS Auto srl."""
 
-__version__ = "3.7.1"
+__version__ = "3.7.2"
