@@ -1,6 +1,6 @@
 # LYS Workflow Hub — Contesto di sviluppo
 
-> Branch: **v2** · Versione: **3.4.0** (base: v1.0.4 / main)
+> Branch: **v2** · Versione: **3.5.0** (base: v1.0.4 / main)
 
 ---
 
@@ -589,6 +589,29 @@ dell'esterno. `_notifica_esterni_assegnati` (routes.py) legge
 `u.notify_email_enabled`/`u.notify_push_enabled`/`u.ntfy_topic` per ogni
 assegnatario invece di mandare sempre email.
 
+## Stato pratica nel portale esterno [v3.0 fase 5, parte E]
+
+Motivazione: l'elenco `/portale` mostrava numero/cliente/veicolo/data
+sinistro ma non lo stato della pratica — l'esterno non poteva capire a
+colpo d'occhio quali pratiche erano ancora attive senza aprirle una per
+una.
+
+`routes_portale.py::portale_list()` ora legge lo stato corrente di ogni
+pratica assegnata via `PraticaStatoRepository.get_stato(numero)` (stesso
+pattern N+1 già usato lì per `wincar_repo.get_pratica` — liste tipicamente
+piccole, 10-15 pratiche per utente esterno, nessun metodo bulk necessario
+a questa scala). Nessun metodo bulk esiste oggi in `PraticaStatoRepository`;
+se in futuro un'agenzia dovesse avere decine di pratiche assegnate, valuta
+un `get_stati_bulk(numeri) -> dict[int, PraticaStato]` con una singola
+query `WHERE pratica_numero IN (...)`.
+
+Template `portale_list.html`: stesso pattern badge già in uso su
+`/pratiche/<n>` (`class="badge badge-stato badge-{{ stato_corrente }}"`,
+default `"aperta"` se nessuno stato mai impostato — replica esatta della
+logica in `pratica_detail.html`). Pratiche con stato `chiusa` ricevono la
+classe riga `row-chiusa` (`style.css`: `opacity: 0.55`, `0.8` in hover) per
+distinguerle visivamente dalle pratiche ancora attive.
+
 ### Fase 5 parte B (non ancora costruita): reminder schedulati
 Reminder "il giorno prima" con lead time configurabile per evento, inviati
 via uno script schedulato (stesso pattern di `run_polling.py` — Task
@@ -687,6 +710,7 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 | 3.2.0 | v2 | + Note e calendario condivisi fase 4: thread note (`pratica_note`) e calendario (`pratica_eventi`) tra admin e collaboratori esterni, su `/pratiche/{numero}` e nuova `/portale/pratiche/{numero}` (dettaglio completo esterno: WinCar + note + calendario), fix redirect post-login esterno (`/portale` invece di `/`, admin-only) |
 | 3.3.0 | v2 | + Notifiche collaborazione fase 5 (parte A+C): push admin/email esterno in tempo reale su nuova nota/evento, widget "Prossimi appuntamenti" su home e `/portale`, `Settings.public_url()`/`PUBLIC_BASE_URL` per link corretti fuori LAN nelle notifiche |
 | 3.4.0 | v2 | + Notifiche self-service fase 5 (parte D): pagina `/portale/impostazioni`, ogni esterno sceglie email on/off e push on/off con proprio topic ntfy personale, `notify_admin_nuova_attivita` rinominata `notify_push_nuova_attivita` (generica per topic) |
+| 3.5.0 | v2 | + Stato pratica fase 5 (parte E): colonna "Stato" nell'elenco `/portale` con badge colorato, pratiche chiuse evidenziate (riga attenuata) |
 
 ---
 
@@ -709,6 +733,8 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
   fuori LAN.
 - **v3.0 fase 5 parte D** completata — vedi sezione "Preferenze di notifica
   self-service".
+- **v3.0 fase 5 parte E** completata — vedi sezione "Stato pratica nel
+  portale esterno".
 - **v3.0 fase 5 parte B** (non ancora costruita): reminder schedulati "il
   giorno prima" (es. "domani c'è una perizia"), richiede una nuova voce
   Task Scheduler sul PC carrozzeria.

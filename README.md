@@ -5,7 +5,7 @@ con il gestionale **WinCar**. Legge le pratiche dal database WinCar in sola lett
 genera documenti precompilati, monitora le risposte delle compagnie assicurative
 via PEC/email, classifica le risposte con AI e genera alert mirati.
 
-> Branch attivo: **v2** · Versione: **3.4.0**
+> Branch attivo: **v2** · Versione: **3.5.0**
 > Branch stabile: **main** (v1.0.4)
 
 ---
@@ -15,7 +15,7 @@ via PEC/email, classifica le risposte con AI e genera alert mirati.
 | Branch | Versione | Stato |
 |--------|----------|-------|
 | `main` | **1.0.4** | Stabile — funzionalità assicurative complete + allegati email + fix re-download |
-| `v2` | **3.4.0** | Sviluppo attivo — verbali cortesia + foto lavorazioni automatiche + foto/documenti in pratica + autenticazione/pubblicazione internet + assegnazione pratiche + note/calendario condivisi + notifiche collaborazione (real-time + self-service) |
+| `v2` | **3.5.0** | Sviluppo attivo — verbali cortesia + foto lavorazioni automatiche + foto/documenti in pratica + autenticazione/pubblicazione internet + assegnazione pratiche + note/calendario condivisi + notifiche collaborazione (real-time + self-service) + stato pratica nel portale |
 
 ---
 
@@ -130,6 +130,17 @@ completi in `CONTEXT.md`.
 - **Push personale per gli esterni**: prima solo l'admin aveva un topic
   ntfy.sh configurato (`.env`); ora ogni esterno può impostare il proprio
   topic personale e ricevere notifiche push sul telefono.
+
+Dettagli tecnici completi in `CONTEXT.md`.
+
+---
+
+## Novità v3.5 (fase 5, parte E) — Stato pratica nel portale
+
+- **Colonna "Stato"** nell'elenco `/portale`: badge colorato (stessi colori
+  già usati su `/pratiche/<n>`), default "Aperta" se non ancora impostato.
+- **Pratiche chiuse evidenziate**: riga visivamente attenuata, per
+  distinguerle a colpo d'occhio dalle pratiche ancora attive.
 
 Dettagli tecnici completi in `CONTEXT.md`.
 

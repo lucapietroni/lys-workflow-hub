@@ -30,6 +30,10 @@ from lys_workflow_hub.core.pratica_assegnazioni_repository import (
 from lys_workflow_hub.core.pratica_eventi_repository import PraticaEventiRepository
 from lys_workflow_hub.core.pratica_files import scan as scan_allegati
 from lys_workflow_hub.core.pratica_note_repository import PraticaNoteRepository
+from lys_workflow_hub.core.pratica_stato_repository import (
+    STATO_LABELS,
+    PraticaStatoRepository,
+)
 from lys_workflow_hub.core.utenti_repository import Utente, UtentiRepository
 from lys_workflow_hub.core.wincar_repository import WinCarRepository
 from lys_workflow_hub.integrations.notifier import notify_push_nuova_attivita
@@ -107,7 +111,17 @@ def portale_list(
         if pratica is not None:
             pratiche.append(pratica)
 
-    context = {"version": __version__, "pratiche": pratiche}
+    context = {"version": __version__, "pratiche": pratiche, "stato_labels": STATO_LABELS}
+
+    # Stato corrente di ciascuna pratica (v3.0 fase 5, parte E) — nessuna
+    # query bulk in PraticaStatoRepository, N chiamate come per wincar_repo
+    # sopra: la lista è per utente assegnato, tipicamente poche righe.
+    try:
+        stato_repo = PraticaStatoRepository(db_path=settings.app_db_path)
+        context["stati_pratiche"] = {p.numero: stato_repo.get_stato(p.numero) for p in pratiche}
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Portale: impossibile leggere stato pratiche: %s", exc)
+        context["stati_pratiche"] = {}
 
     # Prossimi appuntamenti (v3.0 fase 5) — solo pratiche assegnate a questo utente.
     try:

@@ -1009,6 +1009,8 @@ body.lightbox-open { overflow: hidden; }
 .table .col-actions { width: 1%; white-space: nowrap; text-align: right; }
 .table .col-actions .btn { margin-left: 6px; }
 .table code { font-size: 0.83rem; }
+.table tr.row-chiusa td { opacity: 0.55; }
+.table tr.row-chiusa:hover td { opacity: 0.8; }
 
 /* ====== Allegati checklist ====== */
 .allegati-list {

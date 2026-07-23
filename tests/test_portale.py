@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from lys_workflow_hub.core.pratica_assegnazioni_repository import (
     PraticaAssegnazioniRepository,
 )
+from lys_workflow_hub.core.pratica_stato_repository import PraticaStatoRepository
 from lys_workflow_hub.core.wincar_repository import (
     Cliente,
     CompagniaCliente,
@@ -79,6 +80,40 @@ def test_portale_mostra_solo_pratiche_assegnate(authenticated_app, portale_clien
     assert resp.status_code == 200
     assert "766" in resp.text
     assert "ROSSI MARIO" in resp.text
+
+
+def test_portale_mostra_stato_aperta_di_default(
+    tmp_path: Path, authenticated_app, portale_client
+) -> None:
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    portale_client.assegna(766, esterno.id, assegnato_da=1)
+
+    client = TestClient(app)
+    login_as(client, "agenzia@esempio.it", "password1234")
+    resp = client.get("/portale")
+    assert resp.status_code == 200
+    assert "Aperta" in resp.text
+    assert "row-chiusa" not in resp.text
+
+
+def test_portale_evidenzia_pratica_chiusa(
+    tmp_path: Path, authenticated_app, portale_client
+) -> None:
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    portale_client.assegna(766, esterno.id, assegnato_da=1)
+    stato_repo = PraticaStatoRepository(db_path=tmp_path / "app.db")
+    stato_repo.set_stato(766, "chiusa", changed_by="Admin Test")
+
+    client = TestClient(app)
+    login_as(client, "agenzia@esempio.it", "password1234")
+    resp = client.get("/portale")
+    assert resp.status_code == 200
+    assert "Chiusa" in resp.text
+    assert "row-chiusa" in resp.text
 
 
 def test_portale_non_mostra_pratiche_di_altri_utenti(authenticated_app, portale_client) -> None:
