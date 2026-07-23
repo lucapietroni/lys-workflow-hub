@@ -1,6 +1,6 @@
 # LYS Workflow Hub — Contesto di sviluppo
 
-> Branch: **v2** · Versione: **3.7.0** (base: v1.0.4 / main)
+> Branch: **v2** · Versione: **3.7.1** (base: v1.0.4 / main)
 
 ---
 
@@ -824,6 +824,7 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 | 3.5.0 | v2 | + Stato pratica fase 5 (parte E): colonna "Stato" nell'elenco `/portale` con badge colorato, pratiche chiuse evidenziate (riga attenuata) |
 | 3.6.0 | v2 | + Fase 5 parte F: l'esterno può cambiare (non solo vedere) lo stato pratica dal portale, nuovo stato "periziata". Parte G: CSRF esteso a tutti i 41 form dell'app (era solo login), fix bug Starlette `BaseHTTPMiddleware`/body consumption. UI: sezione "Collaboratori esterni" a tendina |
 | 3.7.0 | v2 | + Fase 5 parte B: reminder schedulati "il giorno prima" (`scripts/send_event_reminders.py`, Task Scheduler). Parte H: pagina calendario mensile (`/calendario` admin, `/portale/calendario` esterno), modifica/eliminazione note (admin), home admin mostra ultime 20 pratiche invece di suggerimenti statici |
+| 3.7.1 | v2 | Fix: un esterno con sessione già valida che apriva "/" (bookmark, home browser) riceveva il 403 JSON grezzo di `require_admin` invece del redirect a `/portale` — bug reale segnalato in produzione, `AuthMiddleware` ora tratta "/" come caso speciale |
 
 ---
 

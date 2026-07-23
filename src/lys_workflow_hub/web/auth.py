@@ -117,6 +117,18 @@ class AuthMiddleware(BaseHTTPMiddleware):
             next_qs = f"?next={path}" if path != "/" else ""
             return RedirectResponse(url=f"/login{next_qs}", status_code=303)
 
+        # "/" è admin-only (require_admin a livello di router in routes.py),
+        # ma è anche l'URL che chiunque digita/salva come preferito
+        # (hub.lysauto.it "nudo"). Un esterno già loggato che la apre
+        # otterrebbe altrimenti il 403 JSON grezzo di require_admin invece
+        # del redirect amichevole a /portale che già riceve da /login
+        # (_default_landing in routes_auth.py) — bug reale segnalato in
+        # produzione. Solo "/" riceve questo trattamento: le altre route
+        # admin-only devono continuare a rispondere 403 a un esterno, è il
+        # segnale di sicurezza corretto lì.
+        if user is not None and not user.is_admin and path == "/":
+            return RedirectResponse(url="/portale", status_code=303)
+
         if (
             request.method == "POST"
             and path not in _CSRF_EXEMPT_PATHS

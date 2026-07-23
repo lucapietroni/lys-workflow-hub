@@ -187,6 +187,25 @@ def test_login_esterno_senza_next_atterra_su_portale(authenticated_app) -> None:
     assert resp.headers["location"] == "/portale"
 
 
+def test_esterno_con_sessione_valida_apre_root_redirige_a_portale(authenticated_app) -> None:
+    """Bug reale segnalato in produzione: un esterno già loggato (sessione
+    valida da prima) che apre semplicemente hub.lysauto.it (bookmark, home
+    del browser) atterrava sul 403 JSON grezzo di require_admin invece di
+    un redirect amichevole — "/" è admin-only, ma è anche l'URL "nudo" che
+    chiunque digita. Qui il login avviene PRIMA, poi si naviga su "/" come
+    richiesta indipendente (non redirect di login), per riprodurre esattamente
+    lo scenario segnalato."""
+    authenticated_app.create(
+        email="esterno2@test.local", password="password1234", nome="Esterno Test", ruolo="esterno"
+    )
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, "esterno2@test.local", "password1234")
+
+    resp = client.get("/")
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/portale"
+
+
 def test_login_form_next_hidden_field_vuoto_senza_query_param(authenticated_app) -> None:
     """Il campo hidden "next" NON deve mai essere pre-valorizzato con "/":
     altrimenti il browser reale lo rispedisce sempre nel POST e il redirect
