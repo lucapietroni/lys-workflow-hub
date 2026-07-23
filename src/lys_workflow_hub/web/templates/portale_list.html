@@ -17,12 +17,15 @@
   <section class="card">
     <h2>Prossimi appuntamenti <span class="tag">{{ prossimi_eventi|length }}</span></h2>
     <ul style="list-style:none; padding:0; margin:0;">
-      {% for e in prossimi_eventi %}
+      {% for item in prossimi_eventi %}
+        {% set e = item.evento %}
         <li style="display:flex; align-items:center; gap:10px; padding:6px 0; border-bottom:1px solid var(--glass-border);">
           <span class="badge">{{ e.data_evento.strftime("%d/%m/%Y") if e.data_evento else "—" }}</span>
           <span style="flex:1;">
             {{ e.titolo }}
-            <span class="meta">— Pratica <a href="/portale/pratiche/{{ e.pratica_numero }}#calendario">{{ e.pratica_numero }}</a></span>
+            {% if item.cliente %}<span class="meta">— {{ item.cliente }}</span>{% endif %}
+            {% if item.targa %}<span class="meta">— {{ item.targa }}</span>{% endif %}
+            <span class="meta">— Pratica nr. <a href="/portale/pratiche/{{ e.pratica_numero }}#calendario">{{ e.pratica_numero }}</a></span>
           </span>
         </li>
       {% endfor %}

@@ -42,6 +42,7 @@ from lys_workflow_hub.integrations.notifier import notify_push_nuova_attivita
 from lys_workflow_hub.web.auth import get_current_user, template_context_processor
 from lys_workflow_hub.web.routes import (
     _allegati_con_url,
+    _arricchisci_eventi_con_pratica,
     _contesto_calendario,
     _NON_RENDERIZZABILI,
     _parse_date,
@@ -130,8 +131,8 @@ def portale_list(
     # Prossimi appuntamenti (v3.0 fase 5) — solo pratiche assegnate a questo utente.
     try:
         eventi_repo = PraticaEventiRepository(db_path=settings.app_db_path)
-        context["prossimi_eventi"] = eventi_repo.list_prossimi(
-            entro_giorni=7, pratica_numeri=numeri
+        context["prossimi_eventi"] = _arricchisci_eventi_con_pratica(
+            eventi_repo.list_prossimi(entro_giorni=7, pratica_numeri=numeri), wincar_repo
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("Portale: impossibile leggere prossimi eventi: %s", exc)

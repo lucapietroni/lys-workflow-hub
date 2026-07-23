@@ -282,6 +282,43 @@ def test_home_mostra_prossimi_appuntamenti(admin_client) -> None:
     assert "Perizia" in resp.text
 
 
+def test_home_prossimi_appuntamenti_mostra_cliente_e_targa(admin_client) -> None:
+    client, settings = admin_client
+    eventi_repo = PraticaEventiRepository(db_path=settings.app_db_path)
+    eventi_repo.add(766, "Perizia", date.today() + timedelta(days=1), 1, "Admin")
+
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert "ROSSI MARIO" in resp.text  # cliente da _sample_pratica()
+    assert "AB123CD" in resp.text  # targa da _sample_pratica()
+    assert "Pratica nr." in resp.text
+
+
+def test_home_prossimi_appuntamenti_evento_con_pratica_irraggiungibile_non_rompe_widget(
+    admin_client,
+) -> None:
+    """Un fallimento WinCar su UN evento non deve far sparire l'intero
+    widget (né gli altri eventi): _arricchisci_eventi_con_pratica tollera
+    l'errore per singolo evento, non lo propaga."""
+    client, settings = admin_client
+    repo = app.dependency_overrides[get_repository]()
+    repo.get_pratica.side_effect = lambda numero: (
+        (_ for _ in ()).throw(RuntimeError("WinCar irraggiungibile"))
+        if numero == 766
+        else _sample_pratica(numero)
+    )
+
+    eventi_repo = PraticaEventiRepository(db_path=settings.app_db_path)
+    eventi_repo.add(766, "Fallisce", date.today() + timedelta(days=1), 1, "Admin")
+    eventi_repo.add(999, "Va bene", date.today() + timedelta(days=1), 1, "Admin")
+
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert "Prossimi appuntamenti" in resp.text
+    assert "Fallisce" in resp.text  # evento presente comunque, solo senza cliente/targa
+    assert "Va bene" in resp.text
+
+
 def test_home_senza_eventi_non_mostra_widget(admin_client) -> None:
     client, _ = admin_client
     resp = client.get("/")

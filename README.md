@@ -5,7 +5,7 @@ con il gestionale **WinCar**. Legge le pratiche dal database WinCar in sola lett
 genera documenti precompilati, monitora le risposte delle compagnie assicurative
 via PEC/email, classifica le risposte con AI e genera alert mirati.
 
-> Branch attivo: **v2** · Versione: **3.7.2**
+> Branch attivo: **v2** · Versione: **3.8.0**
 > Branch stabile: **main** (v1.0.4)
 
 ---
@@ -15,7 +15,7 @@ via PEC/email, classifica le risposte con AI e genera alert mirati.
 | Branch | Versione | Stato |
 |--------|----------|-------|
 | `main` | **1.0.4** | Stabile — funzionalità assicurative complete + allegati email + fix re-download |
-| `v2` | **3.7.2** | Sviluppo attivo — verbali cortesia + foto lavorazioni automatiche + foto/documenti in pratica + autenticazione/pubblicazione internet + assegnazione pratiche + note/calendario condivisi + notifiche collaborazione (real-time + self-service + reminder schedulati) + stato pratica nel portale (vista + modifica) + CSRF su tutti i form + calendario mensile |
+| `v2` | **3.8.0** | Sviluppo attivo — verbali cortesia + foto lavorazioni automatiche + foto/documenti in pratica + autenticazione/pubblicazione internet + assegnazione pratiche + note/calendario condivisi + notifiche collaborazione (real-time + self-service + reminder schedulati) + stato pratica nel portale (vista + modifica) + CSRF su tutti i form + calendario mensile + UI responsive tablet/telefono |
 
 ---
 
@@ -178,6 +178,22 @@ Dettagli tecnici completi in `CONTEXT.md`.
   Navigazione mese precedente/successivo, link diretto alla pratica.
 - **Home admin**: la sezione "Suggerimenti rapidi" (statica) è sostituita
   dalle **ultime 20 pratiche aperte**, quando non c'è una ricerca in corso.
+
+Dettagli tecnici completi in `CONTEXT.md`.
+
+---
+
+## Novità v3.8 — Widget appuntamenti arricchito + UI responsive
+
+- **Widget "Prossimi appuntamenti"** (home admin e `/portale`): ora mostra
+  anche cliente e targa della pratica, non solo titolo evento — es. "Perito
+  De Santis — ROSSI MARIO — AB123CD — Pratica nr. 827" (numero cliccabile).
+- **UI responsive su tablet/telefono**: la barra di navigazione (11 voci
+  lato admin) ora scorre in orizzontale invece di rompere il layout della
+  pagina; le tabelle senza colonne nascoste (compagnie, utenti, risposte)
+  scorrono anche loro invece di allargare la pagina; i form inline (nuova
+  nota/evento, assegna collaboratore) vanno a capo invece di restringersi
+  fino a diventare illeggibili.
 
 Dettagli tecnici completi in `CONTEXT.md`.
 

@@ -1,6 +1,6 @@
 # LYS Workflow Hub — Contesto di sviluppo
 
-> Branch: **v2** · Versione: **3.7.2** (base: v1.0.4 / main)
+> Branch: **v2** · Versione: **3.8.0** (base: v1.0.4 / main)
 
 ---
 
@@ -742,6 +742,53 @@ senza filtri — che ordina già per `F_NUMPRA DESC` (i numeri pratica
 WinCar sono progressivi, quindi "ultime pratiche" in pratica), zero nuove
 query. Stessa tabella `results-table` già usata per i risultati di ricerca.
 
+## Widget "Prossimi appuntamenti" con cliente/targa [v3.0 fase 5, parte I]
+
+Il widget mostrava solo titolo evento + numero pratica. `_arricchisci_
+eventi_con_pratica(eventi, repo)` (routes.py, condivisa con
+routes_portale.py) aggiunge cliente/targa leggendo `repo.search_pratiche
+(numero=..., limit=1)` per ogni evento — tollera errori PER SINGOLO evento
+(un fallimento WinCar su una pratica non deve far sparire l'intero widget,
+solo quella riga resta senza cliente/targa). Il context passato al
+template cambia forma: da `list[Evento]` a `list[dict]` con chiavi
+`evento`/`cliente`/`targa` — i template (`index.html`, `portale_list.html`)
+fanno `{% set e = item.evento %}` all'inizio del loop.
+
+## UI responsive tablet/telefono [v3.0 fase 5, parte I]
+
+Audit statico (nessun browser disponibile nell'ambiente di sviluppo per
+screenshot reali — verificare comunque su un dispositivo vero dopo il
+deploy). Tre gap strutturali trovati e corretti in `style.css`:
+
+- **`.topnav`**: 11 voci lato admin non ci stanno su tablet/telefono. Prima
+  non aveva alcuna gestione overflow — un flex item senza `min-width:0`
+  dentro un flex container (`.topbar`) non si restringe mai sotto la sua
+  larghezza di contenuto, quindi l'eccesso si propagava a tutta la pagina
+  (scroll orizzontale dell'intero sito, bug mobile classico). Fix: `.brand`
+  e `.user-box` (già) `flex-shrink:0`, `.topnav` `min-width:0;
+  overflow-x:auto` — scorre da sola invece di rompere il layout, a
+  qualunque larghezza (non gated da breakpoint, si applica sempre).
+- **Tabelle senza wrapper scrollabile** (`compagnie_list.html`,
+  `utenti_list.html`, `risposte_list.html`, ecc. — `.results-table` ha già
+  una strategia dedicata, nasconde 2 colonne sotto 640px, ma restava
+  comunque esposta allo stesso rischio): `@media (max-width: 900px) {
+  .results-table, .table { display:block; overflow-x:auto; white-space:
+  nowrap; } }` — tecnica standard (anonymous table box), nessun wrapper
+  `<div>` da aggiungere nei template.
+- **Form inline non andavano a capo**: nuova nota/evento, assegna
+  collaboratore, ecc. usano `style="display:flex; gap:8px;
+  align-items:flex-end;"` diretto in HTML (31 occorrenze in 12 template).
+  Nessuno dichiara `flex-wrap` inline, quindi `.card form { flex-wrap:
+  wrap; }` (+ `.card form > * { min-width: 0; }`) in un media query si
+  applica senza bisogno di `!important` — dropdown/textarea/bottone vanno a
+  capo invece di restringersi fino a rompersi. `.form-inline-stato` aveva
+  già `flex-wrap:wrap` nella propria classe, non serviva.
+
+Non toccati (già responsive): `.grid` (auto-fit grid nativo), `.foto-grid`
+(auto-fill grid nativo), `.pratica-header`/`.pratica-actions` (già
+flex-wrap), `.calendar-grid` (breakpoint dedicato già aggiunto in fase 5H),
+`.dropzone` (nessuna larghezza fissa).
+
 ---
 
 ## Decisioni tecniche chiave
@@ -837,6 +884,7 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 | 3.7.0 | v2 | + Fase 5 parte B: reminder schedulati "il giorno prima" (`scripts/send_event_reminders.py`, Task Scheduler). Parte H: pagina calendario mensile (`/calendario` admin, `/portale/calendario` esterno), modifica/eliminazione note (admin), home admin mostra ultime 20 pratiche invece di suggerimenti statici |
 | 3.7.1 | v2 | Fix: un esterno con sessione già valida che apriva "/" (bookmark, home browser) riceveva il 403 JSON grezzo di `require_admin` invece del redirect a `/portale` — bug reale segnalato in produzione, `AuthMiddleware` ora tratta "/" come caso speciale |
 | 3.7.2 | v2 | Fix: `Settings.public_url()` senza `PUBLIC_BASE_URL` impostato produceva link tipo `http://0.0.0.0:8000/...` nelle notifiche push (APP_HOST=0.0.0.0 è un indirizzo di bind, non navigabile) — bug reale segnalato in produzione, fallback ora usa `localhost` in quel caso |
+| 3.8.0 | v2 | + Fase 5 parte I: widget "Prossimi appuntamenti" mostra cliente/targa oltre al titolo evento. UI responsive: nav scrollabile invece di rompere il layout, tabelle scrollabili, form inline vanno a capo su tablet/telefono |
 
 ---
 

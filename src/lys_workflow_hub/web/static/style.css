@@ -137,6 +137,7 @@ code {
   color: var(--lys-white);
   height: var(--topbar-h);
   text-decoration: none;
+  flex-shrink: 0;
 }
 .brand:hover { text-decoration: none; opacity: 0.92; }
 
@@ -192,7 +193,16 @@ code {
   align-items: center;
   height: var(--topbar-h);
   gap: 2px;
+  /* La nav admin ha 11 voci: su tablet/telefono non ci sta mai per intero.
+     Invece di farla straboccare (e trascinarsi dietro tutta la pagina in
+     scroll orizzontale — bug mobile classico dei flex item senza
+     min-width:0), la rendiamo scorrevole in orizzontale da sola. */
+  min-width: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
 }
+.topnav::-webkit-scrollbar { display: none; }
 .topnav a {
   color: rgba(255,255,255,0.60);
   height: var(--topbar-h);
@@ -207,6 +217,8 @@ code {
   transition: color 0.15s, background 0.15s, border-color 0.15s;
   text-decoration: none;
   position: relative;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .topnav a:hover { color: #fff; text-decoration: none; background: rgba(255,255,255,0.04); }
 .topnav a.active { color: var(--lys-gold-glow); border-bottom-color: var(--lys-gold); }
@@ -1290,6 +1302,27 @@ body.lightbox-open { overflow: hidden; }
 /* ====== Responsive ====== */
 @media (max-width: 1024px) {
   .container { max-width: 100%; padding: 28px 20px 40px; }
+}
+@media (max-width: 900px) {
+  /* Tabelle senza wrapper scrollabile dedicato nel template (compagnie,
+     utenti, risposte, ecc.): senza questo, colonne che non ci stanno
+     trascinano in scroll orizzontale l'intera pagina invece che solo la
+     tabella — sintomo tipico di tabella "rotta" su tablet/telefono.
+     `.results-table` ha già una strategia dedicata (nasconde due colonne
+     qui sotto), ma lo scroll resta una rete di sicurezza anche per lei. */
+  .results-table, .table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+  }
+  /* Le form inline (nuova nota/evento, assegna collaboratore, cambia
+     stato: dropdown/input/textarea/bottone sulla stessa riga via
+     `style="display:flex"` diretto in HTML) vanno a capo invece di
+     restringersi fino a rompersi — `flex-wrap` non è nello style inline,
+     quindi la regola esterna si applica senza bisogno di `!important`. */
+  .card form { flex-wrap: wrap; }
+  .card form > * { min-width: 0; }
 }
 @media (max-width: 640px) {
   .container { padding: 20px 14px 28px; }

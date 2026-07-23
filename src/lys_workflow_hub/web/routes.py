@@ -175,7 +175,9 @@ def home(
     # Prossimi appuntamenti (v3.0 fase 5) — calendario condiviso, tutte le pratiche.
     try:
         eventi_repo = PraticaEventiRepository(db_path=settings.app_db_path)
-        context["prossimi_eventi"] = eventi_repo.list_prossimi(entro_giorni=7)
+        context["prossimi_eventi"] = _arricchisci_eventi_con_pratica(
+            eventi_repo.list_prossimi(entro_giorni=7), repo
+        )
     except Exception as exc:  # noqa: BLE001
         logger.warning("Impossibile leggere prossimi eventi: %s", exc)
         context["prossimi_eventi"] = []
@@ -396,6 +398,29 @@ def pratica_detail(
         context["note_pratica"] = []
         context["eventi_pratica"] = []
     return templates.TemplateResponse(request, "pratica_detail.html", context)
+
+
+def _arricchisci_eventi_con_pratica(eventi: list, repo: WinCarRepository) -> list[dict]:
+    """Aggiunge cliente/targa a ogni evento per il widget "Prossimi
+    appuntamenti" (home admin e /portale), leggendo da WinCar. Tollera
+    errori PER SINGOLO evento — un fallimento WinCar su una pratica non deve
+    far sparire l'intero widget, solo quella riga resta senza cliente/targa.
+    """
+    arricchiti = []
+    for e in eventi:
+        cliente = ""
+        targa = ""
+        try:
+            pratica = repo.get_pratica(e.pratica_numero)
+            if pratica is not None:
+                cliente = pratica.cliente.nominativo or ""
+                targa = pratica.veicolo.targa or ""
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Impossibile leggere cliente/targa per pratica %s: %s", e.pratica_numero, exc
+            )
+        arricchiti.append({"evento": e, "cliente": cliente, "targa": targa})
+    return arricchiti
 
 
 def _notifica_esterni_assegnati(
