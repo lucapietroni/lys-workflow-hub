@@ -106,3 +106,25 @@ class PraticaNoteRepository:
                 (int(pratica_numero),),
             ).fetchall()
         return [self._row_to_nota(r) for r in rows]
+
+    def update(self, nota_id: int, pratica_numero: int, nuovo_testo: str) -> bool:
+        """`pratica_numero` obbligatorio nel WHERE: stesso motivo IDOR di
+        `PraticaEventiRepository.delete` — senza, si potrebbe modificare la
+        nota di un'altra pratica indovinando/incrementando l'id."""
+        nuovo_testo = nuovo_testo.strip()
+        if not nuovo_testo:
+            raise ValueError("Il testo della nota non può essere vuoto.")
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE pratica_note SET testo = ? WHERE id = ? AND pratica_numero = ?",
+                (nuovo_testo, int(nota_id), int(pratica_numero)),
+            )
+            return cur.rowcount > 0
+
+    def delete(self, nota_id: int, pratica_numero: int) -> bool:
+        with self._connect() as conn:
+            cur = conn.execute(
+                "DELETE FROM pratica_note WHERE id = ? AND pratica_numero = ?",
+                (int(nota_id), int(pratica_numero)),
+            )
+            return cur.rowcount > 0

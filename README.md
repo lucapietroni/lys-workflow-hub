@@ -5,7 +5,7 @@ con il gestionale **WinCar**. Legge le pratiche dal database WinCar in sola lett
 genera documenti precompilati, monitora le risposte delle compagnie assicurative
 via PEC/email, classifica le risposte con AI e genera alert mirati.
 
-> Branch attivo: **v2** · Versione: **3.6.0**
+> Branch attivo: **v2** · Versione: **3.7.0**
 > Branch stabile: **main** (v1.0.4)
 
 ---
@@ -15,7 +15,7 @@ via PEC/email, classifica le risposte con AI e genera alert mirati.
 | Branch | Versione | Stato |
 |--------|----------|-------|
 | `main` | **1.0.4** | Stabile — funzionalità assicurative complete + allegati email + fix re-download |
-| `v2` | **3.6.0** | Sviluppo attivo — verbali cortesia + foto lavorazioni automatiche + foto/documenti in pratica + autenticazione/pubblicazione internet + assegnazione pratiche + note/calendario condivisi + notifiche collaborazione (real-time + self-service) + stato pratica nel portale (vista + modifica) + CSRF su tutti i form |
+| `v2` | **3.7.0** | Sviluppo attivo — verbali cortesia + foto lavorazioni automatiche + foto/documenti in pratica + autenticazione/pubblicazione internet + assegnazione pratiche + note/calendario condivisi + notifiche collaborazione (real-time + self-service + reminder schedulati) + stato pratica nel portale (vista + modifica) + CSRF su tutti i form + calendario mensile |
 
 ---
 
@@ -157,6 +157,27 @@ Dettagli tecnici completi in `CONTEXT.md`.
 - **CSRF esteso a tutti i form** (prima solo il login): ogni `POST`
   autenticato verifica un token legato alla sessione. Debito tecnico
   segnalato e rimandato a più riprese, chiuso in questa fase.
+
+Dettagli tecnici completi in `CONTEXT.md`.
+
+---
+
+## Novità v3.7 (fase 5, parte B + H) — Reminder schedulati, calendario mensile, note editabili
+
+- **Reminder "il giorno prima"** (fase 5, parte B — l'ultima rimasta della
+  roadmap v3.0): nuovo script schedulato `scripts/send_event_reminders.py`
+  (Task Scheduler, una volta al giorno — guida in
+  `docs/SETUP_PRODUCTION.md` §5.6), avvisa admin ed esterni assegnati per
+  ogni appuntamento di calendario in scadenza domani, con dedup interno
+  (non rispedisce lo stesso reminder due volte).
+- **Modifica/eliminazione note** (solo admin): ogni nota su `/pratiche/<n>`
+  ha ora un link "Modifica" (inline) e un pulsante "Elimina".
+- **Pagina "Calendario"** (`/calendario` admin, `/portale/calendario`
+  esterno): vista mensile stile Google Calendar con tutti gli appuntamenti
+  — l'admin vede tutte le pratiche, l'esterno solo le proprie assegnate.
+  Navigazione mese precedente/successivo, link diretto alla pratica.
+- **Home admin**: la sezione "Suggerimenti rapidi" (statica) è sostituita
+  dalle **ultime 20 pratiche aperte**, quando non c'è una ricerca in corso.
 
 Dettagli tecnici completi in `CONTEXT.md`.
 

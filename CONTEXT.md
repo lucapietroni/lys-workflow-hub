@@ -1,6 +1,6 @@
 # LYS Workflow Hub — Contesto di sviluppo
 
-> Branch: **v2** · Versione: **3.6.0** (base: v1.0.4 / main)
+> Branch: **v2** · Versione: **3.7.0** (base: v1.0.4 / main)
 
 ---
 
@@ -675,13 +675,61 @@ csrf_token_rifiutato`/`..._con_csrf_token_falso_rifiutato` in
 rifiutato`/`..._con_csrf_token_falso_rifiutato` in
 `test_cessione_upload_route.py` per il path multipart.
 
-### Fase 5 parte B (non ancora costruita): reminder schedulati
-Reminder "il giorno prima" con lead time configurabile per evento, inviati
-via uno script schedulato (stesso pattern di `run_polling.py` — Task
-Scheduler, non un processo in background nell'app) più una tabella di dedup
-(come `pec_sla_reminder`) per non ri-notificare lo stesso evento ad ogni
-esecuzione. Rimandata a un secondo step per non richiedere subito una nuova
-voce Task Scheduler sul PC carrozzeria.
+## Reminder schedulati "il giorno prima" [v3.0 fase 5, parte B]
+
+Ultimo pezzo della roadmap v3.0 collaborazione. `scripts/send_event_
+reminders.py` (+ `send_event_reminders.bat`), stesso pattern di
+`run_polling.py`: lock file (`event_reminders.lock`, stale dopo 30 min),
+logging su file con rotazione (`event_reminders.log`), mai un'eccezione non
+gestita interrompe silenziosamente lo script (`try/except Exception` a
+monte di `run_once()`, exit code 1). Pensato per Task Scheduler una volta
+al giorno (guida in `docs/SETUP_PRODUCTION.md` §5.6) — **non** un lead
+time configurabile per evento (scope tenuto volutamente semplice: fisso a
+"il giorno prima", come da richiesta originale).
+
+Pipeline: `PraticaEventiRepository.list_domani()` (nuovo metodo, `WHERE
+date(data_evento) = date('now', '+1 day')`) → per ciascun evento non ancora
+notificato (`reminder_gia_inviato()`/`segna_reminder_inviato()`, dedup su
+nuova tabella `pratica_eventi_reminder`, `UNIQUE(evento_id)` — stesso
+pattern di `pec_sla_reminder`) → push all'admin (topic globale) + per ogni
+esterno assegnato alla pratica, email/push secondo le sue preferenze
+self-service (`notify_email_enabled`/`notify_push_enabled`/`ntfy_topic`,
+stessa logica già usata in `_notifica_esterni_assegnati` di `routes.py`,
+duplicata qui perché lo script non deve dipendere dal layer web).
+
+## Calendario mensile [v3.0 fase 5, parte H]
+
+`GET /calendario` (admin, tutte le pratiche) e `GET /portale/calendario`
+(esterno, solo pratiche assegnate) — vista mensile stile Google Calendar,
+template condiviso `calendario.html` (stessa cartella `web/templates/` per
+entrambi i router) con `pratica_link_base` a distinguere i link
+(`/pratiche` vs `/portale/pratiche`).
+
+`PraticaEventiRepository.list_mese(anno, mese, pratica_numeri=None)`:
+filtro `substr(data_evento, 1, 7) = 'YYYY-MM'` (più leggibile di un
+BETWEEN con calcolo del primo/ultimo giorno del mese, e non richiede
+gestire l'anno bisestile a mano). Griglia mese (`calendar.Calendar.
+monthdatescalendar`, lunedì primo giorno) e navigazione prec/succ calcolate
+in `_contesto_calendario()` (routes.py, riusata da routes_portale.py —
+stesso pattern di condivisione già in uso per `_allegati_con_url`/
+`_parse_date`/`resolve_pratica_file`).
+
+## Modifica/eliminazione note (admin) [v3.0 fase 5, parte H]
+
+`PraticaNoteRepository.update()`/`.delete()` nuovi, stesso pattern IDOR-safe
+di `PraticaEventiRepository.delete()` (`pratica_numero` obbligatorio nel
+WHERE). Route `POST /pratiche/{numero}/note/{nota_id}/modifica` e
+`/elimina`, solo admin (router `routes.py` è admin-only by default). Gli
+utenti esterni continuano a poter solo aggiungere note, non modificarle né
+eliminarle — scelta esplicita, non un'omissione.
+
+## Home admin: ultime pratiche invece di suggerimenti statici [v3.0 fase 5, parte H]
+
+`home()` in `routes.py`: quando non c'è una ricerca in corso, invece del
+box statico "Suggerimenti rapidi" chiama `repo.search_pratiche(limit=20)`
+senza filtri — che ordina già per `F_NUMPRA DESC` (i numeri pratica
+WinCar sono progressivi, quindi "ultime pratiche" in pratica), zero nuove
+query. Stessa tabella `results-table` già usata per i risultati di ricerca.
 
 ---
 
@@ -775,6 +823,7 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 | 3.4.0 | v2 | + Notifiche self-service fase 5 (parte D): pagina `/portale/impostazioni`, ogni esterno sceglie email on/off e push on/off con proprio topic ntfy personale, `notify_admin_nuova_attivita` rinominata `notify_push_nuova_attivita` (generica per topic) |
 | 3.5.0 | v2 | + Stato pratica fase 5 (parte E): colonna "Stato" nell'elenco `/portale` con badge colorato, pratiche chiuse evidenziate (riga attenuata) |
 | 3.6.0 | v2 | + Fase 5 parte F: l'esterno può cambiare (non solo vedere) lo stato pratica dal portale, nuovo stato "periziata". Parte G: CSRF esteso a tutti i 41 form dell'app (era solo login), fix bug Starlette `BaseHTTPMiddleware`/body consumption. UI: sezione "Collaboratori esterni" a tendina |
+| 3.7.0 | v2 | + Fase 5 parte B: reminder schedulati "il giorno prima" (`scripts/send_event_reminders.py`, Task Scheduler). Parte H: pagina calendario mensile (`/calendario` admin, `/portale/calendario` esterno), modifica/eliminazione note (admin), home admin mostra ultime 20 pratiche invece di suggerimenti statici |
 
 ---
 
@@ -804,8 +853,13 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 - **v3.0 fase 5 parte G** completata (CSRF hardening) — vedi sezione "CSRF
   su tutti i form". Debito tecnico chiuso: era l'ultimo punto aperto della
   sezione "Autenticazione" fin dalla fase 2.
-- **v3.0 fase 5 parte B** (non ancora costruita): reminder schedulati "il
-  giorno prima" (es. "domani c'è una perizia"), richiede una nuova voce
-  Task Scheduler sul PC carrozzeria.
+- **v3.0 fase 5 parte B** completata — vedi sezione "Reminder schedulati
+  'il giorno prima'". **Dopo il deploy, ricordarsi di creare la voce Task
+  Scheduler** `LYS Reminder Calendario` (guida in
+  `docs/SETUP_PRODUCTION.md` §5.6) — senza, lo script esiste ma non gira
+  mai.
+- **v3.0 fase 5 parte H** completata — vedi sezioni "Calendario mensile",
+  "Modifica/eliminazione note (admin)", "Home admin: ultime pratiche".
+  **Roadmap v3.0 collaborazione completa** (fasi 1→5 tutte costruite).
 - Dopo deploy v3.0 in prod: lanciare `scripts/create_admin.py` per creare il
   primo utente admin, e impostare `SECRET_KEY` in `.env` prod

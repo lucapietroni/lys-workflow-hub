@@ -160,6 +160,20 @@
             <span class="meta">{{ n.created_at.strftime("%d/%m/%Y %H:%M") if n.created_at else "" }}</span>
           </div>
           <p style="margin:4px 0 0; white-space:pre-wrap;">{{ n.testo }}</p>
+          <div style="display:flex; gap:12px; align-items:center; margin-top:4px;">
+            <details>
+              <summary class="meta" style="cursor:pointer;">Modifica</summary>
+              <form method="post" action="/pratiche/{{ pratica.numero }}/note/{{ n.id }}/modifica" style="display:flex; gap:8px; margin-top:6px; align-items:flex-end;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                <textarea name="testo" rows="2" required style="flex:1; resize:vertical;">{{ n.testo }}</textarea>
+                <button type="submit" class="btn btn-sm">Salva</button>
+              </form>
+            </details>
+            <form method="post" action="/pratiche/{{ pratica.numero }}/note/{{ n.id }}/elimina" style="display:inline" onsubmit="return confirm('Eliminare questa nota?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+              <button type="submit" class="btn btn-sm btn-danger">Elimina</button>
+            </form>
+          </div>
         </li>
       {% endfor %}
     </ul>

@@ -72,3 +72,46 @@ def test_list_prossimi_filtra_per_pratiche(tmp_path: Path) -> None:
 def test_list_prossimi_vuota_senza_eventi(tmp_path: Path) -> None:
     repo = PraticaEventiRepository(db_path=tmp_path / "eventi.db")
     assert repo.list_prossimi() == []
+
+
+def test_list_mese_filtra_per_anno_mese(tmp_path: Path) -> None:
+    repo = PraticaEventiRepository(db_path=tmp_path / "eventi.db")
+    repo.add(766, "In agosto", date(2026, 8, 5), 1, "Admin")
+    repo.add(766, "In luglio", date(2026, 7, 20), 1, "Admin")
+    repo.add(766, "Altro agosto (bordo mese)", date(2026, 8, 31), 1, "Admin")
+
+    eventi = repo.list_mese(2026, 8)
+    assert [e.titolo for e in eventi] == ["In agosto", "Altro agosto (bordo mese)"]
+
+
+def test_list_mese_filtra_per_pratiche(tmp_path: Path) -> None:
+    repo = PraticaEventiRepository(db_path=tmp_path / "eventi.db")
+    repo.add(766, "Mia pratica", date(2026, 8, 5), 1, "Admin")
+    repo.add(999, "Altra pratica", date(2026, 8, 5), 1, "Admin")
+
+    assert [e.titolo for e in repo.list_mese(2026, 8, pratica_numeri=[766])] == ["Mia pratica"]
+    assert repo.list_mese(2026, 8, pratica_numeri=[]) == []
+    assert len(repo.list_mese(2026, 8, pratica_numeri=None)) == 2
+
+
+def test_list_domani(tmp_path: Path) -> None:
+    repo = PraticaEventiRepository(db_path=tmp_path / "eventi.db")
+    oggi = date.today()
+    repo.add(766, "Domani", oggi + timedelta(days=1), 1, "Admin")
+    repo.add(766, "Oggi", oggi, 1, "Admin")
+    repo.add(766, "Dopodomani", oggi + timedelta(days=2), 1, "Admin")
+
+    assert [e.titolo for e in repo.list_domani()] == ["Domani"]
+
+
+def test_reminder_dedup(tmp_path: Path) -> None:
+    repo = PraticaEventiRepository(db_path=tmp_path / "eventi.db")
+    evento = repo.add(766, "Perizia", date.today() + timedelta(days=1), 1, "Admin")
+
+    assert repo.reminder_gia_inviato(evento.id) is False
+    repo.segna_reminder_inviato(evento.id)
+    assert repo.reminder_gia_inviato(evento.id) is True
+
+    # Idempotente: richiamarlo due volte non deve sollevare (UNIQUE index).
+    repo.segna_reminder_inviato(evento.id)
+    assert repo.reminder_gia_inviato(evento.id) is True

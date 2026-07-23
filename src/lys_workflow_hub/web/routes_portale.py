@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import replace
+from datetime import date
 from pathlib import Path
 from typing import Callable
 
@@ -41,8 +42,10 @@ from lys_workflow_hub.integrations.notifier import notify_push_nuova_attivita
 from lys_workflow_hub.web.auth import get_current_user, template_context_processor
 from lys_workflow_hub.web.routes import (
     _allegati_con_url,
+    _contesto_calendario,
     _NON_RENDERIZZABILI,
     _parse_date,
+    _raggruppa_per_giorno,
     resolve_pratica_file,
 )
 
@@ -135,6 +138,41 @@ def portale_list(
         context["prossimi_eventi"] = []
 
     return templates.TemplateResponse(request, "portale_list.html", context)
+
+
+@router.get("/portale/calendario", response_class=HTMLResponse)
+def portale_calendario(
+    request: Request,
+    anno: int | None = None,
+    mese: int | None = None,
+    current_user: Utente | None = Depends(get_current_user),
+    assegnazioni_repo: PraticaAssegnazioniRepository = Depends(get_assegnazioni_repo),
+    settings: Settings = Depends(get_portale_settings),
+) -> HTMLResponse:
+    """Vista mensile degli appuntamenti delle sole pratiche assegnate
+    all'utente (equivalente esterno di `/calendario` admin)."""
+    utente = _require_user(current_user)
+    oggi = date.today()
+    anno = anno or oggi.year
+    mese = mese or oggi.month
+    if not (1 <= mese <= 12):
+        raise HTTPException(400, "Mese non valido.")
+
+    numeri = assegnazioni_repo.list_pratica_numeri_per_utente(utente.id)
+
+    context: dict = {"version": __version__}
+    context.update(_contesto_calendario(anno, mese))
+
+    try:
+        eventi_repo = PraticaEventiRepository(db_path=settings.app_db_path)
+        eventi = eventi_repo.list_mese(anno, mese, pratica_numeri=numeri)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Portale: impossibile leggere eventi calendario %s-%s: %s", anno, mese, exc)
+        eventi = []
+    context["eventi_per_giorno"] = _raggruppa_per_giorno(eventi)
+    context["pratica_link_base"] = "/portale/pratiche"
+
+    return templates.TemplateResponse(request, "calendario.html", context)
 
 
 def _require_user(current_user: Utente | None) -> Utente:

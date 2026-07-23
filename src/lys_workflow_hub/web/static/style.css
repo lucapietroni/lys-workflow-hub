@@ -652,6 +652,57 @@ code {
   animation: fade-up 0.4s ease both;
 }
 .card:hover { box-shadow: var(--shadow-lg); border-color: rgba(255,255,255,0.13); }
+
+/* ====== Calendario mensile (v3.0 fase 5, parte F) ====== */
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+  background: var(--glass-border);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.calendar-weekday {
+  background: rgba(255,255,255,0.03);
+  padding: 8px 6px;
+  text-align: center;
+  font-size: 0.71rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--lys-grey-500);
+  font-weight: 700;
+}
+.calendar-day {
+  background: var(--lys-blue-mid);
+  min-height: 92px;
+  padding: 6px;
+  font-size: 0.78rem;
+}
+.calendar-day-num { font-weight: 600; margin-bottom: 4px; color: var(--lys-grey-700); }
+.calendar-day-altro-mese { opacity: 0.4; }
+.calendar-day-oggi { box-shadow: inset 0 0 0 2px var(--lys-gold); }
+.calendar-day-oggi .calendar-day-num { color: var(--lys-gold); }
+.calendar-event {
+  display: block;
+  background: var(--lys-gold-light);
+  color: var(--lys-grey-900);
+  border-radius: 4px;
+  padding: 2px 6px;
+  margin-bottom: 3px;
+  font-size: 0.71rem;
+  line-height: 1.3;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.calendar-event:hover { background: var(--lys-gold-dark); color: var(--lys-white); }
+@media (max-width: 720px) {
+  .calendar-grid { grid-template-columns: repeat(7, minmax(34px, 1fr)); }
+  .calendar-day { min-height: 60px; padding: 3px; font-size: 0.68rem; }
+  .calendar-event { padding: 1px 3px; }
+}
 .card h2 {
   margin: 0 0 16px;
   font-size: 0.78rem;

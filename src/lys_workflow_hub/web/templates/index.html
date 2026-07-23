@@ -113,13 +113,43 @@
     {% endif %}
   </section>
 {% else %}
-  <section class="hints">
-    <h2>Suggerimenti rapidi</h2>
-    <ul>
-      <li>Per cercare per <strong>numero pratica</strong>: digita solo cifre, es. <code>766</code>.</li>
-      <li>Per cercare per <strong>targa</strong>: digita le cifre (anche solo le prime), es. <code>AB123</code>.</li>
-      <li>Per cercare per <strong>cognome / ragione sociale</strong>: digita lettere, es. <code>rossi</code> o <code>srl</code>.</li>
-    </ul>
+  <section class="results">
+    <header class="results-header">
+      <h2>Ultime pratiche</h2>
+      <span class="badge">{{ ultime_pratiche|length }}</span>
+    </header>
+    {% if ultime_pratiche %}
+      <table class="results-table">
+        <thead>
+          <tr>
+            <th class="num">N.</th>
+            <th>Cliente</th>
+            <th>Targa</th>
+            <th>Veicolo</th>
+            <th>Data sinistro</th>
+            <th class="actions"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in ultime_pratiche %}
+          <tr>
+            <td class="num">{{ r.numero }}</td>
+            <td>{{ r.cliente_nominativo or "—" }}</td>
+            <td><code>{{ r.targa or "—" }}</code></td>
+            <td>
+              {%- if r.marca or r.modello -%}
+                {{ (r.marca ~ " " ~ r.modello)|trim }}
+              {%- else -%}—{%- endif -%}
+            </td>
+            <td>{{ r.data_sinistro.strftime("%d/%m/%Y") if r.data_sinistro else "—" }}</td>
+            <td class="actions"><a class="btn-link" href="/pratiche/{{ r.numero }}">Apri →</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="empty">Nessuna pratica trovata.</div>
+    {% endif %}
   </section>
 {% endif %}
 {% endblock %}

@@ -10,6 +10,7 @@ Route principali:
 """
 from __future__ import annotations
 
+import calendar
 import logging
 from datetime import date
 from pathlib import Path
@@ -193,8 +194,86 @@ def home(
             results = repo.search_pratiche(cognome=q_clean, limit=20)
         context["results"] = results
         context["search_kind"] = search_kind
+    else:
+        # Nessuna ricerca in corso: mostra le ultime 20 pratiche aperte
+        # invece dei suggerimenti statici — `search_pratiche()` senza filtri
+        # ordina già per F_NUMPRA DESC (i numeri pratica WinCar sono
+        # progressivi, quindi "più recenti" in pratica).
+        try:
+            context["ultime_pratiche"] = repo.search_pratiche(limit=20)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Impossibile leggere le ultime pratiche: %s", exc)
+            context["ultime_pratiche"] = []
 
     return templates.TemplateResponse(request, "index.html", context)
+
+
+@router.get("/calendario", response_class=HTMLResponse)
+def calendario(
+    request: Request,
+    anno: int | None = None,
+    mese: int | None = None,
+    settings: Settings = Depends(get_app_settings),
+) -> HTMLResponse:
+    """Vista mensile di tutti gli appuntamenti (tutte le pratiche, v3.0
+    fase 5 parte F) — equivalente admin di `/portale/calendario`."""
+    oggi = date.today()
+    anno = anno or oggi.year
+    mese = mese or oggi.month
+    if not (1 <= mese <= 12):
+        raise HTTPException(400, "Mese non valido.")
+
+    context = _common_context()
+    context.update(_contesto_calendario(anno, mese))
+
+    try:
+        eventi_repo = PraticaEventiRepository(db_path=settings.app_db_path)
+        eventi = eventi_repo.list_mese(anno, mese)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Impossibile leggere eventi calendario %s-%s: %s", anno, mese, exc)
+        eventi = []
+    context["eventi_per_giorno"] = _raggruppa_per_giorno(eventi)
+    context["pratica_link_base"] = "/pratiche"
+
+    return templates.TemplateResponse(request, "calendario.html", context)
+
+
+def _contesto_calendario(anno: int, mese: int) -> dict[str, Any]:
+    """Dati di navigazione mese (griglia settimane, mese prec/succ) comuni
+    a `/calendario` (admin) e `/portale/calendario` (esterno)."""
+    primo_giorno_settimana = 0  # lunedì
+    cal = calendar.Calendar(firstweekday=primo_giorno_settimana)
+    settimane = cal.monthdatescalendar(anno, mese)
+
+    mese_prec_anno, mese_prec = (anno - 1, 12) if mese == 1 else (anno, mese - 1)
+    mese_succ_anno, mese_succ = (anno + 1, 1) if mese == 12 else (anno, mese + 1)
+
+    return {
+        "anno": anno,
+        "mese": mese,
+        "mese_label": _MESE_LABELS[mese - 1],
+        "settimane": settimane,
+        "oggi": date.today(),
+        "mese_prec_anno": mese_prec_anno,
+        "mese_prec": mese_prec,
+        "mese_succ_anno": mese_succ_anno,
+        "mese_succ": mese_succ,
+    }
+
+
+def _raggruppa_per_giorno(eventi: list) -> dict[date, list]:
+    per_giorno: dict[date, list] = {}
+    for e in eventi:
+        if e.data_evento is None:
+            continue
+        per_giorno.setdefault(e.data_evento, []).append(e)
+    return per_giorno
+
+
+_MESE_LABELS = (
+    "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
+    "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre",
+)
 
 
 @router.get("/pratiche/{numero}", response_class=HTMLResponse)
@@ -438,6 +517,34 @@ def pratica_elimina_evento(
     repo = PraticaEventiRepository(db_path=settings.app_db_path)
     repo.delete(evento_id, numero)
     return RedirectResponse(url=f"/pratiche/{numero}#calendario", status_code=303)
+
+
+@router.post("/pratiche/{numero}/note/{nota_id}/modifica")
+def pratica_modifica_nota(
+    numero: int,
+    nota_id: int,
+    testo: str = Form(...),
+    admin: Utente = Depends(require_admin),
+    settings: Settings = Depends(get_app_settings),
+) -> RedirectResponse:
+    repo = PraticaNoteRepository(db_path=settings.app_db_path)
+    try:
+        repo.update(nota_id, numero, testo)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return RedirectResponse(url=f"/pratiche/{numero}#note", status_code=303)
+
+
+@router.post("/pratiche/{numero}/note/{nota_id}/elimina")
+def pratica_elimina_nota(
+    numero: int,
+    nota_id: int,
+    admin: Utente = Depends(require_admin),
+    settings: Settings = Depends(get_app_settings),
+) -> RedirectResponse:
+    repo = PraticaNoteRepository(db_path=settings.app_db_path)
+    repo.delete(nota_id, numero)
+    return RedirectResponse(url=f"/pratiche/{numero}#note", status_code=303)
 
 
 @router.post("/pratiche/{numero}/assegna")

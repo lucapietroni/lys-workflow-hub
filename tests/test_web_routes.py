@@ -97,13 +97,15 @@ def client_with_mock_repo(authenticated_app):
         app.dependency_overrides.pop(get_repository, None)
 
 
-def test_home_no_query_renders_hints(client_with_mock_repo):
+def test_home_no_query_mostra_ultime_pratiche(client_with_mock_repo):
     client, repo = client_with_mock_repo
+    repo.search_pratiche.return_value = [_sample_summary()]
     response = client.get("/")
     assert response.status_code == 200
     assert "Gestione pratiche sinistri" in response.text
-    assert "Suggerimenti rapidi" in response.text
-    repo.search_pratiche.assert_not_called()
+    assert "Ultime pratiche" in response.text
+    assert "rossi mario" in response.text
+    repo.search_pratiche.assert_called_once_with(limit=20)
 
 
 def test_home_numeric_query_triggers_numero_search(client_with_mock_repo):

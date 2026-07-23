@@ -20,6 +20,7 @@ from lys_workflow_hub.core.pratica_assegnazioni_repository import (
     PraticaAssegnazioniRepository,
 )
 from lys_workflow_hub.core.pratica_eventi_repository import PraticaEventiRepository
+from lys_workflow_hub.core.pratica_note_repository import PraticaNoteRepository
 from lys_workflow_hub.core.pratica_stato_repository import PraticaStatoRepository
 from lys_workflow_hub.core.wincar_repository import (
     Cliente,
@@ -129,6 +130,65 @@ def test_admin_elimina_evento(admin_client) -> None:
 
     resp = client.get("/pratiche/766")
     assert "Nessun evento in calendario" in resp.text
+
+
+def test_admin_modifica_nota(admin_client) -> None:
+    client, settings = admin_client
+    token = get_csrf(client, "/pratiche/766")
+    note_repo = PraticaNoteRepository(db_path=settings.app_db_path)
+    nota = note_repo.add(766, 1, "Admin", "testo originale")
+
+    resp = client.post(
+        f"/pratiche/766/note/{nota.id}/modifica",
+        data={"testo": "testo corretto", "csrf_token": token},
+    )
+    assert resp.status_code == 303
+    assert note_repo.list_per_pratica(766)[0].testo == "testo corretto"
+
+
+def test_admin_elimina_nota(admin_client) -> None:
+    client, settings = admin_client
+    token = get_csrf(client, "/pratiche/766")
+    note_repo = PraticaNoteRepository(db_path=settings.app_db_path)
+    nota = note_repo.add(766, 1, "Admin", "da eliminare")
+
+    resp = client.post(f"/pratiche/766/note/{nota.id}/elimina", data={"csrf_token": token})
+    assert resp.status_code == 303
+    assert note_repo.list_per_pratica(766) == []
+
+
+def test_admin_non_puo_modificare_nota_di_altra_pratica(admin_client) -> None:
+    """IDOR: la nota appartiene alla pratica 999, l'URL punta a 766."""
+    client, settings = admin_client
+    token = get_csrf(client, "/pratiche/766")
+    note_repo = PraticaNoteRepository(db_path=settings.app_db_path)
+    nota = note_repo.add(999, 1, "Admin", "nota riservata")
+
+    client.post(
+        f"/pratiche/766/note/{nota.id}/modifica",
+        data={"testo": "manomessa", "csrf_token": token},
+    )
+    assert note_repo.list_per_pratica(999)[0].testo == "nota riservata"
+
+
+def test_admin_calendario_mostra_eventi_di_tutte_le_pratiche(admin_client) -> None:
+    client, settings = admin_client
+    eventi_repo = PraticaEventiRepository(db_path=settings.app_db_path)
+    oggi = date.today()
+    eventi_repo.add(766, "Perizia 766", oggi, 1, "Admin")
+    eventi_repo.add(999, "Perizia 999", oggi, 1, "Admin")
+
+    resp = client.get(f"/calendario?anno={oggi.year}&mese={oggi.month}")
+    assert resp.status_code == 200
+    assert "Perizia 766" in resp.text
+    assert "Perizia 999" in resp.text
+
+
+def test_admin_calendario_naviga_mese_senza_eventi(admin_client) -> None:
+    client, _ = admin_client
+    resp = client.get("/calendario?anno=2020&mese=1")
+    assert resp.status_code == 200
+    assert "Gennaio 2020" in resp.text
 
 
 # --------------------------------------------------------------------------- #
@@ -361,3 +421,26 @@ def test_portale_non_puo_eliminare_evento_di_altra_pratica(authenticated_app, po
     )
     assert resp.status_code == 303
     assert eventi_repo.list_per_pratica(999) != []
+
+
+def test_portale_calendario_mostra_solo_eventi_pratiche_assegnate(
+    authenticated_app, portale_setup
+) -> None:
+    assegnazioni_repo, settings = portale_setup
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
+
+    eventi_repo = PraticaEventiRepository(db_path=settings.app_db_path)
+    oggi = date.today()
+    eventi_repo.add(766, "Mia perizia", oggi, 1, "Admin")
+    eventi_repo.add(999, "Perizia altrui", oggi, 1, "Admin")
+
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, "agenzia@esempio.it", "password1234")
+
+    resp = client.get(f"/portale/calendario?anno={oggi.year}&mese={oggi.month}")
+    assert resp.status_code == 200
+    assert "Mia perizia" in resp.text
+    assert "Perizia altrui" not in resp.text

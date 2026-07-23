@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Calendario · LYS Workflow Hub{% endblock %}
+
+{% block content %}
+<header class="pratica-header">
+  <div>
+    <div class="hero-eyebrow">Calendario</div>
+    <h1>{{ mese_label }} {{ anno }}</h1>
+  </div>
+  <div style="display:flex; gap:8px;">
+    <a class="btn" href="?anno={{ mese_prec_anno }}&mese={{ mese_prec }}">← Precedente</a>
+    <a class="btn" href="?anno={{ oggi.year }}&mese={{ oggi.month }}">Oggi</a>
+    <a class="btn" href="?anno={{ mese_succ_anno }}&mese={{ mese_succ }}">Successivo →</a>
+  </div>
+</header>
+
+<section class="card">
+  <div class="calendar-grid">
+    {% for nome in ("Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom") %}
+      <div class="calendar-weekday">{{ nome }}</div>
+    {% endfor %}
+    {% for settimana in settimane %}
+      {% for giorno in settimana %}
+        <div class="calendar-day{% if giorno.month != mese %} calendar-day-altro-mese{% endif %}{% if giorno == oggi %} calendar-day-oggi{% endif %}">
+          <div class="calendar-day-num">{{ giorno.day }}</div>
+          {% for e in eventi_per_giorno.get(giorno, []) %}
+            <a class="calendar-event" href="{{ pratica_link_base }}/{{ e.pratica_numero }}#calendario" title="{{ e.titolo }} — Pratica {{ e.pratica_numero }}">
+              {{ e.titolo }} <span class="meta">· {{ e.pratica_numero }}</span>
+            </a>
+          {% endfor %}
+        </div>
+      {% endfor %}
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

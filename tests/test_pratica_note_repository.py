@@ -36,3 +36,48 @@ def test_add_testo_vuoto_raises(tmp_path: Path) -> None:
 def test_list_pratica_senza_note_vuota(tmp_path: Path) -> None:
     repo = PraticaNoteRepository(db_path=tmp_path / "note.db")
     assert repo.list_per_pratica(766) == []
+
+
+def test_update_modifica_testo(tmp_path: Path) -> None:
+    repo = PraticaNoteRepository(db_path=tmp_path / "note.db")
+    nota = repo.add(766, 1, "Admin", "testo originale")
+
+    ok = repo.update(nota.id, 766, "testo corretto")
+    assert ok is True
+    assert repo.list_per_pratica(766)[0].testo == "testo corretto"
+
+
+def test_update_testo_vuoto_raises(tmp_path: Path) -> None:
+    repo = PraticaNoteRepository(db_path=tmp_path / "note.db")
+    nota = repo.add(766, 1, "Admin", "testo originale")
+    with pytest.raises(ValueError):
+        repo.update(nota.id, 766, "   ")
+
+
+def test_update_pratica_numero_sbagliato_non_modifica(tmp_path: Path) -> None:
+    """IDOR: non deve essere possibile modificare una nota di un'altra
+    pratica passando un `pratica_numero` diverso da quello reale."""
+    repo = PraticaNoteRepository(db_path=tmp_path / "note.db")
+    nota = repo.add(766, 1, "Admin", "testo originale")
+
+    ok = repo.update(nota.id, 999, "testo modificato")
+    assert ok is False
+    assert repo.list_per_pratica(766)[0].testo == "testo originale"
+
+
+def test_delete_rimuove_nota(tmp_path: Path) -> None:
+    repo = PraticaNoteRepository(db_path=tmp_path / "note.db")
+    nota = repo.add(766, 1, "Admin", "da eliminare")
+
+    ok = repo.delete(nota.id, 766)
+    assert ok is True
+    assert repo.list_per_pratica(766) == []
+
+
+def test_delete_pratica_numero_sbagliato_non_elimina(tmp_path: Path) -> None:
+    repo = PraticaNoteRepository(db_path=tmp_path / "note.db")
+    nota = repo.add(766, 1, "Admin", "resta qui")
+
+    ok = repo.delete(nota.id, 999)
+    assert ok is False
+    assert len(repo.list_per_pratica(766)) == 1

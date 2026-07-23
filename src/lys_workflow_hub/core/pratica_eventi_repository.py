@@ -40,6 +40,19 @@ CREATE TABLE IF NOT EXISTS pratica_eventi (
 
 CREATE INDEX IF NOT EXISTS idx_pratica_eventi_pratica
     ON pratica_eventi(pratica_numero);
+
+-- Dedup reminder "il giorno prima" (v3.0 fase 5, parte B): una riga per
+-- evento notificato, cosi' `scripts/send_event_reminders.py` (schedulato
+-- una volta al giorno) non rispedisce lo stesso reminder ad ogni run.
+-- Stesso pattern di `pec_sla_reminder` in pratica_stato_repository.py.
+CREATE TABLE IF NOT EXISTS pratica_eventi_reminder (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    evento_id   INTEGER NOT NULL,
+    reminded_at TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_pratica_eventi_reminder_evento
+    ON pratica_eventi_reminder(evento_id);
 """
 
 
@@ -165,3 +178,56 @@ class PraticaEventiRepository:
                 (int(evento_id), int(pratica_numero)),
             )
             return cur.rowcount > 0
+
+    def list_mese(
+        self, anno: int, mese: int, pratica_numeri: list[int] | None = None
+    ) -> list[Evento]:
+        """Tutti gli eventi del mese indicato, opzionalmente filtrati a un
+        sottoinsieme di pratiche (portale esterno: solo le proprie
+        assegnate). `pratica_numeri=None` = tutte (vista admin);
+        `pratica_numeri=[]` ritorna sempre lista vuota."""
+        if pratica_numeri is not None and not pratica_numeri:
+            return []
+        mese_str = f"{int(anno):04d}-{int(mese):02d}"
+        query = (
+            "SELECT * FROM pratica_eventi "
+            "WHERE substr(data_evento, 1, 7) = ? "
+        )
+        params: list = [mese_str]
+        if pratica_numeri is not None:
+            placeholders = ",".join("?" for _ in pratica_numeri)
+            query += f"AND pratica_numero IN ({placeholders}) "
+            params.extend(int(n) for n in pratica_numeri)
+        query += "ORDER BY data_evento, created_at"
+        with self._connect() as conn:
+            rows = conn.execute(query, params).fetchall()
+        return [self._row_to_evento(r) for r in rows]
+
+    # -- reminder "il giorno prima" (v3.0 fase 5, parte B) ------------------
+
+    def list_domani(self) -> list[Evento]:
+        """Eventi con data = domani. Usato dallo script schedulato
+        `send_event_reminders.py`, eseguito una volta al giorno."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM pratica_eventi WHERE date(data_evento) = date('now', '+1 day') "
+                "ORDER BY pratica_numero"
+            ).fetchall()
+        return [self._row_to_evento(r) for r in rows]
+
+    def reminder_gia_inviato(self, evento_id: int) -> bool:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM pratica_eventi_reminder WHERE evento_id = ?",
+                (int(evento_id),),
+            ).fetchone()
+        return row is not None
+
+    def segna_reminder_inviato(self, evento_id: int) -> None:
+        now = datetime.now().isoformat(timespec="seconds")
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO pratica_eventi_reminder (evento_id, reminded_at) "
+                "VALUES (?, ?)",
+                (int(evento_id), now),
+            )

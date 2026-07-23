@@ -404,6 +404,61 @@ Dovresti vedere righe tipo:
 
 ---
 
+## 5.6 Task Scheduler per i reminder di calendario (v3.0 fase 5, parte B)
+
+Terzo task, simile a §5.5: gira **una volta al giorno** e manda un promemoria
+(push admin + email/push ai collaboratori esterni assegnati) per ogni
+appuntamento di calendario in scadenza **domani**.
+
+### Script di lancio
+
+`send_event_reminders.bat` è già incluso nel repository, nella radice di
+`lys-workflow-hub\`. Stesso pattern di `run_polling.bat`:
+
+```bat
+@echo off
+cd /d C:\LYSApp\lys-workflow-hub
+set PYTHONPATH=%CD%\src
+.venv\Scripts\pythonw.exe scripts\send_event_reminders.py
+```
+
+Log dettagliati in `C:\LYSApp\logs\event_reminders.log` (rotazione 5 MB × 5).
+Un dedup interno (tabella `pratica_eventi_reminder`) garantisce che, anche se
+il task gira due volte nello stesso giorno, lo stesso evento non venga
+notificato due volte.
+
+### Task Scheduler
+
+**Utilità di pianificazione** → **Crea attività…**
+
+- **Generale**: nome `LYS Reminder Calendario`, ✅ "Esegui solo se l'utente
+  ha effettuato l'accesso", ✅ "Esegui con privilegi più elevati".
+- **Trigger**: "Ogni giorno alle 07:00" (prima dell'apertura — aggiusta
+  l'orario a piacere, l'importante è che il PC sia acceso).
+- **Azioni**: avvia `C:\LYSApp\lys-workflow-hub\send_event_reminders.bat`,
+  "Inizia in" = `C:\LYSApp\lys-workflow-hub`.
+- **Condizioni**: togli la spunta a "Avvia attività solo se il computer
+  è alimentato da rete elettrica".
+- **Impostazioni**: ✅ "Consenti esecuzione su richiesta" (per testarlo a
+  mano).
+
+### Verifica
+
+Click destro → **Esegui**, poi:
+
+```powershell
+Get-Content C:\LYSApp\logs\event_reminders.log -Tail 20
+```
+
+```
+2026-05-15 07:00:01 [INFO] event_reminders: === Inizio reminder eventi ===
+2026-05-15 07:00:01 [INFO] event_reminders: Eventi domani: 1
+2026-05-15 07:00:02 [INFO] event_reminders: Evento 12 (pratica 766): reminder inviato.
+2026-05-15 07:00:02 [INFO] event_reminders: === Fine reminder eventi: 1 inviati / 1 totali ===
+```
+
+---
+
 ## 6. Firewall LAN
 
 Per permettere ai tablet aziendali di raggiungere `http://<ip-pc>:8000`,
