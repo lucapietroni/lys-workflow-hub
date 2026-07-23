@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Impostazioni · Portale · LYS Workflow Hub{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb">
+  <a href="/portale">← Torna alle tue pratiche</a>
+</nav>
+
+<header class="pratica-header">
+  <div>
+    <div class="hero-eyebrow">Portale collaborazione</div>
+    <h1>Impostazioni notifiche</h1>
+    <p class="meta">
+      Scegli come vuoi essere avvisato quando la carrozzeria scrive una nota o
+      aggiunge un evento su una pratica che ti è assegnata.
+    </p>
+  </div>
+</header>
+
+{% if errore %}
+<div class="alert alert-warn">{{ errore }}</div>
+{% endif %}
+
+<section class="card">
+  <form method="post" action="/portale/impostazioni">
+    <div class="form-field">
+      <label style="display:flex;align-items:center;gap:8px;">
+        <input name="notify_email_enabled" type="checkbox" style="width:auto;"
+               {% if utente.notify_email_enabled %}checked{% endif %} />
+        Notifica via email
+      </label>
+      <small class="hint">
+        Inviata a <strong>{{ utente.email }}</strong> quando la carrozzeria
+        aggiorna una tua pratica.
+      </small>
+    </div>
+
+    <div class="form-field">
+      <label style="display:flex;align-items:center;gap:8px;">
+        <input id="f_push" name="notify_push_enabled" type="checkbox" style="width:auto;"
+               {% if utente.notify_push_enabled %}checked{% endif %} />
+        Notifica push (ntfy.sh)
+      </label>
+      <small class="hint">
+        Notifica istantanea sul telefono. Serve l'app gratuita
+        <strong>ntfy</strong> (Android/iOS) e un topic personale — una
+        parola/frase segreta che scegli tu, che identifica solo le tue
+        notifiche.
+      </small>
+    </div>
+
+    <div class="form-field">
+      <label for="f_ntfy_topic">Topic ntfy</label>
+      <input id="f_ntfy_topic" name="ntfy_topic" type="text"
+             value="{{ utente.ntfy_topic }}"
+             placeholder="es. lys-mariorossi-8f3a2" />
+      <small class="hint">
+        1) Installa l'app <strong>ntfy</strong> sul telefono. 2) Scegli un
+        nome difficile da indovinare (chiunque lo conosca può leggere le tue
+        notifiche) e scrivilo qui sopra. 3) Nell'app ntfy, sottoscrivi lo
+        stesso topic sul server <code>ntfy.sh</code>.
+      </small>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Salva</button>
+  </form>
+</section>
+{% endblock %}

@@ -1,7 +1,7 @@
 """Test delle notifiche di collaborazione (v3.0 fase 5).
 
 Copre sia le funzioni di basso livello in `integrations/notifier.py`
-(`notify_admin_nuova_attivita`, `notify_esterno_nuova_attivita` — mai
+(`notify_push_nuova_attivita`, `notify_esterno_nuova_attivita` — mai
 sollevano, anche se il canale sottostante fallisce) sia il collegamento nelle
 route: nota/evento di un esterno assegnato notifica l'admin via push,
 nota/evento dell'admin su una pratica assegnata notifica gli esterni via
@@ -30,7 +30,7 @@ from lys_workflow_hub.core.wincar_repository import (
     Veicolo,
 )
 from lys_workflow_hub.integrations.notifier import (
-    notify_admin_nuova_attivita,
+    notify_push_nuova_attivita,
     notify_esterno_nuova_attivita,
 )
 from lys_workflow_hub.main import app
@@ -47,10 +47,10 @@ from tests.conftest import login_as, login_as_admin
 # --------------------------------------------------------------------------- #
 
 
-def test_notify_admin_nuova_attivita_chiama_send_push_se_configurato() -> None:
+def test_notify_push_nuova_attivita_chiama_send_push_se_configurato() -> None:
     with patch("lys_workflow_hub.integrations.notifier.send_push") as mock_push:
         mock_push.return_value = (True, "")
-        notify_admin_nuova_attivita(
+        notify_push_nuova_attivita(
             ntfy_server="https://ntfy.sh",
             ntfy_topic="topic-segreto",
             titolo="Nuova nota",
@@ -61,18 +61,18 @@ def test_notify_admin_nuova_attivita_chiama_send_push_se_configurato() -> None:
         assert mock_push.call_args.kwargs["topic"] == "topic-segreto"
 
 
-def test_notify_admin_nuova_attivita_skip_senza_topic() -> None:
+def test_notify_push_nuova_attivita_skip_senza_topic() -> None:
     with patch("lys_workflow_hub.integrations.notifier.send_push") as mock_push:
-        notify_admin_nuova_attivita(
+        notify_push_nuova_attivita(
             ntfy_server="https://ntfy.sh", ntfy_topic="", titolo="x", messaggio="y"
         )
         mock_push.assert_not_called()
 
 
-def test_notify_admin_nuova_attivita_non_solleva_se_push_fallisce() -> None:
+def test_notify_push_nuova_attivita_non_solleva_se_push_fallisce() -> None:
     with patch("lys_workflow_hub.integrations.notifier.send_push") as mock_push:
         mock_push.side_effect = RuntimeError("boom")
-        notify_admin_nuova_attivita(
+        notify_push_nuova_attivita(
             ntfy_server="https://ntfy.sh", ntfy_topic="t", titolo="x", messaggio="y"
         )  # non deve sollevare
 
@@ -206,7 +206,7 @@ def test_esterno_aggiunge_nota_notifica_admin(authenticated_app, portale_setup) 
     client = TestClient(app, follow_redirects=False)
     login_as(client, "agenzia@esempio.it", "password1234")
 
-    with patch("lys_workflow_hub.web.routes_portale.notify_admin_nuova_attivita") as mock_notify:
+    with patch("lys_workflow_hub.web.routes_portale.notify_push_nuova_attivita") as mock_notify:
         resp = client.post(
             "/portale/pratiche/766/note", data={"testo": "preso app.to con perito"}
         )
@@ -226,7 +226,7 @@ def test_esterno_aggiunge_evento_notifica_admin(authenticated_app, portale_setup
     client = TestClient(app, follow_redirects=False)
     login_as(client, "agenzia@esempio.it", "password1234")
 
-    with patch("lys_workflow_hub.web.routes_portale.notify_admin_nuova_attivita") as mock_notify:
+    with patch("lys_workflow_hub.web.routes_portale.notify_push_nuova_attivita") as mock_notify:
         resp = client.post(
             "/portale/pratiche/766/eventi", data={"titolo": "Perizia", "data_evento": "2026-08-05"}
         )

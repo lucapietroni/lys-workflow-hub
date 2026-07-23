@@ -14,6 +14,7 @@ non nel layer web, cosi' resta valido anche per eventuali script CLI.
 from __future__ import annotations
 
 import logging
+import re
 import sqlite3
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -27,6 +28,14 @@ import bcrypt
 logger = logging.getLogger(__name__)
 
 Ruolo = Literal["admin", "esterno"]
+
+# Charset consigliato da ntfy.sh per i nomi dei topic. Un topic fuori da
+# questo pattern (spazi, accenti, "/") non farebbe fallire la richiesta HTTP
+# in modo rumoroso: `send_push` la costruisce come
+# f"{server}/{topic}" e ingoia qualunque errore (mai bloccare il salvataggio
+# di nota/evento per un problema di notifica) — l'utente si ritroverebbe
+# semplicemente a non ricevere mai nulla, senza capirne il motivo.
+_NTFY_TOPIC_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 RUOLI = ("admin", "esterno")
 
@@ -42,6 +51,9 @@ class Utente:
     attivo: bool
     created_at: datetime | None
     last_login: datetime | None
+    notify_email_enabled: bool = True
+    notify_push_enabled: bool = False
+    ntfy_topic: str = ""
 
     @property
     def is_admin(self) -> bool:
@@ -69,6 +81,17 @@ CREATE TABLE IF NOT EXISTS utenti (
 CREATE UNIQUE INDEX IF NOT EXISTS uq_utenti_email
     ON utenti(email);
 """
+
+# Colonne aggiunte dopo la creazione iniziale della tabella (v3.0 fase 5,
+# parte D — preferenze di notifica self-service per utenti esterni).
+# ALTER TABLE avvolta in try/except: su un DB già migrato la colonna esiste
+# già e SQLite solleva "duplicate column name" — pattern condiviso con le
+# altre migrazioni del progetto (vedi auto_cortesia_repository.py).
+_MIGRAZIONI_COLONNE = (
+    "notify_email_enabled INTEGER NOT NULL DEFAULT 1",
+    "notify_push_enabled INTEGER NOT NULL DEFAULT 0",
+    "ntfy_topic TEXT NOT NULL DEFAULT ''",
+)
 
 
 def _parse_dt(value: str | None) -> datetime | None:
@@ -108,6 +131,11 @@ class UtentiRepository:
         self.lockout_minutes = lockout_minutes
         with self._connect() as conn:
             conn.executescript(_SCHEMA_SQL)
+            for col_def in _MIGRAZIONI_COLONNE:
+                try:
+                    conn.execute(f"ALTER TABLE utenti ADD COLUMN {col_def}")
+                except sqlite3.OperationalError:
+                    pass
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -141,6 +169,9 @@ class UtentiRepository:
             attivo=bool(d["attivo"]),
             created_at=_parse_dt(d.get("created_at")),
             last_login=_parse_dt(d.get("last_login")),
+            notify_email_enabled=bool(d.get("notify_email_enabled", 1)),
+            notify_push_enabled=bool(d.get("notify_push_enabled", 0)),
+            ntfy_topic=d.get("ntfy_topic") or "",
         )
 
     # -- query -----------------------------------------------------------
@@ -249,6 +280,42 @@ class UtentiRepository:
             conn.execute(
                 "UPDATE utenti SET nome = ? WHERE id = ?",
                 (nome.strip(), int(utente_id)),
+            )
+
+    def set_notifiche(
+        self,
+        utente_id: int,
+        *,
+        notify_email_enabled: bool,
+        notify_push_enabled: bool,
+        ntfy_topic: str,
+    ) -> None:
+        """Preferenze di notifica self-service (v3.0 fase 5, parte D).
+
+        Un topic ntfy è per definizione un "segreto debole" (chiunque lo
+        conosca può leggere le notifiche): se l'utente attiva il push senza
+        averne scritto uno, rifiutiamo piuttosto che salvare uno stato
+        incoerente (`notify_push_enabled=True` con `ntfy_topic=""`) che
+        finirebbe solo per non mandare mai nulla in silenzio.
+        """
+        ntfy_topic = (ntfy_topic or "").strip()
+        if notify_push_enabled and not ntfy_topic:
+            raise ValueError("Inserisci un topic ntfy per attivare le notifiche push.")
+        if ntfy_topic and not _NTFY_TOPIC_RE.match(ntfy_topic):
+            raise ValueError(
+                "Topic ntfy non valido: usa solo lettere, cifre, '-' e '_' "
+                "(max 64 caratteri, niente spazi)."
+            )
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE utenti SET notify_email_enabled = ?, "
+                "notify_push_enabled = ?, ntfy_topic = ? WHERE id = ?",
+                (
+                    1 if notify_email_enabled else 0,
+                    1 if notify_push_enabled else 0,
+                    ntfy_topic,
+                    int(utente_id),
+                ),
             )
 
     def delete(self, utente_id: int) -> bool:

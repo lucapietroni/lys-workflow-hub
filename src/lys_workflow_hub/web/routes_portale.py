@@ -14,6 +14,7 @@ di mostrare qualunque dato — vedi `_verifica_accesso`.
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from pathlib import Path
 from typing import Callable
 
@@ -29,9 +30,9 @@ from lys_workflow_hub.core.pratica_assegnazioni_repository import (
 from lys_workflow_hub.core.pratica_eventi_repository import PraticaEventiRepository
 from lys_workflow_hub.core.pratica_files import scan as scan_allegati
 from lys_workflow_hub.core.pratica_note_repository import PraticaNoteRepository
-from lys_workflow_hub.core.utenti_repository import Utente
+from lys_workflow_hub.core.utenti_repository import Utente, UtentiRepository
 from lys_workflow_hub.core.wincar_repository import WinCarRepository
-from lys_workflow_hub.integrations.notifier import notify_admin_nuova_attivita
+from lys_workflow_hub.integrations.notifier import notify_push_nuova_attivita
 from lys_workflow_hub.web.auth import get_current_user, template_context_processor
 from lys_workflow_hub.web.routes import (
     _allegati_con_url,
@@ -200,7 +201,7 @@ def _notifica_admin(
     """
     try:
         push_titolo, messaggio, click_url = costruisci_messaggio()
-        notify_admin_nuova_attivita(
+        notify_push_nuova_attivita(
             ntfy_server=settings.ntfy_server,
             ntfy_topic=settings.ntfy_topic,
             titolo=push_titolo,
@@ -281,3 +282,62 @@ def portale_elimina_evento(
     repo = PraticaEventiRepository(db_path=settings.app_db_path)
     repo.delete(evento_id, numero)
     return RedirectResponse(url=f"/portale/pratiche/{numero}#calendario", status_code=303)
+
+
+def get_utenti_repo(request: Request) -> UtentiRepository:
+    """Stesso singleton usato da `AuthMiddleware`/`routes_auth.py`."""
+    return request.app.state.utenti_repo
+
+
+@router.get("/portale/impostazioni", response_class=HTMLResponse)
+def portale_impostazioni(
+    request: Request,
+    current_user: Utente | None = Depends(get_current_user),
+) -> HTMLResponse:
+    """Preferenze di notifica self-service (v3.0 fase 5, parte D).
+
+    Ogni utente sceglie autonomamente se ricevere email e/o push quando
+    l'admin aggiorna una pratica a lui assegnata — vedi `_notifica_esterni_
+    assegnati` in `routes.py`, che legge questi campi prima di notificare.
+    """
+    utente = _require_user(current_user)
+    return templates.TemplateResponse(
+        request,
+        "portale_impostazioni.html",
+        {"version": __version__, "utente": utente, "errore": None},
+    )
+
+
+@router.post("/portale/impostazioni", response_class=HTMLResponse)
+def portale_impostazioni_salva(
+    request: Request,
+    notify_email_enabled: str | None = Form(None),
+    notify_push_enabled: str | None = Form(None),
+    ntfy_topic: str = Form(""),
+    current_user: Utente | None = Depends(get_current_user),
+    utenti_repo: UtentiRepository = Depends(get_utenti_repo),
+) -> HTMLResponse:
+    utente = _require_user(current_user)
+    try:
+        utenti_repo.set_notifiche(
+            utente.id,
+            notify_email_enabled=notify_email_enabled is not None,
+            notify_push_enabled=notify_push_enabled is not None,
+            ntfy_topic=ntfy_topic,
+        )
+    except ValueError as exc:
+        # Ri-mostra i valori appena inviati (non quelli salvati prima del
+        # tentativo fallito), altrimenti l'utente perde quanto ha scritto.
+        utente_form = replace(
+            utente,
+            notify_email_enabled=notify_email_enabled is not None,
+            notify_push_enabled=notify_push_enabled is not None,
+            ntfy_topic=ntfy_topic,
+        )
+        return templates.TemplateResponse(
+            request,
+            "portale_impostazioni.html",
+            {"version": __version__, "utente": utente_form, "errore": str(exc)},
+            status_code=400,
+        )
+    return RedirectResponse(url="/portale/impostazioni", status_code=303)

@@ -5,7 +5,7 @@ con il gestionale **WinCar**. Legge le pratiche dal database WinCar in sola lett
 genera documenti precompilati, monitora le risposte delle compagnie assicurative
 via PEC/email, classifica le risposte con AI e genera alert mirati.
 
-> Branch attivo: **v2** · Versione: **3.3.0**
+> Branch attivo: **v2** · Versione: **3.4.0**
 > Branch stabile: **main** (v1.0.4)
 
 ---
@@ -15,7 +15,7 @@ via PEC/email, classifica le risposte con AI e genera alert mirati.
 | Branch | Versione | Stato |
 |--------|----------|-------|
 | `main` | **1.0.4** | Stabile — funzionalità assicurative complete + allegati email + fix re-download |
-| `v2` | **3.3.0** | Sviluppo attivo — verbali cortesia + foto lavorazioni automatiche + foto/documenti in pratica + autenticazione/pubblicazione internet + assegnazione pratiche + note/calendario condivisi + notifiche collaborazione |
+| `v2` | **3.4.0** | Sviluppo attivo — verbali cortesia + foto lavorazioni automatiche + foto/documenti in pratica + autenticazione/pubblicazione internet + assegnazione pratiche + note/calendario condivisi + notifiche collaborazione (real-time + self-service) |
 
 ---
 
@@ -119,6 +119,19 @@ Fase successiva (non ancora costruita): reminder schedulati "il giorno
 prima" per gli eventi di calendario (richiede una nuova voce Task Scheduler
 sul PC carrozzeria, stesso pattern di `run_polling.py`). Dettagli tecnici
 completi in `CONTEXT.md`.
+
+---
+
+## Novità v3.4 (fase 5, parte D) — Notifiche self-service
+
+- **`/portale/impostazioni`**: ogni utente esterno sceglie autonomamente se
+  ricevere email e/o push quando l'admin aggiorna una pratica assegnata
+  (prima erano sempre attive, non disattivabili).
+- **Push personale per gli esterni**: prima solo l'admin aveva un topic
+  ntfy.sh configurato (`.env`); ora ogni esterno può impostare il proprio
+  topic personale e ricevere notifiche push sul telefono.
+
+Dettagli tecnici completi in `CONTEXT.md`.
 
 ---
 

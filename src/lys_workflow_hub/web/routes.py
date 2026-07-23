@@ -42,7 +42,10 @@ from lys_workflow_hub.core.pratica_stato_repository import (
 )
 from lys_workflow_hub.core.utenti_repository import Utente, UtentiRepository
 from lys_workflow_hub.core.wincar_repository import WinCarRepository
-from lys_workflow_hub.integrations.notifier import notify_esterno_nuova_attivita
+from lys_workflow_hub.integrations.notifier import (
+    notify_esterno_nuova_attivita,
+    notify_push_nuova_attivita,
+)
 from lys_workflow_hub.workflows.cessione_credito import (
     PdfConversionError,
     docx_bytes_to_pdf_bytes,
@@ -322,7 +325,9 @@ def _notifica_esterni_assegnati(
     numero: int,
     costruisci_messaggio: Callable[[], tuple[str, str]],
 ) -> None:
-    """Email a ogni utente esterno assegnato alla pratica (v3.0 fase 5).
+    """Email e/o push a ogni utente esterno assegnato alla pratica, secondo
+    le preferenze self-service di ciascuno (v3.0 fase 5, parte D — vedi
+    `UtentiRepository.set_notifiche` e `/portale/impostazioni`).
 
     `costruisci_messaggio` (subject, body) è chiamato QUI DENTRO, non dal
     chiamante: così anche un errore nella costruzione del testo (f-string,
@@ -338,7 +343,9 @@ def _notifica_esterni_assegnati(
             return
         subject, body_text = costruisci_messaggio()
         for u in utenti_repo.list_all():
-            if u.id in assegnati_ids and u.attivo and u.email:
+            if u.id not in assegnati_ids or not u.attivo:
+                continue
+            if u.notify_email_enabled and u.email:
                 notify_esterno_nuova_attivita(
                     smtp_host=settings.smtp_host,
                     smtp_port=settings.smtp_port,
@@ -349,6 +356,14 @@ def _notifica_esterni_assegnati(
                     subject=subject,
                     body_text=body_text,
                     smtp_tls=settings.smtp_tls,
+                    disabled=settings.notify_disabled,
+                )
+            if u.notify_push_enabled and u.ntfy_topic:
+                notify_push_nuova_attivita(
+                    ntfy_server=settings.ntfy_server,
+                    ntfy_topic=u.ntfy_topic,
+                    titolo=subject,
+                    messaggio=body_text,
                     disabled=settings.notify_disabled,
                 )
     except Exception as exc:  # noqa: BLE001

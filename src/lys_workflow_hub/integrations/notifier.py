@@ -330,7 +330,7 @@ def notify_batch(
 # inghiottito qui, non propagato al chiamante.
 
 
-def notify_admin_nuova_attivita(
+def notify_push_nuova_attivita(
     *,
     ntfy_server: str,
     ntfy_topic: str,
@@ -339,8 +339,13 @@ def notify_admin_nuova_attivita(
     click_url: str = "",
     disabled: bool = False,
 ) -> None:
-    """Push all'admin (stesso canale ntfy.sh degli alert PEC) quando un
-    utente esterno scrive una nota o aggiunge un evento su una pratica."""
+    """Push su un topic ntfy.sh per attività di collaborazione su una pratica.
+
+    Generica per topic: usata sia per notificare l'admin (topic globale
+    `NTFY_TOPIC` in `.env`, quando un esterno scrive nota/evento) sia per
+    notificare un singolo esterno sul proprio topic personale (v3.0 fase 5,
+    parte D — self-service in `/portale/impostazioni`), quando è l'admin ad
+    aggiornare una pratica assegnata."""
     if disabled or not (ntfy_topic and ntfy_server):
         return
     try:
@@ -353,9 +358,9 @@ def notify_admin_nuova_attivita(
             click_url=click_url,
         )
         if not ok:
-            logger.warning("Notifica push admin (collaborazione) fallita: %s", err)
+            logger.warning("Notifica push collaborazione fallita: %s", err)
     except Exception as exc:  # noqa: BLE001
-        logger.warning("Notifica push admin (collaborazione) fallita: %s", exc)
+        logger.warning("Notifica push collaborazione fallita: %s", exc)
 
 
 def notify_esterno_nuova_attivita(

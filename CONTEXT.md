@@ -1,6 +1,6 @@
 # LYS Workflow Hub — Contesto di sviluppo
 
-> Branch: **v2** · Versione: **3.3.0** (base: v1.0.4 / main)
+> Branch: **v2** · Versione: **3.4.0** (base: v1.0.4 / main)
 
 ---
 
@@ -540,7 +540,7 @@ banner SLA già esistente in home — non serve alcuno scheduler.
 ### `integrations/notifier.py` — funzioni pubbliche
 `send_push`/`send_email` erano `_send_push`/`_send_summary_email` (private,
 usate solo da `notify_batch`): rinominate pubbliche perché ora servono anche
-a `notify_admin_nuova_attivita`/`notify_esterno_nuova_attivita`, le due
+a `notify_push_nuova_attivita`/`notify_esterno_nuova_attivita`, le due
 funzioni "fire-and-forget" chiamate dalle route — **non sollevano mai**
 (try/except a monte + logging), perché una nota/evento è già salvato quando
 girano: un errore SMTP/ntfy non deve mai far fallire la richiesta HTTP che
@@ -555,6 +555,39 @@ fuori casa o un'email a un esterno con quel link non avrebbero funzionato.
 comportamento precedente (fallback LAN). `scripts/run_polling.py` è stato
 aggiornato per usare lo stesso helper (stesso problema, mai notato prima
 perché quei link erano cliccati solo da dentro la LAN finora).
+
+## Preferenze di notifica self-service [v3.0 fase 5, parte D]
+
+Motivazione: parte A manda **sempre** email all'esterno assegnato e **sempre**
+push all'admin sullo stesso topic ntfy globale — nessun modo per l'esterno di
+scegliere canale/silenziarsi, e niente push personale per l'esterno (solo
+l'admin aveva un topic ntfy configurato via `.env`).
+
+Pagina `/portale/impostazioni` (self-service, ogni utente modifica solo le
+proprie preferenze — `current_user.id` dalla sessione, mai un id passato dal
+client):
+- checkbox email on/off (default **on**, per non silenziare nessuno per
+  errore alla creazione dell'account)
+- checkbox push on/off (default **off** — richiede un topic personale)
+- campo testo `ntfy_topic`, validato con whitelist `^[A-Za-z0-9_-]{1,64}$`
+  (charset consigliato da ntfy.sh): un topic con spazi/caratteri strani non
+  farebbe fallire la request in modo rumoroso (`send_push` la costruisce
+  come `f"{server}/{topic}"` e il fallimento è inghiottito dal
+  try/except "mai bloccare la request" già esistente), l'utente si
+  ritroverebbe solo a non ricevere mai nulla senza capire perché.
+
+`UtentiRepository.set_notifiche()` rifiuta `push_enabled=True` con topic
+vuoto (stato incoerente che fallirebbe in silenzio). 3 nuove colonne su
+`utenti` (`notify_email_enabled` INTEGER DEFAULT 1, `notify_push_enabled`
+INTEGER DEFAULT 0, `ntfy_topic` TEXT DEFAULT ''), migrate con `ALTER TABLE`
+avvolta in try/except (stesso pattern di `auto_cortesia_repository.py`).
+
+`notify_admin_nuova_attivita` rinominata `notify_push_nuova_attivita`
+(era già generica per topic, solo il nome suggeriva "solo admin"): ora
+usata sia per il topic globale admin sia per il topic personale
+dell'esterno. `_notifica_esterni_assegnati` (routes.py) legge
+`u.notify_email_enabled`/`u.notify_push_enabled`/`u.ntfy_topic` per ogni
+assegnatario invece di mandare sempre email.
 
 ### Fase 5 parte B (non ancora costruita): reminder schedulati
 Reminder "il giorno prima" con lead time configurabile per evento, inviati
@@ -653,6 +686,7 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 | 3.1.0 | v2 | + Assegnazione pratiche fase 3: UI gestione utenti (`/utenti`), assegnazione pratiche many-to-many (`pratica_assegnazioni`), portale esterno di sola lettura (`/portale`), nav condizionale per ruolo |
 | 3.2.0 | v2 | + Note e calendario condivisi fase 4: thread note (`pratica_note`) e calendario (`pratica_eventi`) tra admin e collaboratori esterni, su `/pratiche/{numero}` e nuova `/portale/pratiche/{numero}` (dettaglio completo esterno: WinCar + note + calendario), fix redirect post-login esterno (`/portale` invece di `/`, admin-only) |
 | 3.3.0 | v2 | + Notifiche collaborazione fase 5 (parte A+C): push admin/email esterno in tempo reale su nuova nota/evento, widget "Prossimi appuntamenti" su home e `/portale`, `Settings.public_url()`/`PUBLIC_BASE_URL` per link corretti fuori LAN nelle notifiche |
+| 3.4.0 | v2 | + Notifiche self-service fase 5 (parte D): pagina `/portale/impostazioni`, ogni esterno sceglie email on/off e push on/off con proprio topic ntfy personale, `notify_admin_nuova_attivita` rinominata `notify_push_nuova_attivita` (generica per topic) |
 
 ---
 
@@ -673,6 +707,8 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
   collaborazione + prossimi appuntamenti". Ricorda di impostare
   `PUBLIC_BASE_URL` in `.env` prod perché i link nelle notifiche funzionino
   fuori LAN.
+- **v3.0 fase 5 parte D** completata — vedi sezione "Preferenze di notifica
+  self-service".
 - **v3.0 fase 5 parte B** (non ancora costruita): reminder schedulati "il
   giorno prima" (es. "domani c'è una perizia"), richiede una nuova voce
   Task Scheduler sul PC carrozzeria.
