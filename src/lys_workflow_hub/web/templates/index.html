@@ -93,7 +93,7 @@
         <tbody>
           {% for r in results %}
           <tr>
-            <td class="num">{{ r.numero }}</td>
+            <td class="num"><a href="/pratiche/{{ r.numero }}">{{ r.numero }}</a></td>
             <td>{{ r.cliente_nominativo or "—" }}</td>
             <td><code>{{ r.targa or "—" }}</code></td>
             <td>
@@ -135,7 +135,7 @@
         <tbody>
           {% for r in ultime_pratiche %}
           <tr>
-            <td class="num">{{ r.numero }}</td>
+            <td class="num"><a href="/pratiche/{{ r.numero }}">{{ r.numero }}</a></td>
             <td>{{ r.cliente_nominativo or "—" }}</td>
             <td><code>{{ r.targa or "—" }}</code></td>
             <td>

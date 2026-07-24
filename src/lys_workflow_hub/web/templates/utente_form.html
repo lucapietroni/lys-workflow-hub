@@ -75,8 +75,11 @@
           {% if utente %}Nuova password{% else %}Password{% endif %}
           {% if not utente %} <span class="req">*</span>{% endif %}
         </label>
-        <input id="f_password" name="password" type="password" autocomplete="new-password"
-               {% if not utente %}required{% endif %} minlength="8" />
+        <div class="password-field">
+          <input id="f_password" name="password" type="password" autocomplete="new-password"
+                 {% if not utente %}required{% endif %} minlength="8" />
+          <button type="button" class="password-toggle" data-target="f_password" aria-label="Mostra password" tabindex="-1">👁</button>
+        </div>
         <small class="hint">
           {% if utente %}
             Lascia vuoto per non cambiarla. Minimo 8 caratteri.

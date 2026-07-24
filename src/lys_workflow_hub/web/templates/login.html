@@ -47,7 +47,10 @@
 
           <div class="form-field">
             <label for="password">Password</label>
-            <input type="password" id="password" name="password" required autocomplete="current-password" />
+            <div class="password-field">
+              <input type="password" id="password" name="password" required autocomplete="current-password" />
+              <button type="button" class="password-toggle" data-target="password" aria-label="Mostra password" tabindex="-1">👁</button>
+            </div>
           </div>
 
           <button type="submit" class="btn btn-gold" style="width: 100%; margin-top: 12px;">
@@ -56,5 +59,18 @@
         </form>
       </div>
     </div>
+
+    <script>
+      document.querySelectorAll(".password-toggle").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var input = document.getElementById(btn.getAttribute("data-target"));
+          if (!input) return;
+          var showing = input.type === "text";
+          input.type = showing ? "password" : "text";
+          btn.textContent = showing ? "👁" : "🙈";
+          btn.setAttribute("aria-label", showing ? "Mostra password" : "Nascondi password");
+        });
+      });
+    </script>
   </body>
 </html>

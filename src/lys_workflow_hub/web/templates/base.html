@@ -71,6 +71,16 @@
           }
         });
       })();
+      document.querySelectorAll(".password-toggle").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var input = document.getElementById(btn.getAttribute("data-target"));
+          if (!input) return;
+          var showing = input.type === "text";
+          input.type = showing ? "password" : "text";
+          btn.textContent = showing ? "👁" : "🙈";
+          btn.setAttribute("aria-label", showing ? "Mostra password" : "Nascondi password");
+        });
+      });
     </script>
   </body>
 </html>

@@ -231,3 +231,84 @@ def test_admin_nota_manda_push_se_esterno_ha_attivato(admin_client, authenticate
         assert resp.status_code == 303
         mock_push.assert_called_once()
         assert mock_push.call_args.kwargs["ntfy_topic"] == "lys-agenzia-9f3a"
+
+
+# --------------------------------------------------------------------------- #
+#  Notifica su nuova assegnazione (POST /pratiche/{numero}/assegna, v3.0 fase 6)
+# --------------------------------------------------------------------------- #
+
+
+def test_assegna_pratica_manda_push_secondo_preferenze(admin_client, authenticated_app) -> None:
+    client, settings = admin_client
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    authenticated_app.set_notifiche(
+        esterno.id,
+        notify_email_enabled=True,
+        notify_push_enabled=True,
+        ntfy_topic="lys-agenzia-9f3a",
+    )
+
+    with patch("lys_workflow_hub.web.routes.notify_esterno_nuova_attivita") as mock_email, \
+         patch("lys_workflow_hub.web.routes.notify_push_nuova_attivita") as mock_push:
+        resp = client.post(
+            "/pratiche/766/assegna",
+            data={"utente_id": esterno.id, "csrf_token": get_csrf(client, "/pratiche/766")},
+        )
+        assert resp.status_code == 303
+        mock_email.assert_called_once()
+        assert mock_email.call_args.kwargs["recipient"] == "agenzia@esempio.it"
+        mock_push.assert_called_once()
+        assert mock_push.call_args.kwargs["ntfy_topic"] == "lys-agenzia-9f3a"
+        assert "766" in mock_push.call_args.kwargs["titolo"]
+
+
+def test_assegna_pratica_non_manda_se_preferenze_disattivate(
+    admin_client, authenticated_app
+) -> None:
+    client, settings = admin_client
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    authenticated_app.set_notifiche(
+        esterno.id, notify_email_enabled=False, notify_push_enabled=False, ntfy_topic=""
+    )
+
+    with patch("lys_workflow_hub.web.routes.notify_esterno_nuova_attivita") as mock_email, \
+         patch("lys_workflow_hub.web.routes.notify_push_nuova_attivita") as mock_push:
+        resp = client.post(
+            "/pratiche/766/assegna",
+            data={"utente_id": esterno.id, "csrf_token": get_csrf(client, "/pratiche/766")},
+        )
+        assert resp.status_code == 303
+        mock_email.assert_not_called()
+        mock_push.assert_not_called()
+
+
+def test_assegna_pratica_due_volte_non_duplica_notifica(
+    admin_client, authenticated_app
+) -> None:
+    """Riassegnare lo stesso utente (idempotente in PraticaAssegnazioniRepository)
+    non deve rimandare la notifica la seconda volta."""
+    client, settings = admin_client
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    authenticated_app.set_notifiche(
+        esterno.id,
+        notify_email_enabled=True,
+        notify_push_enabled=True,
+        ntfy_topic="lys-agenzia-9f3a",
+    )
+
+    with patch("lys_workflow_hub.web.routes.notify_esterno_nuova_attivita") as mock_email:
+        client.post(
+            "/pratiche/766/assegna",
+            data={"utente_id": esterno.id, "csrf_token": get_csrf(client, "/pratiche/766")},
+        )
+        client.post(
+            "/pratiche/766/assegna",
+            data={"utente_id": esterno.id, "csrf_token": get_csrf(client, "/pratiche/766")},
+        )
+        mock_email.assert_called_once()

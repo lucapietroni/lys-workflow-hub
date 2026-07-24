@@ -88,16 +88,20 @@ class PraticaAssegnazioniRepository:
 
     def assegna(
         self, pratica_numero: int, utente_id: int, assegnato_da: int | None
-    ) -> None:
-        """Idempotente: assegnare due volte lo stesso utente non duplica la riga."""
+    ) -> bool:
+        """Idempotente: assegnare due volte lo stesso utente non duplica la
+        riga. Ritorna True solo se questa chiamata ha creato una nuova
+        assegnazione (utile per notificare l'utente una volta sola, non ad
+        ogni resubmit)."""
         now = datetime.now().isoformat(timespec="seconds")
         with self._connect() as conn:
-            conn.execute(
+            cur = conn.execute(
                 "INSERT OR IGNORE INTO pratica_assegnazioni "
                 "(pratica_numero, utente_id, assegnato_da, assegnato_at) "
                 "VALUES (?, ?, ?, ?)",
                 (int(pratica_numero), int(utente_id), assegnato_da, now),
             )
+            return cur.rowcount > 0
 
     def rimuovi(self, pratica_numero: int, utente_id: int) -> bool:
         with self._connect() as conn:

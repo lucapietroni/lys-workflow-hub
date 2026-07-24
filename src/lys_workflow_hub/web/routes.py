@@ -572,15 +572,66 @@ def pratica_elimina_nota(
     return RedirectResponse(url=f"/pratiche/{numero}#note", status_code=303)
 
 
+def _notifica_esterno_assegnazione(
+    request: Request, settings: Settings, numero: int, utente_id: int
+) -> None:
+    """Notifica il singolo utente appena assegnato a una pratica, secondo le
+    sue preferenze self-service (v3.0 fase 6 — vedi `/portale/impostazioni`).
+
+    A differenza di `_notifica_esterni_assegnati` (che notifica TUTTI gli
+    assegnati correnti su nota/evento/stato), qui l'evento riguarda un solo
+    utente: notificare anche gli altri già assegnati non avrebbe senso.
+    """
+    try:
+        utenti_repo: UtentiRepository = request.app.state.utenti_repo
+        u = utenti_repo.get(utente_id)
+        if u is None or not u.attivo:
+            return
+        subject = f"[LYS Hub] Ti è stata assegnata la pratica {numero}"
+        body_text = (
+            f"Ti è stata assegnata la pratica {numero}.\n\n"
+            f"Apri la pratica: {settings.public_url(f'/portale/pratiche/{numero}')}"
+        )
+        if u.notify_email_enabled and u.email:
+            notify_esterno_nuova_attivita(
+                smtp_host=settings.smtp_host,
+                smtp_port=settings.smtp_port,
+                smtp_user=settings.smtp_user,
+                smtp_password=settings.smtp_password,
+                smtp_sender=settings.smtp_from,
+                recipient=u.email,
+                subject=subject,
+                body_text=body_text,
+                smtp_tls=settings.smtp_tls,
+                disabled=settings.notify_disabled,
+            )
+        if u.notify_push_enabled and u.ntfy_topic:
+            notify_push_nuova_attivita(
+                ntfy_server=settings.ntfy_server,
+                ntfy_topic=u.ntfy_topic,
+                titolo=subject,
+                messaggio=body_text,
+                disabled=settings.notify_disabled,
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "Impossibile notificare utente %s per assegnazione pratica %s: %s",
+            utente_id, numero, exc,
+        )
+
+
 @router.post("/pratiche/{numero}/assegna")
 def pratica_assegna(
     numero: int,
+    request: Request,
     utente_id: int = Form(...),
     admin: Utente = Depends(require_admin),
     settings: Settings = Depends(get_app_settings),
 ) -> RedirectResponse:
     repo = PraticaAssegnazioniRepository(db_path=settings.app_db_path)
-    repo.assegna(numero, utente_id, assegnato_da=admin.id)
+    nuova_assegnazione = repo.assegna(numero, utente_id, assegnato_da=admin.id)
+    if nuova_assegnazione:
+        _notifica_esterno_assegnazione(request, settings, numero, utente_id)
     return RedirectResponse(url=f"/pratiche/{numero}#collaboratori", status_code=303)
 
 
