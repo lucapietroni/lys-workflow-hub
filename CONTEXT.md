@@ -1,6 +1,6 @@
 # LYS Workflow Hub — Contesto di sviluppo
 
-> Branch: **v2** · Versione: **3.8.0** (base: v1.0.4 / main)
+> Branch: **v2** · Versione: **3.9.0** (base: v1.0.4 / main)
 
 ---
 
@@ -885,6 +885,7 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 | 3.7.1 | v2 | Fix: un esterno con sessione già valida che apriva "/" (bookmark, home browser) riceveva il 403 JSON grezzo di `require_admin` invece del redirect a `/portale` — bug reale segnalato in produzione, `AuthMiddleware` ora tratta "/" come caso speciale |
 | 3.7.2 | v2 | Fix: `Settings.public_url()` senza `PUBLIC_BASE_URL` impostato produceva link tipo `http://0.0.0.0:8000/...` nelle notifiche push (APP_HOST=0.0.0.0 è un indirizzo di bind, non navigabile) — bug reale segnalato in produzione, fallback ora usa `localhost` in quel caso |
 | 3.8.0 | v2 | + Fase 5 parte I: widget "Prossimi appuntamenti" mostra cliente/targa oltre al titolo evento. UI responsive: nav scrollabile invece di rompere il layout, tabelle scrollabili, form inline vanno a capo su tablet/telefono |
+| 3.9.0 | v2 | Elenco pratiche di `/portale` riallineato allo stile della home admin (`results-table`: colonne N./Cliente/Targa/Veicolo/Data sinistro/Stato + link "Apri →"). Fix: campo Veicolo mostrava letteralmente "None" quando marca o modello mancava (bug propagato da `index.html`, corretto in entrambi i template) |
 
 ---
 

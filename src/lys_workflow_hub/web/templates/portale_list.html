@@ -39,14 +39,16 @@
       Nessuna pratica ti è ancora stata assegnata. Contatta la carrozzeria.
     </p>
   {% else %}
-    <table class="table">
+    <table class="results-table">
       <thead>
         <tr>
-          <th>N. pratica</th>
+          <th class="num">N.</th>
           <th>Cliente</th>
+          <th>Targa</th>
           <th>Veicolo</th>
           <th>Data sinistro</th>
           <th>Stato</th>
+          <th class="actions"></th>
         </tr>
       </thead>
       <tbody>
@@ -54,14 +56,16 @@
         {% set stato_obj = stati_pratiche.get(p.numero) %}
         {% set stato_corrente = stato_obj.stato if stato_obj else "aperta" %}
         <tr class="{{ 'row-chiusa' if stato_corrente == 'chiusa' else '' }}">
-          <td><strong><a href="/portale/pratiche/{{ p.numero }}">{{ p.numero }}</a></strong></td>
+          <td class="num">{{ p.numero }}</td>
           <td>{{ p.cliente.nominativo or "—" }}</td>
+          <td><code>{{ p.veicolo.targa or "—" }}</code></td>
           <td>
-            {{ p.veicolo.targa or "—" }}
-            {% if p.veicolo.marca %}<span class="meta">({{ p.veicolo.marca }} {{ p.veicolo.modello or "" }})</span>{% endif %}
+            {%- set marca_modello = [(p.veicolo.marca or ""), (p.veicolo.modello or "")]|join(" ")|trim -%}
+            {{ marca_modello or "—" }}
           </td>
           <td>{{ p.sinistro.data.strftime("%d/%m/%Y") if p.sinistro.data else "—" }}</td>
           <td><span class="badge badge-stato badge-{{ stato_corrente }}">{{ stato_labels.get(stato_corrente, stato_corrente) }}</span></td>
+          <td class="actions"><a class="btn-link" href="/portale/pratiche/{{ p.numero }}">Apri →</a></td>
         </tr>
         {% endfor %}
       </tbody>

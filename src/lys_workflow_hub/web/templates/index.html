@@ -97,9 +97,8 @@
             <td>{{ r.cliente_nominativo or "—" }}</td>
             <td><code>{{ r.targa or "—" }}</code></td>
             <td>
-              {%- if r.marca or r.modello -%}
-                {{ (r.marca ~ " " ~ r.modello)|trim }}
-              {%- else -%}—{%- endif -%}
+              {%- set marca_modello = [(r.marca or ""), (r.modello or "")]|join(" ")|trim -%}
+              {{ marca_modello or "—" }}
             </td>
             <td>{{ r.data_sinistro.strftime("%d/%m/%Y") if r.data_sinistro else "—" }}</td>
             <td class="actions"><a class="btn-link" href="/pratiche/{{ r.numero }}">Apri →</a></td>
@@ -140,9 +139,8 @@
             <td>{{ r.cliente_nominativo or "—" }}</td>
             <td><code>{{ r.targa or "—" }}</code></td>
             <td>
-              {%- if r.marca or r.modello -%}
-                {{ (r.marca ~ " " ~ r.modello)|trim }}
-              {%- else -%}—{%- endif -%}
+              {%- set marca_modello = [(r.marca or ""), (r.modello or "")]|join(" ")|trim -%}
+              {{ marca_modello or "—" }}
             </td>
             <td>{{ r.data_sinistro.strftime("%d/%m/%Y") if r.data_sinistro else "—" }}</td>
             <td class="actions"><a class="btn-link" href="/pratiche/{{ r.numero }}">Apri →</a></td>
