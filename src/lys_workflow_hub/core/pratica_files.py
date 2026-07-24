@@ -20,9 +20,10 @@ shim/re-export per non rompere import esistenti.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Iterable
+from uuid import uuid4
 
 
 # Estensioni considerate immagini del danno.
@@ -117,6 +118,85 @@ def cartella_allegati(archivio_root: Path, numero_pratica: int) -> Path:
     )
 
 
+# Estensioni ammesse per l'upload documenti (v3.0 fase 6): foto + formati
+# ufficio comuni. Niente eseguibili/script — questi file finiscono nella
+# cartella Pubblici/Allegati che WinCar mostra direttamente allo staff.
+_ALLOWED_DOC_EXT = _FOTO_EXT | {
+    ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".odt", ".ods", ".txt", ".msg", ".eml",
+}
+
+
+class UploadRifiutato(ValueError):
+    """File caricato dall'esterno non valido (estensione, dimensione, nome)."""
+
+
+def _sanitize_filename(nome_originale: str) -> str:
+    """Tiene solo il nome file (niente path traversal) e lo valida."""
+    nome = Path(nome_originale.strip()).name.strip()
+    if not nome or nome in {".", ".."}:
+        raise UploadRifiutato("Nome file non valido.")
+    return nome
+
+
+def save_upload(
+    *,
+    archivio_root: Path,
+    numero_pratica: int,
+    categoria: str,
+    filename: str,
+    raw: bytes,
+    max_bytes: int = 20 * 1024 * 1024,
+) -> Path:
+    """Salva un file caricato dal portale esterno nella cartella WinCar
+    della pratica (``Pubblici/Foto`` o ``Pubblici/Allegati``, a seconda di
+    ``categoria``), cosi' diventa visibile anche in WinCar come i file
+    caricati dall'admin.
+
+    Il nome file salvato è sempre ``<nome>_<timestamp>.<ext>`` per non
+    sovrascrivere mai un file esistente (a differenza di
+    ``cessione_credito/archive.py`` che usa un nome fisso + backup-rename,
+    qui i nomi originali sono arbitrari e potrebbero ripetersi tra upload
+    diversi dello stesso utente).
+    """
+    if not raw:
+        raise UploadRifiutato("File vuoto.")
+    if len(raw) > max_bytes:
+        raise UploadRifiutato("File troppo grande (max 20 MB).")
+
+    nome = _sanitize_filename(filename)
+    ext = Path(nome).suffix.lower()
+
+    if categoria == "foto":
+        if ext not in _FOTO_EXT:
+            raise UploadRifiutato(f"Formato immagine non supportato: {ext or 'sconosciuto'}.")
+        target_dir = cartella_foto(archivio_root, numero_pratica)
+    elif categoria == "documento":
+        if ext not in _ALLOWED_DOC_EXT:
+            raise UploadRifiutato(f"Formato file non supportato: {ext or 'sconosciuto'}.")
+        target_dir = cartella_allegati(archivio_root, numero_pratica)
+    else:
+        raise ValueError(f"Categoria upload non valida: {categoria!r}")
+
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    stem = Path(nome).stem
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    target = target_dir / f"{stem}_{timestamp}{ext}"
+    # Apertura esclusiva ("xb") invece di exists()+write_bytes(): due upload
+    # concorrenti con lo stesso nome file nello stesso secondo altrimenti
+    # potrebbero superare entrambi il controllo di esistenza prima che uno
+    # dei due scriva, con sovrascrittura silenziosa (TOCTOU).
+    while True:
+        try:
+            with target.open("xb") as fh:
+                fh.write(raw)
+            break
+        except FileExistsError:
+            target = target_dir / f"{stem}_{timestamp}-{uuid4().hex[:6]}{ext}"
+
+    return target
+
+
 def _classifica_documento(file_path: Path) -> str:
     ext = file_path.suffix.lower()
     name = file_path.name.lower()
@@ -194,8 +274,10 @@ def filtra_per_nome(
 __all__ = [
     "Allegato",
     "AllegatiPratica",
+    "UploadRifiutato",
     "cartella_foto",
     "cartella_allegati",
     "scan",
     "filtra_per_nome",
+    "save_upload",
 ]

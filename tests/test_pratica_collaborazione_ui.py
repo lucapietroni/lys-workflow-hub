@@ -318,6 +318,42 @@ def test_portale_puo_impostare_stato_periziata(authenticated_app, portale_setup)
     assert stato_repo.get_stato(766).stato == "periziata"
 
 
+def test_portale_dropdown_stato_include_in_trattativa(authenticated_app, portale_setup) -> None:
+    assegnazioni_repo, _ = portale_setup
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
+
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, "agenzia@esempio.it", "password1234")
+
+    resp = client.get("/portale/pratiche/766")
+    assert resp.status_code == 200
+    assert '<option value="in_trattativa"' in resp.text
+    assert "In trattativa" in resp.text
+
+
+def test_portale_puo_impostare_stato_in_trattativa(authenticated_app, portale_setup) -> None:
+    assegnazioni_repo, settings = portale_setup
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
+
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, "agenzia@esempio.it", "password1234")
+
+    resp = client.post(
+        "/portale/pratiche/766/stato",
+        data={"stato": "in_trattativa", "csrf_token": get_csrf(client, "/portale/pratiche/766")},
+    )
+    assert resp.status_code == 303
+
+    stato_repo = PraticaStatoRepository(db_path=settings.app_db_path)
+    assert stato_repo.get_stato(766).stato == "in_trattativa"
+
+
 def test_portale_cambia_stato_rifiuta_valore_non_valido(authenticated_app, portale_setup) -> None:
     assegnazioni_repo, _ = portale_setup
     esterno = authenticated_app.create(
@@ -444,3 +480,131 @@ def test_portale_calendario_mostra_solo_eventi_pratiche_assegnate(
     assert resp.status_code == 200
     assert "Mia perizia" in resp.text
     assert "Perizia altrui" not in resp.text
+
+
+# --------------------------------------------------------------------------- #
+#  Upload foto/documenti dal portale (v3.0 fase 6)
+# --------------------------------------------------------------------------- #
+
+
+def test_portale_upload_foto_salva_nella_cartella_wincar(authenticated_app, portale_setup) -> None:
+    assegnazioni_repo, settings = portale_setup
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
+
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, "agenzia@esempio.it", "password1234")
+
+    resp = client.post(
+        "/portale/pratiche/766/foto",
+        data={"csrf_token": get_csrf(client, "/portale/pratiche/766")},
+        files={"files": ("danno.jpg", b"fake-jpeg-bytes", "image/jpeg")},
+    )
+    assert resp.status_code == 303
+    assert resp.headers["location"].startswith("/portale/pratiche/766?upload_ok=1")
+
+    foto_dir = settings.wincar_archivio / "Pratiche" / "766" / "Pubblici" / "Foto"
+    salvati = list(foto_dir.glob("danno_*.jpg"))
+    assert len(salvati) == 1
+    assert salvati[0].read_bytes() == b"fake-jpeg-bytes"
+
+
+def test_portale_upload_documento_salva_negli_allegati(authenticated_app, portale_setup) -> None:
+    assegnazioni_repo, settings = portale_setup
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
+
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, "agenzia@esempio.it", "password1234")
+
+    resp = client.post(
+        "/portale/pratiche/766/documenti",
+        data={"csrf_token": get_csrf(client, "/portale/pratiche/766")},
+        files={"files": ("preventivo.pdf", b"%PDF-1.4 fake", "application/pdf")},
+    )
+    assert resp.status_code == 303
+    assert resp.headers["location"].startswith("/portale/pratiche/766?upload_ok=1")
+
+    allegati_dir = settings.wincar_archivio / "Pratiche" / "766" / "Pubblici" / "Allegati"
+    salvati = list(allegati_dir.glob("preventivo_*.pdf"))
+    assert len(salvati) == 1
+
+
+def test_portale_upload_rifiuta_formato_non_supportato(authenticated_app, portale_setup) -> None:
+    assegnazioni_repo, settings = portale_setup
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
+
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, "agenzia@esempio.it", "password1234")
+
+    resp = client.post(
+        "/portale/pratiche/766/documenti",
+        data={"csrf_token": get_csrf(client, "/portale/pratiche/766")},
+        files={"files": ("virus.exe", b"MZ-fake-binary", "application/octet-stream")},
+    )
+    assert resp.status_code == 303
+    assert "errori=1" in resp.headers["location"]
+
+    allegati_dir = settings.wincar_archivio / "Pratiche" / "766" / "Pubblici" / "Allegati"
+    assert not allegati_dir.exists() or list(allegati_dir.iterdir()) == []
+
+
+def test_portale_non_assegnato_non_puo_uploadare_foto(authenticated_app, portale_setup) -> None:
+    authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, "agenzia@esempio.it", "password1234")
+
+    resp = client.post(
+        "/portale/pratiche/766/foto",
+        data={"csrf_token": get_csrf(client, "/portale")},
+        files={"files": ("danno.jpg", b"fake-jpeg-bytes", "image/jpeg")},
+    )
+    assert resp.status_code == 404
+
+
+def test_portale_upload_rifiuta_troppi_file_in_una_richiesta(authenticated_app, portale_setup) -> None:
+    assegnazioni_repo, settings = portale_setup
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
+
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, "agenzia@esempio.it", "password1234")
+
+    troppi_file = [
+        ("files", (f"foto{i}.jpg", b"fake-jpeg-bytes", "image/jpeg")) for i in range(21)
+    ]
+    resp = client.post(
+        "/portale/pratiche/766/foto",
+        data={"csrf_token": get_csrf(client, "/portale/pratiche/766")},
+        files=troppi_file,
+    )
+    assert resp.status_code == 400
+
+
+def test_portale_upload_richiede_csrf_valido(authenticated_app, portale_setup) -> None:
+    assegnazioni_repo, settings = portale_setup
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
+
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, "agenzia@esempio.it", "password1234")
+
+    resp = client.post(
+        "/portale/pratiche/766/foto",
+        data={"csrf_token": "token-invalido"},
+        files={"files": ("danno.jpg", b"fake-jpeg-bytes", "image/jpeg")},
+    )
+    assert resp.status_code == 403

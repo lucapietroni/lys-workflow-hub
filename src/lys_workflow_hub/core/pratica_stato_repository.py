@@ -36,6 +36,7 @@ STATO_APERTA = "aperta"
 STATO_IN_GESTIONE = "in_gestione"
 STATO_PERITO_NOMINATO = "perito_nominato"
 STATO_PERIZIATA = "periziata"
+STATO_IN_TRATTATIVA = "in_trattativa"
 STATO_IN_LIQUIDAZIONE = "in_liquidazione"
 STATO_CHIUSA = "chiusa"
 
@@ -44,6 +45,7 @@ STATI = (
     STATO_IN_GESTIONE,
     STATO_PERITO_NOMINATO,
     STATO_PERIZIATA,
+    STATO_IN_TRATTATIVA,
     STATO_IN_LIQUIDAZIONE,
     STATO_CHIUSA,
 )
@@ -53,6 +55,7 @@ STATO_LABELS = {
     STATO_IN_GESTIONE: "In gestione",
     STATO_PERITO_NOMINATO: "Perito nominato",
     STATO_PERIZIATA: "Periziata",
+    STATO_IN_TRATTATIVA: "In trattativa",
     STATO_IN_LIQUIDAZIONE: "In liquidazione",
     STATO_CHIUSA: "Chiusa",
 }
@@ -63,6 +66,7 @@ STATO_BADGE_CLASS = {
     STATO_IN_GESTIONE: "badge-yellow",
     STATO_PERITO_NOMINATO: "badge-orange",
     STATO_PERIZIATA: "badge-teal",
+    STATO_IN_TRATTATIVA: "badge-pink",
     STATO_IN_LIQUIDAZIONE: "badge-purple",
     STATO_CHIUSA: "badge-gray",
 }

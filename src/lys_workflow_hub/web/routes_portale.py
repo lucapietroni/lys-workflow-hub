@@ -19,7 +19,7 @@ from datetime import date
 from pathlib import Path
 from typing import Callable
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
@@ -29,6 +29,8 @@ from lys_workflow_hub.core.pratica_assegnazioni_repository import (
     PraticaAssegnazioniRepository,
 )
 from lys_workflow_hub.core.pratica_eventi_repository import PraticaEventiRepository
+from lys_workflow_hub.core.pratica_files import UploadRifiutato
+from lys_workflow_hub.core.pratica_files import save_upload as save_pratica_upload
 from lys_workflow_hub.core.pratica_files import scan as scan_allegati
 from lys_workflow_hub.core.pratica_note_repository import PraticaNoteRepository
 from lys_workflow_hub.core.pratica_stato_repository import (
@@ -39,7 +41,7 @@ from lys_workflow_hub.core.pratica_stato_repository import (
 from lys_workflow_hub.core.utenti_repository import Utente, UtentiRepository
 from lys_workflow_hub.core.wincar_repository import WinCarRepository
 from lys_workflow_hub.integrations.notifier import notify_push_nuova_attivita
-from lys_workflow_hub.web.auth import get_current_user, template_context_processor
+from lys_workflow_hub.web.auth import get_current_user, template_context_processor, verify_csrf
 from lys_workflow_hub.web.routes import (
     _allegati_con_url,
     _arricchisci_eventi_con_pratica,
@@ -59,6 +61,11 @@ templates = Jinja2Templates(
 )
 
 router = APIRouter(tags=["portale"])
+
+# Limite file per richiesta di upload foto/documenti (v3.0 fase 6): ogni file
+# può arrivare a 20MB (vedi `save_upload`), senza questo cap una singola
+# richiesta multipart potrebbe far leggere in RAM decine di file di fila.
+_MAX_FILES_PER_UPLOAD = 20
 
 
 def get_assegnazioni_repo(
@@ -186,6 +193,8 @@ def _require_user(current_user: Utente | None) -> Utente:
 def portale_pratica_detail(
     numero: int,
     request: Request,
+    upload_ok: int = 0,
+    errori: int = 0,
     current_user: Utente | None = Depends(get_current_user),
     assegnazioni_repo: PraticaAssegnazioniRepository = Depends(get_assegnazioni_repo),
     wincar_repo: WinCarRepository = Depends(get_wincar_repo),
@@ -198,7 +207,13 @@ def portale_pratica_detail(
     if pratica is None:
         raise HTTPException(404, "Pratica non trovata.")
 
-    context = {"version": __version__, "pratica": pratica, "numero": numero}
+    context = {
+        "version": __version__,
+        "pratica": pratica,
+        "numero": numero,
+        "upload_ok": upload_ok,
+        "upload_errori": errori,
+    }
 
     try:
         allegati = scan_allegati(settings.wincar_archivio, numero)
@@ -278,6 +293,101 @@ def _notifica_admin(
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("Impossibile notificare admin: %s", exc)
+
+
+def _upload_pratica(
+    numero: int,
+    categoria: str,
+    ancora: str,
+    files: list[UploadFile],
+    request: Request,
+    csrf_token: str,
+    current_user: Utente | None,
+    assegnazioni_repo: PraticaAssegnazioniRepository,
+    settings: Settings,
+) -> RedirectResponse:
+    """Comune a upload foto/documenti (v3.0 fase 6): CSRF esplicito (multipart,
+    escluso dal middleware — vedi `web/auth.py`) verificato per primo come nel
+    resto del codebase (es. `cessione_upload_signed`), poi verifica accesso,
+    poi salva ogni file valido continuando sugli altri se uno fallisce, poi
+    notifica l'admin in un unico messaggio riassuntivo."""
+    if not verify_csrf(request, csrf_token):
+        raise HTTPException(403, "Token di sicurezza mancante o scaduto. Ricarica la pagina e riprova.")
+    utente = _require_user(current_user)
+    _verifica_accesso(utente, numero, assegnazioni_repo)
+
+    if len(files) > _MAX_FILES_PER_UPLOAD:
+        raise HTTPException(400, f"Troppi file in un'unica richiesta (max {_MAX_FILES_PER_UPLOAD}).")
+
+    salvati: list[str] = []
+    errori: list[str] = []
+    for f in files:
+        if not f.filename:
+            continue
+        try:
+            raw = f.file.read()
+            save_pratica_upload(
+                archivio_root=settings.wincar_archivio,
+                numero_pratica=numero,
+                categoria=categoria,
+                filename=f.filename,
+                raw=raw,
+            )
+            salvati.append(f.filename)
+        except UploadRifiutato as exc:
+            errori.append(f"{f.filename}: {exc}")
+        except OSError as exc:
+            logger.exception("Portale: errore filesystem upload %s pratica %s", categoria, numero)
+            errori.append(f"{f.filename}: errore di filesystem ({exc})")
+
+    if salvati:
+        _notifica_admin(
+            settings,
+            costruisci_messaggio=lambda: (
+                f"Nuovi file · Pratica {numero}",
+                f"{utente.nome or utente.email} ha caricato {len(salvati)} file "
+                f"({categoria}): {', '.join(salvati)}",
+                settings.public_url(f"/pratiche/{numero}#{ancora}"),
+            ),
+        )
+
+    esito = "&errori=" + str(len(errori)) if errori else ""
+    return RedirectResponse(
+        url=f"/portale/pratiche/{numero}?upload_ok={len(salvati)}{esito}#{ancora}",
+        status_code=303,
+    )
+
+
+@router.post("/portale/pratiche/{numero}/foto")
+def portale_upload_foto(
+    numero: int,
+    request: Request,
+    files: list[UploadFile] = File(...),
+    csrf_token: str = Form(""),
+    current_user: Utente | None = Depends(get_current_user),
+    assegnazioni_repo: PraticaAssegnazioniRepository = Depends(get_assegnazioni_repo),
+    settings: Settings = Depends(get_portale_settings),
+) -> RedirectResponse:
+    return _upload_pratica(
+        numero, "foto", "foto", files, request, csrf_token,
+        current_user, assegnazioni_repo, settings,
+    )
+
+
+@router.post("/portale/pratiche/{numero}/documenti")
+def portale_upload_documento(
+    numero: int,
+    request: Request,
+    files: list[UploadFile] = File(...),
+    csrf_token: str = Form(""),
+    current_user: Utente | None = Depends(get_current_user),
+    assegnazioni_repo: PraticaAssegnazioniRepository = Depends(get_assegnazioni_repo),
+    settings: Settings = Depends(get_portale_settings),
+) -> RedirectResponse:
+    return _upload_pratica(
+        numero, "documento", "documenti", files, request, csrf_token,
+        current_user, assegnazioni_repo, settings,
+    )
 
 
 @router.post("/portale/pratiche/{numero}/note")
