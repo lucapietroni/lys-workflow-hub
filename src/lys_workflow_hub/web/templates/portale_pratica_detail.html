@@ -237,9 +237,45 @@
   {% endif %}
   <form method="post" action="/portale/pratiche/{{ pratica.numero }}/foto" enctype="multipart/form-data" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:12px;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-    <input type="file" name="files" accept="image/*" multiple required />
+    <input type="file" id="foto-input" name="files" accept="image/*" multiple required />
     <button type="submit" class="btn btn-primary">Upload</button>
   </form>
+  <script>
+    // Scatto foto diretto dalla fotocamera — solo dentro l'app Capacitor
+    // (no-op da browser: window.Capacitor non esiste). L'input file esistente
+    // resta invariato (galleria/multi-select restano disponibili): il tasto
+    // aggiunge solo un secondo modo di popolarlo, via @capacitor/camera invece
+    // che il picker di sistema, iniettando il risultato con DataTransfer così
+    // il submit del form (e la validazione/CSRF lato server) non cambiano.
+    if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
+      document.addEventListener("DOMContentLoaded", function () {
+        var fileInput = document.getElementById("foto-input");
+        if (!fileInput) return;
+        var btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "btn";
+        btn.textContent = "Scatta foto";
+        fileInput.insertAdjacentElement("afterend", btn);
+        btn.addEventListener("click", async function () {
+          try {
+            var Camera = window.Capacitor.Plugins.Camera;
+            var photo = await Camera.getPhoto({
+              resultType: "uri",
+              source: "CAMERA",
+              quality: 85,
+            });
+            var blob = await (await fetch(photo.webPath)).blob();
+            var file = new File([blob], "foto-" + Date.now() + ".jpg", { type: "image/jpeg" });
+            var dt = new DataTransfer();
+            dt.items.add(file);
+            fileInput.files = dt.files;
+          } catch (e) {
+            console.error("Camera capture failed", e);
+          }
+        });
+      });
+    }
+  </script>
 </section>
 
 <section class="card" id="documenti">
