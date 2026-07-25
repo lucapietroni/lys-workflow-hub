@@ -1,6 +1,6 @@
 {
   "appId": "it.lysauto.workflowhub",
-  "appName": "LYS Workflow Hub",
+  "appName": "LYSApp",
   "webDir": "www",
   "server": {
     "url": "https://hub.lysauto.it/portale",

@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">LYS Workflow Hub</string>
-    <string name="title_activity_main">LYS Workflow Hub</string>
+    <string name="app_name">LYSApp</string>
+    <string name="title_activity_main">LYSApp</string>
     <string name="package_name">it.lysauto.workflowhub</string>
     <string name="custom_url_scheme">it.lysauto.workflowhub</string>
 </resources>
