@@ -86,6 +86,41 @@
   {% endif %}
 </section>
 
+<section class="card" id="calendario">
+  <h2>Calendario <span class="tag">{{ eventi_pratica|length }}</span></h2>
+  <p class="meta" style="margin-top:0">
+    Appuntamenti condivisi con la carrozzeria — es. data della perizia.
+  </p>
+  {% if eventi_pratica %}
+    <ul style="list-style:none; padding:0; margin:0 0 12px;">
+      {% for e in eventi_pratica %}
+        <li style="display:flex; align-items:center; gap:10px; padding:6px 0; border-bottom:1px solid var(--glass-border);">
+          <span class="badge">{{ e.data_evento.strftime("%d/%m/%Y") if e.data_evento else "—" }}</span>
+          <span style="flex:1;">{{ e.titolo }} <span class="meta">— {{ e.creato_da_nome }}</span></span>
+          <form method="post" action="/portale/pratiche/{{ pratica.numero }}/eventi/{{ e.id }}/elimina" style="display:inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+            <button type="submit" class="btn btn-sm btn-danger">Elimina</button>
+          </form>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="meta">Nessun evento in calendario.</p>
+  {% endif %}
+  <form method="post" action="/portale/pratiche/{{ pratica.numero }}/eventi" style="display:flex; gap:8px; align-items:flex-end;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <div class="form-field" style="margin:0;">
+      <label for="f_evento_titolo">Titolo</label>
+      <input type="text" id="f_evento_titolo" name="titolo" required placeholder="es. Perizia" />
+    </div>
+    <div class="form-field" style="margin:0;">
+      <label for="f_evento_data">Data</label>
+      <input type="date" id="f_evento_data" name="data_evento" required />
+    </div>
+    <button type="submit" class="btn btn-primary">Aggiungi</button>
+  </form>
+</section>
+
 <section class="card" id="note">
   <h2>Note <span class="tag">{{ note_pratica|length }}</span></h2>
   <p class="meta" style="margin-top:0">
@@ -206,41 +241,6 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
     <input type="file" name="files" accept=".pdf,.doc,.docx,.xls,.xlsx,.odt,.ods,.txt,.msg,.eml,image/*" multiple required />
     <button type="submit" class="btn btn-primary">Upload</button>
-  </form>
-</section>
-
-<section class="card" id="calendario">
-  <h2>Calendario <span class="tag">{{ eventi_pratica|length }}</span></h2>
-  <p class="meta" style="margin-top:0">
-    Appuntamenti condivisi con la carrozzeria — es. data della perizia.
-  </p>
-  {% if eventi_pratica %}
-    <ul style="list-style:none; padding:0; margin:0 0 12px;">
-      {% for e in eventi_pratica %}
-        <li style="display:flex; align-items:center; gap:10px; padding:6px 0; border-bottom:1px solid var(--glass-border);">
-          <span class="badge">{{ e.data_evento.strftime("%d/%m/%Y") if e.data_evento else "—" }}</span>
-          <span style="flex:1;">{{ e.titolo }} <span class="meta">— {{ e.creato_da_nome }}</span></span>
-          <form method="post" action="/portale/pratiche/{{ pratica.numero }}/eventi/{{ e.id }}/elimina" style="display:inline">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-            <button type="submit" class="btn btn-sm btn-danger">Elimina</button>
-          </form>
-        </li>
-      {% endfor %}
-    </ul>
-  {% else %}
-    <p class="meta">Nessun evento in calendario.</p>
-  {% endif %}
-  <form method="post" action="/portale/pratiche/{{ pratica.numero }}/eventi" style="display:flex; gap:8px; align-items:flex-end;">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-    <div class="form-field" style="margin:0;">
-      <label for="f_evento_titolo">Titolo</label>
-      <input type="text" id="f_evento_titolo" name="titolo" required placeholder="es. Perizia" />
-    </div>
-    <div class="form-field" style="margin:0;">
-      <label for="f_evento_data">Data</label>
-      <input type="date" id="f_evento_data" name="data_evento" required />
-    </div>
-    <button type="submit" class="btn btn-primary">Aggiungi</button>
   </form>
 </section>
 
