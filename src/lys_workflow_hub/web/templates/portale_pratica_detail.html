@@ -87,22 +87,30 @@
 </section>
 
 <section class="card" id="attivita">
-  <h2>Attività recenti</h2>
-  {% if feed_attivita %}
-  <ul class="activity-feed">
-    {% for v in feed_attivita %}
-    <li>
-      <span class="activity-icon">{{ v.icona }}</span>
-      <span class="activity-label">{{ v.label }}</span>
-      <span class="activity-time meta">
-        {{ v.timestamp.strftime("%d/%m/%Y") if v.solo_data else v.timestamp.strftime("%d/%m/%Y %H:%M") }}
-      </span>
-    </li>
-    {% endfor %}
-  </ul>
-  {% else %}
-  <p class="meta" style="margin-top:0">Nessuna attività registrata finora.</p>
-  {% endif %}
+  <details>
+    <summary class="section-toggle">
+      <h2>Attività recenti
+        <span class="h2-right">
+          <span class="chevron">▾</span>
+        </span>
+      </h2>
+    </summary>
+    {% if feed_attivita %}
+    <ul class="activity-feed">
+      {% for v in feed_attivita %}
+      <li>
+        <span class="activity-icon">{{ v.icona }}</span>
+        <span class="activity-label">{{ v.label }}</span>
+        <span class="activity-time meta">
+          {{ v.timestamp.strftime("%d/%m/%Y") if v.solo_data else v.timestamp.strftime("%d/%m/%Y %H:%M") }}
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="meta" style="margin-top:0">Nessuna attività registrata finora.</p>
+    {% endif %}
+  </details>
 </section>
 
 <section class="card" id="calendario">

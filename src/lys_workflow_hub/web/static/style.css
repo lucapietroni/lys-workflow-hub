@@ -752,6 +752,31 @@ code {
   letter-spacing: 0;
 }
 
+/* Sezioni "card" collassabili (Attività recenti, Collaboratori esterni):
+   <summary> contiene l'intero <h2>, con una freccetta a fine riga che
+   ruota in base allo stato aperto/chiuso di <details>. */
+.card > details > summary.section-toggle {
+  cursor: pointer;
+  list-style: none;
+}
+.card > details > summary.section-toggle::-webkit-details-marker {
+  display: none;
+}
+.card > details > summary.section-toggle .h2-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.card > details > summary.section-toggle .chevron {
+  font-size: 0.65rem;
+  color: var(--lys-grey-500);
+  transition: transform 0.15s ease;
+  display: inline-block;
+}
+.card > details[open] > summary.section-toggle .chevron {
+  transform: rotate(180deg);
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
