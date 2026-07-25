@@ -260,11 +260,20 @@
           try {
             var Camera = window.Capacitor.Plugins.Camera;
             var photo = await Camera.getPhoto({
-              resultType: "uri",
+              resultType: "base64",
               source: "CAMERA",
               quality: 85,
             });
-            var blob = await (await fetch(photo.webPath)).blob();
+            // base64, non "uri": l'app carica un URL remoto (server.url), non
+            // lo schema locale Capacitor — photo.webPath potrebbe non essere
+            // raggiungibile via fetch() da quell'origine. Il base64 arriva
+            // già in memoria dal plugin nativo, nessuna fetch necessaria.
+            var byteChars = atob(photo.base64String);
+            var byteNumbers = new Array(byteChars.length);
+            for (var i = 0; i < byteChars.length; i++) {
+              byteNumbers[i] = byteChars.charCodeAt(i);
+            }
+            var blob = new Blob([new Uint8Array(byteNumbers)], { type: "image/jpeg" });
             var file = new File([blob], "foto-" + Date.now() + ".jpg", { type: "image/jpeg" });
             var dt = new DataTransfer();
             dt.items.add(file);
