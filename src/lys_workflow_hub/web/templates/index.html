@@ -46,17 +46,29 @@
 {% if prossimi_eventi %}
   <section class="card">
     <h2>Prossimi appuntamenti <span class="tag">{{ prossimi_eventi|length }}</span></h2>
-    <ul style="list-style:none; padding:0; margin:0;">
+    <ul class="appuntamenti-list">
       {% for item in prossimi_eventi %}
         {% set e = item.evento %}
-        <li style="display:flex; align-items:center; gap:10px; padding:6px 0; border-bottom:1px solid var(--glass-border);">
-          <span class="badge">{{ e.data_evento.strftime("%d/%m/%Y") if e.data_evento else "—" }}</span>
-          <span style="flex:1;">
+        <li class="appuntamento-row" data-href="/pratiche/{{ e.pratica_numero }}#calendario">
+          <span class="badge appuntamento-legacy">{{ e.data_evento.strftime("%d/%m/%Y") if e.data_evento else "—" }}</span>
+          <span class="appuntamento-legacy" style="flex:1;">
             {{ e.titolo }}
             {% if item.cliente %}<span class="meta">— {{ item.cliente }}</span>{% endif %}
             {% if item.targa %}<span class="meta">— {{ item.targa }}</span>{% endif %}
             <span class="meta">— Pratica nr. <a href="/pratiche/{{ e.pratica_numero }}#calendario">{{ e.pratica_numero }}</a></span>
           </span>
+          <span class="appuntamento-data">
+            <span class="giorno">{{ e.data_evento.strftime("%d") if e.data_evento else "—" }}</span>
+            <span class="mese">{{ e.data_evento.strftime("%m") if e.data_evento else "" }}</span>
+          </span>
+          <span class="appuntamento-info">
+            <span class="appuntamento-titolo">{{ e.titolo }}</span>
+            <span class="appuntamento-meta">
+              {%- if item.cliente %}{{ item.cliente }}{% endif -%}
+              {%- if item.targa %} · {{ item.targa }}{% endif -%}
+            </span>
+          </span>
+          <span class="appuntamento-pratica">Pratica nr. {{ e.pratica_numero }}</span>
         </li>
       {% endfor %}
     </ul>
@@ -79,7 +91,7 @@
     </header>
 
     {% if results %}
-      <table class="results-table">
+      <table class="results-table pratiche-table">
         <thead>
           <tr>
             <th class="num">N.</th>
@@ -92,16 +104,16 @@
         </thead>
         <tbody>
           {% for r in results %}
-          <tr>
-            <td class="num"><a href="/pratiche/{{ r.numero }}">{{ r.numero }}</a></td>
-            <td>{{ r.cliente_nominativo or "—" }}</td>
-            <td><code>{{ r.targa or "—" }}</code></td>
-            <td>
+          <tr data-href="/pratiche/{{ r.numero }}">
+            <td class="num" data-label="Pratica"><a href="/pratiche/{{ r.numero }}">{{ r.numero }}</a></td>
+            <td data-label="Cliente">{{ r.cliente_nominativo or "—" }}</td>
+            <td data-label="Targa"><code>{{ r.targa or "—" }}</code></td>
+            <td data-label="Veicolo">
               {%- set marca_modello = [(r.marca or ""), (r.modello or "")]|join(" ")|trim -%}
               {{ marca_modello or "—" }}
             </td>
-            <td>{{ r.data_sinistro.strftime("%d/%m/%Y") if r.data_sinistro else "—" }}</td>
-            <td class="actions"><a class="btn-link" href="/pratiche/{{ r.numero }}">Apri →</a></td>
+            <td data-label="Data sinistro">{{ r.data_sinistro.strftime("%d/%m/%Y") if r.data_sinistro else "—" }}</td>
+            <td class="actions" data-label=""><a class="btn-link" href="/pratiche/{{ r.numero }}">Apri →</a></td>
           </tr>
           {% endfor %}
         </tbody>
@@ -121,7 +133,7 @@
       <span class="badge">{{ ultime_pratiche|length }}</span>
     </header>
     {% if ultime_pratiche %}
-      <table class="results-table">
+      <table class="results-table pratiche-table">
         <thead>
           <tr>
             <th class="num">N.</th>
@@ -134,16 +146,16 @@
         </thead>
         <tbody>
           {% for r in ultime_pratiche %}
-          <tr>
-            <td class="num"><a href="/pratiche/{{ r.numero }}">{{ r.numero }}</a></td>
-            <td>{{ r.cliente_nominativo or "—" }}</td>
-            <td><code>{{ r.targa or "—" }}</code></td>
-            <td>
+          <tr data-href="/pratiche/{{ r.numero }}">
+            <td class="num" data-label="Pratica"><a href="/pratiche/{{ r.numero }}">{{ r.numero }}</a></td>
+            <td data-label="Cliente">{{ r.cliente_nominativo or "—" }}</td>
+            <td data-label="Targa"><code>{{ r.targa or "—" }}</code></td>
+            <td data-label="Veicolo">
               {%- set marca_modello = [(r.marca or ""), (r.modello or "")]|join(" ")|trim -%}
               {{ marca_modello or "—" }}
             </td>
-            <td>{{ r.data_sinistro.strftime("%d/%m/%Y") if r.data_sinistro else "—" }}</td>
-            <td class="actions"><a class="btn-link" href="/pratiche/{{ r.numero }}">Apri →</a></td>
+            <td data-label="Data sinistro">{{ r.data_sinistro.strftime("%d/%m/%Y") if r.data_sinistro else "—" }}</td>
+            <td class="actions" data-label=""><a class="btn-link" href="/pratiche/{{ r.numero }}">Apri →</a></td>
           </tr>
           {% endfor %}
         </tbody>
@@ -153,4 +165,14 @@
     {% endif %}
   </section>
 {% endif %}
+<script>
+  if (document.documentElement.classList.contains("is-app")) {
+    document.querySelectorAll("[data-href]").forEach(function (el) {
+      el.addEventListener("click", function (e) {
+        if (e.target.closest("a, button")) return;
+        window.location.href = el.dataset.href;
+      });
+    });
+  }
+</script>
 {% endblock %}

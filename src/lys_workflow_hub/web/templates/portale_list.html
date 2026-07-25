@@ -16,17 +16,29 @@
 {% if prossimi_eventi %}
   <section class="card">
     <h2>Prossimi appuntamenti <span class="tag">{{ prossimi_eventi|length }}</span></h2>
-    <ul style="list-style:none; padding:0; margin:0;">
+    <ul class="appuntamenti-list">
       {% for item in prossimi_eventi %}
         {% set e = item.evento %}
-        <li style="display:flex; align-items:center; gap:10px; padding:6px 0; border-bottom:1px solid var(--glass-border);">
-          <span class="badge">{{ e.data_evento.strftime("%d/%m/%Y") if e.data_evento else "—" }}</span>
-          <span style="flex:1;">
+        <li class="appuntamento-row" data-href="/portale/pratiche/{{ e.pratica_numero }}#calendario">
+          <span class="badge appuntamento-legacy">{{ e.data_evento.strftime("%d/%m/%Y") if e.data_evento else "—" }}</span>
+          <span class="appuntamento-legacy" style="flex:1;">
             {{ e.titolo }}
             {% if item.cliente %}<span class="meta">— {{ item.cliente }}</span>{% endif %}
             {% if item.targa %}<span class="meta">— {{ item.targa }}</span>{% endif %}
             <span class="meta">— Pratica nr. <a href="/portale/pratiche/{{ e.pratica_numero }}#calendario">{{ e.pratica_numero }}</a></span>
           </span>
+          <span class="appuntamento-data">
+            <span class="giorno">{{ e.data_evento.strftime("%d") if e.data_evento else "—" }}</span>
+            <span class="mese">{{ e.data_evento.strftime("%m") if e.data_evento else "" }}</span>
+          </span>
+          <span class="appuntamento-info">
+            <span class="appuntamento-titolo">{{ e.titolo }}</span>
+            <span class="appuntamento-meta">
+              {%- if item.cliente %}{{ item.cliente }}{% endif -%}
+              {%- if item.targa %} · {{ item.targa }}{% endif -%}
+            </span>
+          </span>
+          <span class="appuntamento-pratica">Pratica nr. {{ e.pratica_numero }}</span>
         </li>
       {% endfor %}
     </ul>
@@ -42,15 +54,18 @@
     <div class="table-filters">
       <input type="search" id="portale-filtro-testo" class="filtro-testo"
              placeholder="Cerca per numero, cliente o targa…" aria-label="Cerca pratica" />
-      <select id="portale-filtro-stato" class="select-inline">
+      <select id="portale-filtro-stato" class="select-inline" aria-label="Filtra per stato">
         <option value="">Tutti gli stati</option>
         {% for s in stati_disponibili %}
         <option value="{{ s }}">{{ stato_labels.get(s, s) }}</option>
         {% endfor %}
       </select>
-      <span class="meta" id="portale-filtro-count"></span>
+      <div class="filtro-count-row">
+        <span class="meta" id="portale-filtro-count"></span>
+        <button type="button" id="portale-filtro-reset" class="btn app-only btn-azzera-filtri">Azzera filtri</button>
+      </div>
     </div>
-    <table class="results-table" id="portale-tabella-pratiche">
+    <table class="results-table pratiche-table" id="portale-tabella-pratiche">
       <thead>
         <tr>
           <th class="num">N.</th>
@@ -66,21 +81,30 @@
         {% for p in pratiche %}
         {% set stato_obj = stati_pratiche.get(p.numero) %}
         {% set stato_corrente = stato_obj.stato if stato_obj else "aperta" %}
+        {% set prossimo = prossimo_evento_per_pratica.get(p.numero) %}
         <tr class="{{ 'row-chiusa' if stato_corrente == 'chiusa' else '' }}"
             data-numero="{{ p.numero }}"
             data-cliente="{{ (p.cliente.nominativo or '')|lower }}"
             data-targa="{{ (p.veicolo.targa or '')|lower }}"
-            data-stato="{{ stato_corrente }}">
-          <td class="num"><a href="/portale/pratiche/{{ p.numero }}">{{ p.numero }}</a></td>
-          <td>{{ p.cliente.nominativo or "—" }}</td>
-          <td><code>{{ p.veicolo.targa or "—" }}</code></td>
-          <td>
+            data-stato="{{ stato_corrente }}"
+            data-href="/portale/pratiche/{{ p.numero }}">
+          <td class="num" data-label="Pratica">
+            <a href="/portale/pratiche/{{ p.numero }}">{{ p.numero }}</a>
+            {% if prossimo %}
+            <span class="prossimo-app-chip app-only">
+              Appuntamento {{ prossimo.evento.data_evento.strftime("%d/%m") if prossimo.evento.data_evento else "" }} — {{ prossimo.evento.titolo }}
+            </span>
+            {% endif %}
+          </td>
+          <td data-label="Cliente">{{ p.cliente.nominativo or "—" }}</td>
+          <td data-label="Targa"><code>{{ p.veicolo.targa or "—" }}</code></td>
+          <td data-label="Veicolo">
             {%- set marca_modello = [(p.veicolo.marca or ""), (p.veicolo.modello or "")]|join(" ")|trim -%}
             {{ marca_modello or "—" }}
           </td>
-          <td>{{ p.sinistro.data.strftime("%d/%m/%Y") if p.sinistro.data else "—" }}</td>
-          <td><span class="badge badge-stato badge-{{ stato_corrente }}">{{ stato_labels.get(stato_corrente, stato_corrente) }}</span></td>
-          <td class="actions"><a class="btn-link" href="/portale/pratiche/{{ p.numero }}">Apri →</a></td>
+          <td data-label="Data sinistro">{{ p.sinistro.data.strftime("%d/%m/%Y") if p.sinistro.data else "—" }}</td>
+          <td data-label="Stato"><span class="badge badge-stato badge-{{ stato_corrente }}">{{ stato_labels.get(stato_corrente, stato_corrente) }}</span></td>
+          <td class="actions" data-label=""><a class="btn-link" href="/portale/pratiche/{{ p.numero }}">Apri →</a></td>
         </tr>
         {% endfor %}
       </tbody>
@@ -90,6 +114,7 @@
       (function () {
         var input = document.getElementById("portale-filtro-testo");
         var select = document.getElementById("portale-filtro-stato");
+        var resetBtn = document.getElementById("portale-filtro-reset");
         var countEl = document.getElementById("portale-filtro-count");
         var emptyMsg = document.getElementById("portale-filtro-vuoto");
         var rows = document.querySelectorAll("#portale-tabella-pratiche tbody tr");
@@ -115,9 +140,33 @@
 
         input.addEventListener("input", applica);
         select.addEventListener("change", applica);
+        if (resetBtn) {
+          resetBtn.addEventListener("click", function () {
+            input.value = "";
+            select.value = "";
+            applica();
+          });
+        }
         applica();
       })();
     </script>
   {% endif %}
 </section>
+
+{% if current_user %}
+<script>
+  // Card intera cliccabile (riga pratica + appuntamento): solo dentro
+  // l'app, dove la tabella diventa una lista di card e l'azione "Apri →"
+  // è nascosta. Nel browser questo script non fa nulla di visibile: gli
+  // elementi hanno comunque i loro link/azioni originali invariati.
+  if (document.documentElement.classList.contains("is-app")) {
+    document.querySelectorAll("[data-href]").forEach(function (el) {
+      el.addEventListener("click", function (e) {
+        if (e.target.closest("a, button")) return;
+        window.location.href = el.dataset.href;
+      });
+    });
+  }
+</script>
+{% endif %}
 {% endblock %}

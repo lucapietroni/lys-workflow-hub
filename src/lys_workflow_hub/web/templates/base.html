@@ -2,7 +2,19 @@
 <html lang="it">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script>
+      // Marca <html> come "is-app" SOLO dentro il wrapper Capacitor (mai in
+      // un browser normale, anche da smartphone): window.Capacitor esiste
+      // solo lì. Il redesign mobile-first (style.css, tutto sotto
+      // `html.is-app`) è quindi visibile esclusivamente nell'app Android,
+      // la visualizzazione da browser resta invariata per scelta esplicita.
+      // Sincrono e prima del CSS: niente flash del layout sbagliato.
+      if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
+        document.documentElement.classList.add("is-app");
+      }
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0B1525" />
     {% if csrf_token %}<meta name="csrf-token" content="{{ csrf_token }}" />{% endif %}
     <title>{% block title %}LYS Workflow Hub{% endblock %}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -18,32 +30,42 @@
           <span class="brand-sub">Gestione Sinistri</span>
         </div>
       </a>
-      <nav class="topnav" id="topnav">
-        {% if current_user and current_user.is_admin %}
-        <a href="/">Pratiche</a>
-        <a href="/compagnie">Compagnie</a>
-        <a href="/pec-inviate">PEC inviate</a>
-        <a href="/risposte">Risposte</a>
-        <a href="/bozze">Bozze</a>
-        <a href="/statistiche">Statistiche</a>
-        <a href="/foto">Foto</a>
-        <a href="/calendario">Calendario</a>
-        <a href="/utenti">Utenti</a>
-        <a href="/impostazioni">Impostazioni</a>
-        <a href="/docs" target="_blank" rel="noopener">API</a>
-        {% elif current_user %}
-        <a href="/portale">Le mie pratiche</a>
-        <a href="/portale/calendario">Calendario</a>
-        <a href="/portale/impostazioni">Impostazioni</a>
-        {% endif %}
-      </nav>
+
       {% if current_user %}
-      <form method="post" action="/logout" class="user-box">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-        <span class="user-box-name">{{ current_user.nome or current_user.email }}</span>
-        <button type="submit" class="btn-link">Esci</button>
-      </form>
+      <input type="checkbox" id="nav-toggle" class="nav-toggle-input" />
+      <label for="nav-toggle" class="nav-toggle-btn" aria-label="Apri menu" aria-controls="topbar-panel">
+        <span></span>
+      </label>
       {% endif %}
+
+      <div class="topbar-panel" id="topbar-panel">
+        <nav class="topnav" id="topnav">
+          {% if current_user and current_user.is_admin %}
+          <a href="/">Pratiche</a>
+          <a href="/compagnie">Compagnie</a>
+          <a href="/pec-inviate">PEC inviate</a>
+          <a href="/risposte">Risposte</a>
+          <a href="/bozze">Bozze</a>
+          <a href="/statistiche">Statistiche</a>
+          <a href="/foto">Foto</a>
+          <a href="/calendario">Calendario</a>
+          <a href="/utenti">Utenti</a>
+          <a href="/impostazioni">Impostazioni</a>
+          <a href="/docs" target="_blank" rel="noopener">API</a>
+          {% elif current_user %}
+          <a href="/portale">Le mie pratiche</a>
+          <a href="/portale/calendario">Calendario</a>
+          <a href="/portale/impostazioni">Impostazioni</a>
+          {% endif %}
+        </nav>
+        {% if current_user %}
+        <form method="post" action="/logout" class="user-box">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <span class="user-box-name">{{ current_user.nome or current_user.email }}</span>
+          <button type="submit" class="btn-link user-box-logout">Esci</button>
+        </form>
+        {% endif %}
+      </div>
     </header>
 
     <main class="container">
@@ -68,6 +90,19 @@
           var href = a.getAttribute('href').replace(/\/$/, '') || '/';
           if (href === '/' ? path === '/' : path.startsWith(href)) {
             a.classList.add('active');
+          }
+        });
+      })();
+      // Chiude il pannello mobile (checkbox hamburger) quando si tocca un
+      // link o si invia il form di logout — altrimenti resta aperto sopra
+      // la pagina successiva. No-op su desktop (checkbox non visibile lì).
+      (function () {
+        var toggle = document.getElementById('nav-toggle');
+        var panel = document.getElementById('topbar-panel');
+        if (!toggle || !panel) return;
+        panel.addEventListener('click', function (e) {
+          if (e.target.closest('a') || e.target.closest('button[type="submit"]')) {
+            toggle.checked = false;
           }
         });
       })();

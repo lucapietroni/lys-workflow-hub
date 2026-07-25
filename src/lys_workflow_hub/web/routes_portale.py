@@ -152,6 +152,14 @@ def portale_list(
         logger.warning("Portale: impossibile leggere prossimi eventi: %s", exc)
         context["prossimi_eventi"] = []
 
+    # Prossimo appuntamento per pratica (card app v4.0.0) — riusa la stessa
+    # lista già caricata sopra, ordinata per data crescente: il primo item
+    # per numero pratica è già il più vicino nel tempo, nessuna query extra.
+    prossimo_per_pratica: dict[int, dict] = {}
+    for item in context["prossimi_eventi"]:
+        prossimo_per_pratica.setdefault(item["evento"].pratica_numero, item)
+    context["prossimo_evento_per_pratica"] = prossimo_per_pratica
+
     return templates.TemplateResponse(request, "portale_list.html", context)
 
 

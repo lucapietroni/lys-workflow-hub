@@ -752,6 +752,27 @@ code {
   letter-spacing: 0;
 }
 
+/* ====== Prossimi appuntamenti (widget home admin + /portale) ======
+   Default: replica esattamente il vecchio <li style="display:flex;
+   align-items:center; gap:10px; padding:6px 0; border-bottom:...">
+   inline — nessun cambiamento visivo fuori dall'app. Il vero restyling a
+   card vive sotto "html.is-app" più in basso nel file. */
+.appuntamenti-list { list-style: none; padding: 0; margin: 0; }
+.appuntamento-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--glass-border);
+}
+/* Elementi visibili SOLO nell'app (card data/titolo/pratica dedicati):
+   fuori dall'app restano nascosti, il markup mostra solo `.appuntamento-legacy`
+   (badge data + testo unico), identico a prima di questa modifica. */
+.appuntamento-data,
+.appuntamento-titolo,
+.appuntamento-meta,
+.appuntamento-pratica { display: none; }
+
 /* Sezioni "card" collassabili (Attività recenti, Collaboratori esterni):
    <summary> contiene l'intero <h2>, con una freccetta a fine riga che
    ruota in base allo stato aperto/chiuso di <details>. */
@@ -1424,4 +1445,321 @@ body.lightbox-open { overflow: hidden; }
   .search-form button { width: 100%; justify-content: center; }
   .form-actions { flex-direction: column-reverse; }
   .form-actions .btn { width: 100%; text-align: center; justify-content: center; }
+}
+
+/* Accessibilità: focus visibile per navigazione da tastiera. Non ha alcun
+   effetto su mouse/touch (:focus-visible non scatta per un tap/click), zero
+   impatto visivo sul layout esistente — sicuro ovunque, non solo in-app. */
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible,
+textarea:focus-visible, .btn:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--lys-gold-glow);
+  outline-offset: 2px;
+}
+
+/* Contenuti presenti nel markup solo per l'app (bottoni nuovi, chip
+   informative aggiuntive): invisibili di default, un solo punto dove
+   "html.is-app" li riattiva più sotto con il display corretto. */
+.app-only { display: none; }
+
+/* ============================================================
+   Redesign mobile-first — SOLO app Android (Capacitor)
+   ============================================================
+   Attivo esclusivamente quando <html> ha classe "is-app", impostata da
+   uno script in base.html solo se window.Capacitor esiste (mai in un
+   browser normale, anche da smartphone). Scelta esplicita: la
+   visualizzazione da browser di hub.lysauto.it resta quella storica,
+   il redesign qui sotto vale solo dentro l'app.
+
+   Il markup condiviso da browser e app (header, tabella pratiche,
+   lista appuntamenti) usa classi con un default che replica esattamente
+   l'aspetto pre-esistente: solo le regole "html.is-app ..." qui sotto lo
+   sovrascrivono. Vedi anche `.topbar-panel`/`.nav-toggle-*` e
+   `.appuntamento-row` per i default neutri. */
+
+/* -- Header: default neutro (nessun hamburger fuori dall'app) -- */
+.topbar-panel { display: contents; }
+.nav-toggle-input { display: none; }
+.nav-toggle-btn { display: none; }
+
+html.is-app {
+  --app-pad-x: 16px;
+}
+/* Rete di sicurezza esplicita: mai scroll orizzontale nell'app, qualunque
+   contenuto dinamico arrivi da WinCar (nomi lunghi, indirizzi, ecc.). */
+html.is-app, html.is-app body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+/* Header compatto + hamburger reale */
+html.is-app .topbar {
+  height: calc(52px + env(safe-area-inset-top, 0px));
+  padding: env(safe-area-inset-top, 0px) var(--app-pad-x) 0;
+  align-items: flex-end;
+  padding-bottom: 0;
+}
+html.is-app .topbar::after { bottom: 0; }
+html.is-app .brand { height: 52px; gap: 8px; }
+html.is-app .brand-logo { height: 26px; }
+html.is-app .brand-sub { display: none; }
+html.is-app .brand-title { font-size: 0.88rem; }
+
+html.is-app .nav-toggle-input {
+  display: block;
+  position: absolute;
+  width: 1px; height: 1px;
+  opacity: 0;
+  overflow: hidden;
+}
+html.is-app .nav-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px; height: 44px;
+  margin-left: auto;
+  flex-shrink: 0;
+  border-radius: 8px;
+  cursor: pointer;
+}
+html.is-app .nav-toggle-btn:hover { background: rgba(255,255,255,0.06); }
+html.is-app .nav-toggle-btn span {
+  position: relative;
+  display: block;
+  width: 20px; height: 2px;
+  background: #fff;
+  border-radius: 2px;
+  transition: background 0.15s ease;
+}
+html.is-app .nav-toggle-btn span::before,
+html.is-app .nav-toggle-btn span::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  width: 20px; height: 2px;
+  background: #fff;
+  border-radius: 2px;
+  transition: transform 0.2s ease;
+}
+html.is-app .nav-toggle-btn span::before { top: -6px; }
+html.is-app .nav-toggle-btn span::after { top: 6px; }
+html.is-app .nav-toggle-input:checked ~ .nav-toggle-btn span { background: transparent; }
+html.is-app .nav-toggle-input:checked ~ .nav-toggle-btn span::before { transform: translateY(6px) rotate(45deg); }
+html.is-app .nav-toggle-input:checked ~ .nav-toggle-btn span::after { transform: translateY(-6px) rotate(-45deg); }
+
+html.is-app .topbar-panel {
+  display: block;
+  position: fixed;
+  top: calc(52px + env(safe-area-inset-top, 0px));
+  left: 0; right: 0;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  background: #0B1525;
+  border-bottom: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-lg);
+  transition: max-height 0.22s ease, opacity 0.18s ease;
+  z-index: 150;
+}
+html.is-app .nav-toggle-input:checked ~ .topbar-panel {
+  max-height: 75vh;
+  opacity: 1;
+  overflow-y: auto;
+}
+html.is-app .topnav {
+  flex-direction: column;
+  align-items: stretch;
+  height: auto;
+  overflow: visible;
+  gap: 0;
+  padding: 6px 0;
+}
+html.is-app .topnav a {
+  height: auto;
+  min-height: 48px;
+  width: 100%;
+  padding: 0 var(--app-pad-x);
+  margin-bottom: 0;
+  border-bottom: 1px solid var(--glass-border);
+  border-left: 3px solid transparent;
+  font-size: 0.95rem;
+}
+html.is-app .topnav a.active {
+  border-left-color: var(--lys-gold);
+  background: rgba(201,152,26,0.06);
+}
+html.is-app .user-box {
+  padding: 14px var(--app-pad-x);
+  justify-content: space-between;
+  border-top: 1px solid var(--glass-border);
+}
+html.is-app .user-box-name { font-size: 0.92rem; font-weight: 600; color: var(--lys-grey-900); }
+html.is-app .user-box-logout {
+  min-height: 40px;
+  padding: 8px 16px;
+  border: 1px solid rgba(248,113,113,0.35);
+  border-radius: var(--radius);
+  color: var(--lys-danger);
+}
+
+/* Container: safe-area + padding coerente 16px */
+html.is-app .container {
+  padding-left: max(var(--app-pad-x), env(safe-area-inset-left));
+  padding-right: max(var(--app-pad-x), env(safe-area-inset-right));
+  padding-top: 18px;
+  padding-bottom: max(32px, env(safe-area-inset-bottom));
+}
+html.is-app .footbar { padding-bottom: max(13px, env(safe-area-inset-bottom)); }
+
+/* Titoli: gerarchia più leggera, niente wrap su una sola riga lunghissima */
+html.is-app .hero h1 { font-size: clamp(1.35rem, 6vw, 1.7rem); }
+html.is-app .hero .subtitle { font-size: 0.87rem; max-width: 100%; }
+html.is-app .hero-eyebrow { font-size: 0.64rem; }
+html.is-app .pratica-header h1 { font-size: clamp(1.2rem, 5.5vw, 1.5rem); }
+html.is-app .card h2 { font-size: 0.74rem; }
+
+/* Target touch minimi 44px su tutti i controlli interattivi principali */
+html.is-app .btn,
+html.is-app .select-inline,
+html.is-app .filtro-testo,
+html.is-app .search-form input,
+html.is-app .search-form button,
+html.is-app .form-field input,
+html.is-app .form-field select,
+html.is-app .form-field textarea {
+  min-height: 44px;
+}
+html.is-app .btn-sm { min-height: 36px; }
+
+/* -- Prossimi appuntamenti: card compatta invece di riga densa -- */
+html.is-app .appuntamento-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  align-items: center;
+  padding: 12px 4px;
+  cursor: pointer;
+}
+html.is-app .appuntamento-data {
+  grid-row: 1 / 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 52px;
+  padding: 6px 4px;
+  border-radius: var(--radius);
+  background: rgba(201,152,26,0.12);
+  border: 1px solid rgba(201,152,26,0.22);
+  font-weight: 800;
+  color: var(--lys-gold-glow);
+}
+html.is-app .appuntamento-data .giorno { display: block; font-size: 1.1rem; line-height: 1.1; }
+html.is-app .appuntamento-data .mese { display: block; font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.06em; }
+html.is-app .appuntamento-row .appuntamento-legacy { display: none; }
+html.is-app .appuntamento-info { min-width: 0; }
+html.is-app .appuntamento-titolo {
+  display: block;
+  font-weight: 600;
+  color: var(--lys-grey-900);
+  font-size: 0.92rem;
+  overflow-wrap: anywhere;
+}
+html.is-app .appuntamento-meta {
+  display: block;
+  font-size: 0.80rem;
+  color: var(--lys-grey-700);
+  overflow-wrap: anywhere;
+}
+html.is-app .appuntamento-pratica {
+  display: inline-block;
+  margin-top: 2px;
+  font-weight: 700;
+  color: var(--lys-gold-glow);
+  font-size: 0.84rem;
+}
+
+/* -- Ricerca e filtri: ricerca a piena larghezza, filtri sotto -- */
+html.is-app .table-filters { flex-direction: column; align-items: stretch; gap: 8px; }
+html.is-app .filtro-testo { width: 100%; }
+html.is-app .table-filters .select-inline { width: 100%; }
+html.is-app .filtro-count-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+html.is-app .btn-azzera-filtri {
+  display: inline-flex;
+  min-height: 36px;
+  padding: 6px 12px;
+  font-size: 0.82rem;
+}
+
+/* -- Elenco pratiche: card invece di tabella (solo sotto tablet) -- */
+@media (max-width: 599px) {
+  html.is-app .pratiche-table thead { display: none; }
+  html.is-app .pratiche-table,
+  html.is-app .pratiche-table tbody,
+  html.is-app .pratiche-table tr {
+    display: block;
+    width: 100%;
+  }
+  html.is-app .pratiche-table {
+    background: none;
+    border: none;
+    box-shadow: none;
+    border-radius: 0;
+  }
+  html.is-app .pratiche-table tr {
+    background: var(--glass);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    box-shadow: var(--shadow);
+  }
+  html.is-app .pratiche-table tr.row-chiusa { opacity: 0.6; }
+  html.is-app .pratiche-table td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+    border: none;
+    padding: 5px 0;
+    font-size: 0.88rem;
+    text-align: right;
+    overflow-wrap: anywhere;
+    /* min-width:0 rompe il default "min-width:auto" dei flex item: senza
+       questo un valore lungo e senza spazi (ragione sociale, indirizzo)
+       forzerebbe scroll orizzontale della card invece di andare a capo. */
+    min-width: 0;
+  }
+  html.is-app .pratiche-table td > * { min-width: 0; }
+  html.is-app .pratiche-table td::before {
+    content: attr(data-label);
+    font-size: 0.64rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--lys-grey-500);
+    text-align: left;
+    flex-shrink: 0;
+  }
+  html.is-app .pratiche-table td.num {
+    display: block;
+    padding-bottom: 8px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid var(--glass-border);
+  }
+  html.is-app .pratiche-table td.num::before { display: block; margin-bottom: 2px; }
+  html.is-app .pratiche-table td.num a { font-size: 1.05rem; font-weight: 800; }
+  html.is-app .pratiche-table td.actions { display: none; }
+  html.is-app .pratiche-table .prossimo-app-chip {
+    display: block;
+    margin-top: 4px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--lys-gold);
+  }
 }
