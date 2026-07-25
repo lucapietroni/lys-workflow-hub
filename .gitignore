@@ -137,4 +137,7 @@ mobile/android/app/build/
 mobile/android/local.properties
 mobile/android/*.apk
 mobile/android/*.aab
+mobile/android/keystore.properties
 mobile/build_debug.bat
+*.keystore
+*.jks
