@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1074345280905",
+    "project_id": "lys-workflow-hub",
+    "storage_bucket": "lys-workflow-hub.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1074345280905:android:860e4cb522fe43d4244d58",
+        "android_client_info": {
+          "package_name": "it.lysauto.workflowhub"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDKoMeet4A5_uNuZtcyQZvqIEtiHiDu0iA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

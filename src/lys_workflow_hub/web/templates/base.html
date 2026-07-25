@@ -82,5 +82,40 @@
         });
       });
     </script>
+    {% if current_user %}
+    <script>
+      // Registrazione device token FCM — solo dentro l'app Android Capacitor
+      // (no-op in un browser normale, dove window.Capacitor non esiste).
+      // Gira su ogni pagina autenticata: un token FCM è device-driven e può
+      // ruotare, a differenza di ntfy_topic non c'è un "salva impostazioni"
+      // naturale a cui agganciarsi.
+      if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
+        (function () {
+          try {
+            var PushNotifications = window.Capacitor.Plugins.PushNotifications;
+            PushNotifications.requestPermissions().then(function (perm) {
+              if (perm.receive === "granted") {
+                PushNotifications.register();
+              }
+            });
+            PushNotifications.addListener("registration", function (token) {
+              var csrfEl = document.querySelector('meta[name="csrf-token"]');
+              var csrf = csrfEl ? csrfEl.content : "";
+              fetch("/portale/fcm-token", {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: new URLSearchParams({ fcm_token: token.value, csrf_token: csrf }),
+              });
+            });
+            PushNotifications.addListener("registrationError", function (err) {
+              console.error("FCM registration error", err);
+            });
+          } catch (e) {
+            console.error("Push notification setup failed", e);
+          }
+        })();
+      }
+    </script>
+    {% endif %}
   </body>
 </html>
