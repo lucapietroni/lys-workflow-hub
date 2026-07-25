@@ -312,3 +312,114 @@ def test_assegna_pratica_due_volte_non_duplica_notifica(
             data={"utente_id": esterno.id, "csrf_token": get_csrf(client, "/pratiche/766")},
         )
         mock_email.assert_called_once()
+
+
+# --------------------------------------------------------------------------- #
+#  UtentiRepository.set_fcm_token
+# --------------------------------------------------------------------------- #
+
+
+def test_set_fcm_token_salva_e_sovrascrive(utenti_repo: UtentiRepository) -> None:
+    esterno = utenti_repo.create(
+        email="agenzia@esempio.it", password="password1234", ruolo="esterno"
+    )
+    assert esterno.fcm_token == ""
+
+    utenti_repo.set_fcm_token(esterno.id, "token-device-1")
+    assert utenti_repo.get(esterno.id).fcm_token == "token-device-1"
+
+    utenti_repo.set_fcm_token(esterno.id, "token-device-2")
+    assert utenti_repo.get(esterno.id).fcm_token == "token-device-2"
+
+
+def test_set_fcm_token_stringa_vuota_cancella(utenti_repo: UtentiRepository) -> None:
+    esterno = utenti_repo.create(
+        email="agenzia@esempio.it", password="password1234", ruolo="esterno"
+    )
+    utenti_repo.set_fcm_token(esterno.id, "token-device-1")
+    utenti_repo.set_fcm_token(esterno.id, "")
+    assert utenti_repo.get(esterno.id).fcm_token == ""
+
+
+# --------------------------------------------------------------------------- #
+#  POST /portale/fcm-token
+# --------------------------------------------------------------------------- #
+
+
+def test_portale_fcm_token_richiede_login() -> None:
+    client = TestClient(app, follow_redirects=False)
+    resp = client.post("/portale/fcm-token", data={"fcm_token": "abc"})
+    assert resp.status_code == 303
+    assert resp.headers["location"].startswith("/login")
+
+
+def test_portale_fcm_token_salva_per_utente_loggato(authenticated_app) -> None:
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, "agenzia@esempio.it", "password1234")
+
+    resp = client.post(
+        "/portale/fcm-token",
+        data={
+            "fcm_token": "device-token-xyz",
+            "csrf_token": get_csrf(client, "/portale/impostazioni"),
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True}
+    assert authenticated_app.get(esterno.id).fcm_token == "device-token-xyz"
+
+
+# --------------------------------------------------------------------------- #
+#  Gating FCM in _notifica_esterni_assegnati / _notifica_esterno_assegnazione
+# --------------------------------------------------------------------------- #
+
+
+def test_admin_nota_manda_fcm_se_esterno_ha_token(admin_client, authenticated_app) -> None:
+    client, settings = admin_client
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    authenticated_app.set_notifiche(
+        esterno.id,
+        notify_email_enabled=False,
+        notify_push_enabled=True,
+        ntfy_topic="lys-agenzia-9f3a",
+    )
+    authenticated_app.set_fcm_token(esterno.id, "device-token-xyz")
+    assegnazioni_repo = PraticaAssegnazioniRepository(db_path=settings.app_db_path)
+    assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
+
+    with patch("lys_workflow_hub.web.routes.notify_fcm_nuova_attivita") as mock_fcm:
+        resp = client.post(
+            "/pratiche/766/note",
+            data={"testo": "aggiornamento", "csrf_token": get_csrf(client, "/pratiche/766")},
+        )
+        assert resp.status_code == 303
+        mock_fcm.assert_called_once()
+        assert mock_fcm.call_args.kwargs["fcm_token"] == "device-token-xyz"
+
+
+def test_assegna_pratica_manda_fcm_se_esterno_ha_token(admin_client, authenticated_app) -> None:
+    client, settings = admin_client
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    authenticated_app.set_notifiche(
+        esterno.id,
+        notify_email_enabled=False,
+        notify_push_enabled=True,
+        ntfy_topic="lys-agenzia-9f3a",
+    )
+    authenticated_app.set_fcm_token(esterno.id, "device-token-xyz")
+
+    with patch("lys_workflow_hub.web.routes.notify_fcm_nuova_attivita") as mock_fcm:
+        resp = client.post(
+            "/pratiche/766/assegna",
+            data={"utente_id": esterno.id, "csrf_token": get_csrf(client, "/pratiche/766")},
+        )
+        assert resp.status_code == 303
+        mock_fcm.assert_called_once()
+        assert mock_fcm.call_args.kwargs["fcm_token"] == "device-token-xyz"

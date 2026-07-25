@@ -40,6 +40,10 @@ Pillow>=10.0
 # Push notification (M3)
 requests>=2.31
 
+# Push FCM per app Android Capacitor (v3.x) — solo per il token OAuth2 della
+# service account; l'invio HTTP resta requests, già sopra.
+google-auth>=2.29
+
 # Auth (v3.0)
 bcrypt>=4.0
 itsdangerous>=2.1

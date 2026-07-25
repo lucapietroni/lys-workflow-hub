@@ -45,6 +45,7 @@ from lys_workflow_hub.core.utenti_repository import Utente, UtentiRepository
 from lys_workflow_hub.core.wincar_repository import WinCarRepository
 from lys_workflow_hub.integrations.notifier import (
     notify_esterno_nuova_attivita,
+    notify_fcm_nuova_attivita,
     notify_push_nuova_attivita,
 )
 from lys_workflow_hub.workflows.cessione_credito import (
@@ -567,6 +568,15 @@ def _notifica_esterni_assegnati(
                     messaggio=body_text,
                     disabled=settings.notify_disabled,
                 )
+            if u.notify_push_enabled and u.fcm_token:
+                notify_fcm_nuova_attivita(
+                    fcm_project_id=settings.fcm_project_id,
+                    fcm_credentials_path=str(settings.fcm_credentials_path or ""),
+                    fcm_token=u.fcm_token,
+                    titolo=subject,
+                    messaggio=body_text,
+                    disabled=settings.notify_disabled,
+                )
     except Exception as exc:  # noqa: BLE001
         logger.warning("Impossibile notificare esterni assegnati a %s: %s", numero, exc)
 
@@ -706,6 +716,15 @@ def _notifica_esterno_assegnazione(
             notify_push_nuova_attivita(
                 ntfy_server=settings.ntfy_server,
                 ntfy_topic=u.ntfy_topic,
+                titolo=subject,
+                messaggio=body_text,
+                disabled=settings.notify_disabled,
+            )
+        if u.notify_push_enabled and u.fcm_token:
+            notify_fcm_nuova_attivita(
+                fcm_project_id=settings.fcm_project_id,
+                fcm_credentials_path=str(settings.fcm_credentials_path or ""),
+                fcm_token=u.fcm_token,
                 titolo=subject,
                 messaggio=body_text,
                 disabled=settings.notify_disabled,

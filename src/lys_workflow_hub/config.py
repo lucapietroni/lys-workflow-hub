@@ -159,6 +159,15 @@ class Settings(BaseSettings):
     # tocca dal telefono fuori casa, o per un'email a un utente esterno.
     public_base_url: str = Field(default="")
 
+    # --- FCM push (app Android Capacitor) ---
+    # Path al JSON della service account Firebase (Console Firebase >
+    # Project Settings > Service Accounts > Generate new private key).
+    # None = FCM disabilitato (nessun tentativo di invio, nessun errore).
+    fcm_credentials_path: Path | None = Field(default=None)
+    # Project ID Firebase (es. "lys-workflow-hub"), usato per l'URL FCM
+    # HTTP v1: https://fcm.googleapis.com/v1/projects/<id>/messages:send
+    fcm_project_id: str = Field(default="")
+
     def public_url(self, path: str) -> str:
         """Costruisce un URL assoluto per link in notifiche push/email.
 

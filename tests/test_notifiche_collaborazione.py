@@ -30,8 +30,9 @@ from lys_workflow_hub.core.wincar_repository import (
     Veicolo,
 )
 from lys_workflow_hub.integrations.notifier import (
-    notify_push_nuova_attivita,
     notify_esterno_nuova_attivita,
+    notify_fcm_nuova_attivita,
+    notify_push_nuova_attivita,
 )
 from lys_workflow_hub.main import app
 from lys_workflow_hub.web.routes import get_app_settings, get_repository
@@ -74,6 +75,44 @@ def test_notify_push_nuova_attivita_non_solleva_se_push_fallisce() -> None:
         mock_push.side_effect = RuntimeError("boom")
         notify_push_nuova_attivita(
             ntfy_server="https://ntfy.sh", ntfy_topic="t", titolo="x", messaggio="y"
+        )  # non deve sollevare
+
+
+def test_notify_fcm_nuova_attivita_chiama_send_fcm_push_se_configurato() -> None:
+    with patch("lys_workflow_hub.integrations.notifier.send_fcm_push") as mock_fcm:
+        mock_fcm.return_value = (True, "")
+        notify_fcm_nuova_attivita(
+            fcm_project_id="lys-workflow-hub",
+            fcm_credentials_path="/tmp/fake-service-account.json",
+            fcm_token="device-token-xyz",
+            titolo="Nuova nota",
+            messaggio="ciao",
+        )
+        mock_fcm.assert_called_once()
+        assert mock_fcm.call_args.kwargs["token"] == "device-token-xyz"
+
+
+def test_notify_fcm_nuova_attivita_skip_senza_token() -> None:
+    with patch("lys_workflow_hub.integrations.notifier.send_fcm_push") as mock_fcm:
+        notify_fcm_nuova_attivita(
+            fcm_project_id="lys-workflow-hub",
+            fcm_credentials_path="/tmp/fake-service-account.json",
+            fcm_token="",
+            titolo="x",
+            messaggio="y",
+        )
+        mock_fcm.assert_not_called()
+
+
+def test_notify_fcm_nuova_attivita_non_solleva_se_push_fallisce() -> None:
+    with patch("lys_workflow_hub.integrations.notifier.send_fcm_push") as mock_fcm:
+        mock_fcm.side_effect = RuntimeError("boom")
+        notify_fcm_nuova_attivita(
+            fcm_project_id="lys-workflow-hub",
+            fcm_credentials_path="/tmp/fake-service-account.json",
+            fcm_token="t",
+            titolo="x",
+            messaggio="y",
         )  # non deve sollevare
 
 

@@ -87,6 +87,67 @@ def send_push(
 
 
 # --------------------------------------------------------------------------- #
+#  FCM push (app Android Capacitor — utenti esterni)
+# --------------------------------------------------------------------------- #
+
+
+def send_fcm_push(
+    *,
+    project_id: str,
+    credentials_path: str,
+    token: str,
+    title: str,
+    message: str,
+    click_path: str = "",
+    timeout_seconds: int = 10,
+) -> tuple[bool, str]:
+    """Pubblica una notifica push via FCM HTTP v1 su un singolo device token.
+
+    A differenza di ntfy (path pubblico senza autenticazione), FCM HTTP v1
+    richiede un access token OAuth2 minted da una service account Firebase —
+    `google-auth` gestisce minting/refresh/caching di quel token; l'invio
+    resta un semplice `requests.post()`, come per ntfy. Restituisce
+    (success, errore), non solleva mai.
+    """
+    try:
+        import requests
+        from google.auth.transport.requests import Request as GoogleAuthRequest
+        from google.oauth2 import service_account
+    except ImportError as exc:
+        return False, f"dipendenze FCM non installate: {exc}"
+
+    try:
+        creds = service_account.Credentials.from_service_account_file(
+            credentials_path,
+            scopes=["https://www.googleapis.com/auth/firebase.messaging"],
+        )
+        creds.refresh(GoogleAuthRequest())
+    except Exception as exc:  # noqa: BLE001
+        return False, f"errore credenziali FCM: {exc}"
+
+    url = f"https://fcm.googleapis.com/v1/projects/{project_id}/messages:send"
+    payload = {
+        "message": {
+            "token": token,
+            "notification": {"title": title, "body": message},
+            "data": {"click_path": click_path} if click_path else {},
+        }
+    }
+    try:
+        resp = requests.post(
+            url,
+            json=payload,
+            headers={"Authorization": f"Bearer {creds.token}"},
+            timeout=timeout_seconds,
+        )
+        if not (200 <= resp.status_code < 300):
+            return False, f"FCM HTTP {resp.status_code}: {resp.text[:200]}"
+        return True, ""
+    except Exception as exc:  # noqa: BLE001
+        return False, f"errore FCM: {exc}"
+
+
+# --------------------------------------------------------------------------- #
 #  Email riassuntiva via SMTP
 # --------------------------------------------------------------------------- #
 
@@ -361,6 +422,36 @@ def notify_push_nuova_attivita(
             logger.warning("Notifica push collaborazione fallita: %s", err)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Notifica push collaborazione fallita: %s", exc)
+
+
+def notify_fcm_nuova_attivita(
+    *,
+    fcm_project_id: str,
+    fcm_credentials_path: str,
+    fcm_token: str,
+    titolo: str,
+    messaggio: str,
+    click_path: str = "",
+    disabled: bool = False,
+) -> None:
+    """Push FCM per attività di collaborazione su una pratica — analoga a
+    `notify_push_nuova_attivita` ma per utenti esterni con l'app Capacitor
+    installata (device token FCM invece di topic ntfy)."""
+    if disabled or not (fcm_project_id and fcm_credentials_path and fcm_token):
+        return
+    try:
+        ok, err = send_fcm_push(
+            project_id=fcm_project_id,
+            credentials_path=fcm_credentials_path,
+            token=fcm_token,
+            title=titolo,
+            message=messaggio,
+            click_path=click_path,
+        )
+        if not ok:
+            logger.warning("Notifica FCM fallita: %s", err)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Notifica FCM fallita: %s", exc)
 
 
 def notify_esterno_nuova_attivita(

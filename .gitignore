@@ -26,6 +26,7 @@ secrets.json
 credentials.json
 *.pem
 *.key
+firebase-service-account*.json
 
 # Database interno dell'app (può contenere log con dati personali)
 data/*.db
@@ -125,3 +126,15 @@ logs/
 test_*.docx
 test_page_*.png
 preview_page_*.png
+
+# =============================================================================
+# Capacitor / Android (app mobile in mobile/) — build output, non il progetto
+# =============================================================================
+mobile/node_modules/
+mobile/android/.gradle/
+mobile/android/build/
+mobile/android/app/build/
+mobile/android/local.properties
+mobile/android/*.apk
+mobile/android/*.aab
+mobile/build_debug.bat

@@ -54,6 +54,7 @@ class Utente:
     notify_email_enabled: bool = True
     notify_push_enabled: bool = False
     ntfy_topic: str = ""
+    fcm_token: str = ""
 
     @property
     def is_admin(self) -> bool:
@@ -91,6 +92,7 @@ _MIGRAZIONI_COLONNE = (
     "notify_email_enabled INTEGER NOT NULL DEFAULT 1",
     "notify_push_enabled INTEGER NOT NULL DEFAULT 0",
     "ntfy_topic TEXT NOT NULL DEFAULT ''",
+    "fcm_token TEXT NOT NULL DEFAULT ''",
 )
 
 
@@ -172,6 +174,7 @@ class UtentiRepository:
             notify_email_enabled=bool(d.get("notify_email_enabled", 1)),
             notify_push_enabled=bool(d.get("notify_push_enabled", 0)),
             ntfy_topic=d.get("ntfy_topic") or "",
+            fcm_token=d.get("fcm_token") or "",
         )
 
     # -- query -----------------------------------------------------------
@@ -316,6 +319,20 @@ class UtentiRepository:
                     ntfy_topic,
                     int(utente_id),
                 ),
+            )
+
+    def set_fcm_token(self, utente_id: int, fcm_token: str) -> None:
+        """Registra (o cancella, se stringa vuota) il device token FCM per un
+        utente esterno — chiamato da `POST /portale/fcm-token` subito dopo che
+        il plugin @capacitor/push-notifications ottiene/rinnova il token sul
+        device. Un utente ha un solo token registrato alla volta: se lo stesso
+        account si logga su un secondo device, il nuovo token sovrascrive il
+        vecchio (niente multi-device fan-out in questa fase)."""
+        fcm_token = (fcm_token or "").strip()
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE utenti SET fcm_token = ? WHERE id = ?",
+                (fcm_token, int(utente_id)),
             )
 
     def delete(self, utente_id: int) -> bool:

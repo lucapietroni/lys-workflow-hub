@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Callable
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from lys_workflow_hub import __version__
@@ -577,3 +577,20 @@ def portale_impostazioni_salva(
             status_code=400,
         )
     return RedirectResponse(url="/portale/impostazioni", status_code=303)
+
+
+@router.post("/portale/fcm-token")
+def portale_fcm_token(
+    request: Request,
+    fcm_token: str = Form(""),
+    current_user: Utente | None = Depends(get_current_user),
+    utenti_repo: UtentiRepository = Depends(get_utenti_repo),
+) -> JSONResponse:
+    """Registra il device token FCM dell'utente loggato — chiamato dal JS del
+    wrapper Capacitor subito dopo l'evento `registration` del plugin
+    @capacitor/push-notifications. Form-urlencoded (non JSON): il CSRF
+    middleware globale legge `request.form()` su ogni POST non-multipart
+    (`web/auth.py`), quindi un body `application/json` lo salterebbe."""
+    utente = _require_user(current_user)
+    utenti_repo.set_fcm_token(utente.id, fcm_token)
+    return JSONResponse({"ok": True})
