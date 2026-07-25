@@ -113,6 +113,43 @@ def test_admin_aggiunge_nota_e_evento(admin_client) -> None:
     assert "05/08/2026" in resp.text
 
 
+def test_admin_feed_attivita_mostra_nota_e_evento_recenti(admin_client) -> None:
+    client, _ = admin_client
+    token = get_csrf(client, "/pratiche/766")
+
+    client.post(
+        "/pratiche/766/note", data={"testo": "servono foto lavorazione", "csrf_token": token}
+    )
+    client.post(
+        "/pratiche/766/eventi",
+        data={"titolo": "Perizia", "data_evento": "2026-08-05", "csrf_token": token},
+    )
+
+    resp = client.get("/pratiche/766")
+    assert resp.status_code == 200
+    assert 'id="attivita"' in resp.text
+    assert "Attività recenti" in resp.text
+    assert "ha scritto una nota" in resp.text
+    assert "servono foto lavorazione" in resp.text
+    assert "ha aggiunto in calendario" in resp.text
+    assert "Perizia" in resp.text and "05/08/2026" in resp.text
+
+
+def test_admin_feed_attivita_non_tronca_storico_stato_a_5(admin_client) -> None:
+    """`pratica_stato_storia` (widget "Storico ultimi cambi") è tagliato a 5
+    voci — il feed deve avere il proprio storico non tagliato, altrimenti un
+    cambio stato più vecchio del 5° verrebbe scartato prima ancora di poter
+    competere per un posto tra le 15 voci più recenti del feed."""
+    client, settings = admin_client
+    stato_repo = PraticaStatoRepository(db_path=settings.app_db_path)
+    for i in range(6):
+        stato_repo.set_stato(766, "in_gestione", changed_by=f"Admin{i}")
+
+    resp = client.get("/pratiche/766")
+    assert resp.status_code == 200
+    assert resp.text.count("ha cambiato lo stato") == 6
+
+
 def test_admin_elimina_evento(admin_client) -> None:
     client, _ = admin_client
     token = get_csrf(client, "/pratiche/766")
@@ -237,6 +274,38 @@ def test_portale_detail_e_collaborazione_utente_assegnato(authenticated_app, por
     resp = client.get("/portale/pratiche/766")
     assert "preso app.to con perito" in resp.text
     assert "Perizia" in resp.text
+
+
+def test_portale_feed_attivita_mostra_nota_e_evento_recenti(
+    authenticated_app, portale_setup
+) -> None:
+    assegnazioni_repo, _ = portale_setup
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
+
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, "agenzia@esempio.it", "password1234")
+    token = get_csrf(client, "/portale/pratiche/766")
+
+    client.post(
+        "/portale/pratiche/766/note",
+        data={"testo": "preso app.to con perito", "csrf_token": token},
+    )
+    client.post(
+        "/portale/pratiche/766/eventi",
+        data={"titolo": "Perizia", "data_evento": "2026-08-05", "csrf_token": token},
+    )
+
+    resp = client.get("/portale/pratiche/766")
+    assert resp.status_code == 200
+    assert 'id="attivita"' in resp.text
+    assert "Attività recenti" in resp.text
+    assert "ha scritto una nota" in resp.text
+    assert "preso app.to con perito" in resp.text
+    assert "ha aggiunto in calendario" in resp.text
+    assert "Perizia" in resp.text and "05/08/2026" in resp.text
 
 
 def test_portale_mostra_stato_default_aperta(authenticated_app, portale_setup) -> None:

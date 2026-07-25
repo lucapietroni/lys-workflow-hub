@@ -39,7 +39,18 @@
       Nessuna pratica ti è ancora stata assegnata. Contatta la carrozzeria.
     </p>
   {% else %}
-    <table class="results-table">
+    <div class="table-filters">
+      <input type="search" id="portale-filtro-testo" class="filtro-testo"
+             placeholder="Cerca per numero, cliente o targa…" aria-label="Cerca pratica" />
+      <select id="portale-filtro-stato" class="select-inline">
+        <option value="">Tutti gli stati</option>
+        {% for s in stati_disponibili %}
+        <option value="{{ s }}">{{ stato_labels.get(s, s) }}</option>
+        {% endfor %}
+      </select>
+      <span class="meta" id="portale-filtro-count"></span>
+    </div>
+    <table class="results-table" id="portale-tabella-pratiche">
       <thead>
         <tr>
           <th class="num">N.</th>
@@ -55,7 +66,11 @@
         {% for p in pratiche %}
         {% set stato_obj = stati_pratiche.get(p.numero) %}
         {% set stato_corrente = stato_obj.stato if stato_obj else "aperta" %}
-        <tr class="{{ 'row-chiusa' if stato_corrente == 'chiusa' else '' }}">
+        <tr class="{{ 'row-chiusa' if stato_corrente == 'chiusa' else '' }}"
+            data-numero="{{ p.numero }}"
+            data-cliente="{{ (p.cliente.nominativo or '')|lower }}"
+            data-targa="{{ (p.veicolo.targa or '')|lower }}"
+            data-stato="{{ stato_corrente }}">
           <td class="num"><a href="/portale/pratiche/{{ p.numero }}">{{ p.numero }}</a></td>
           <td>{{ p.cliente.nominativo or "—" }}</td>
           <td><code>{{ p.veicolo.targa or "—" }}</code></td>
@@ -70,6 +85,39 @@
         {% endfor %}
       </tbody>
     </table>
+    <p class="meta" id="portale-filtro-vuoto" hidden>Nessuna pratica corrisponde ai filtri.</p>
+    <script>
+      (function () {
+        var input = document.getElementById("portale-filtro-testo");
+        var select = document.getElementById("portale-filtro-stato");
+        var countEl = document.getElementById("portale-filtro-count");
+        var emptyMsg = document.getElementById("portale-filtro-vuoto");
+        var rows = document.querySelectorAll("#portale-tabella-pratiche tbody tr");
+        if (!input || !select || !rows.length) return;
+
+        function applica() {
+          var testo = input.value.trim().toLowerCase();
+          var stato = select.value;
+          var visibili = 0;
+          rows.forEach(function (row) {
+            var matchTesto = !testo
+              || row.dataset.numero.indexOf(testo) !== -1
+              || row.dataset.cliente.indexOf(testo) !== -1
+              || row.dataset.targa.indexOf(testo) !== -1;
+            var matchStato = !stato || row.dataset.stato === stato;
+            var visibile = matchTesto && matchStato;
+            row.hidden = !visibile;
+            if (visibile) visibili++;
+          });
+          countEl.textContent = visibili + " di " + rows.length;
+          emptyMsg.hidden = visibili !== 0;
+        }
+
+        input.addEventListener("input", applica);
+        select.addEventListener("change", applica);
+        applica();
+      })();
+    </script>
   {% endif %}
 </section>
 {% endblock %}

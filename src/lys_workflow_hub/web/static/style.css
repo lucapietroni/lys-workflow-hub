@@ -491,6 +491,20 @@ code {
 }
 .select-inline:focus { outline: none; border-color: var(--glass-border-focus); }
 
+/* Ricerca/filtro elenco pratiche portale esterno */
+.table-filters { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+.filtro-testo {
+  flex: 1;
+  min-width: 200px;
+  padding: 8px 12px;
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  background: var(--glass);
+  color: var(--lys-grey-900);
+  font-size: 0.9rem;
+}
+.filtro-testo:focus { outline: none; border-color: var(--glass-border-focus); }
+
 /* Pulse dot action_required */
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; transform: scale(1); }
@@ -837,6 +851,29 @@ code {
 .files-list li:hover { background: var(--glass-hover); }
 .files-list .file-name { font-family: var(--font-mono); color: var(--lys-grey-900); font-size: 0.86rem; }
 .files-list .file-meta { font-size: 0.80rem; color: var(--lys-grey-500); }
+
+/* ====== Feed attività recenti (nota/evento/stato/upload unificati) ====== */
+.activity-feed {
+  list-style: none;
+  padding: 0; margin: 8px 0 18px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.activity-feed li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--glass-border);
+  font-size: 0.90rem;
+  background: var(--glass);
+}
+.activity-feed li:last-child { border-bottom: none; }
+.activity-feed li:hover { background: var(--glass-hover); }
+.activity-icon { flex-shrink: 0; }
+.activity-label { flex: 1; color: var(--lys-grey-900); }
+.activity-time { flex-shrink: 0; white-space: nowrap; }
 
 /* ====== Foto pratica: griglia miniature + lightbox ====== */
 .foto-grid {

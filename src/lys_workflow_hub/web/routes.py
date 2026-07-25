@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import calendar
 import logging
-from datetime import date
+from datetime import date, datetime, time
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import quote as _urlquote
@@ -127,6 +127,83 @@ def _allegati_con_url(
         }
         for a in items
     ]
+
+
+# Numero massimo di voci nel feed "Attività recenti" — anche il numero di
+# cambi stato da recuperare per costruirlo (vedi `pratica_detail` e
+# `portale_pratica_detail`: usano uno storico stato dedicato con questo
+# stesso limite, non quello tagliato a 5 per il widget "Storico ultimi cambi").
+_FEED_LIMIT = 15
+
+
+def _costruisci_feed_attivita(
+    *,
+    note: list,
+    eventi: list,
+    stato_storia: list,
+    stato_labels: dict[str, str],
+    foto: list[dict[str, Any]],
+    documenti: list[dict[str, Any]],
+    limit: int = _FEED_LIMIT,
+) -> list[dict[str, Any]]:
+    """Timeline unica di attività recenti su una pratica (note, eventi,
+    cambi stato, upload foto/documenti), più recenti prima — usata sia da
+    `/pratiche/{numero}` (admin) che da `/portale/pratiche/{numero}` per
+    dare una visione d'insieme senza scorrere ogni singola sezione.
+
+    I file (foto/documenti) hanno solo `data_modifica` (data, non orario:
+    è il mtime del filesystem) e nessun autore tracciato — a differenza di
+    note/eventi/stato che vivono nel DB con `created_at`/`changed_at` e
+    autore. Per questi elementi il timestamp è la mezzanotte del giorno di
+    modifica (`solo_data=True` dice al template di non mostrare un orario
+    fittizio)."""
+    voci: list[dict[str, Any]] = []
+    for n in note:
+        voci.append({
+            "tipo": "nota",
+            "icona": "📝",
+            "timestamp": n.created_at,
+            "solo_data": False,
+            "label": f'{n.autore_nome} ha scritto una nota: "{n.testo}"',
+        })
+    for e in eventi:
+        quando = f" per il {e.data_evento.strftime('%d/%m/%Y')}" if e.data_evento else ""
+        voci.append({
+            "tipo": "evento",
+            "icona": "📅",
+            "timestamp": e.created_at,
+            "solo_data": False,
+            "label": f'{e.creato_da_nome} ha aggiunto in calendario "{e.titolo}"{quando}',
+        })
+    for s in stato_storia:
+        nota = f" — {s.note}" if s.note else ""
+        voci.append({
+            "tipo": "stato",
+            "icona": "🔄",
+            "timestamp": s.changed_at,
+            "solo_data": False,
+            "label": f'{s.changed_by} ha cambiato lo stato in '
+                     f'"{stato_labels.get(s.stato, s.stato)}"{nota}',
+        })
+    for f in foto:
+        voci.append({
+            "tipo": "foto",
+            "icona": "🖼️",
+            "timestamp": datetime.combine(f["data_modifica"], time.min),
+            "solo_data": True,
+            "label": f'Nuova foto caricata: "{f["nome_file"]}"',
+        })
+    for d in documenti:
+        voci.append({
+            "tipo": "documento",
+            "icona": "📎",
+            "timestamp": datetime.combine(d["data_modifica"], time.min),
+            "solo_data": True,
+            "label": f'Nuovo documento caricato: "{d["nome_file"]}"',
+        })
+    voci = [v for v in voci if v["timestamp"] is not None]
+    voci.sort(key=lambda v: v["timestamp"], reverse=True)
+    return voci[:limit]
 
 
 # --------------------------------------------------------------------------- #
@@ -397,6 +474,26 @@ def pratica_detail(
         logger.warning("Impossibile leggere note/calendario per %s: %s", numero, exc)
         context["note_pratica"] = []
         context["eventi_pratica"] = []
+    # Feed attività unificato (note + eventi + cambi stato + upload). Usa uno
+    # storico stato dedicato (non `pratica_stato_storia`, tagliato a 5 per il
+    # widget "Storico ultimi cambi"): con >5 cambi di stato recenti i più
+    # vecchi verrebbero scartati prima del merge, anche se rientrerebbero tra
+    # i _FEED_LIMIT eventi più recenti del feed.
+    try:
+        stato_storia_feed = PraticaStatoRepository(
+            db_path=settings.app_db_path
+        ).storia(numero, limit=_FEED_LIMIT)
+        context["feed_attivita"] = _costruisci_feed_attivita(
+            note=context["note_pratica"],
+            eventi=context["eventi_pratica"],
+            stato_storia=stato_storia_feed,
+            stato_labels=context["stato_labels"],
+            foto=context["foto_pratica"],
+            documenti=context["documenti_pratica"],
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Impossibile costruire il feed attività per %s: %s", numero, exc)
+        context["feed_attivita"] = []
     return templates.TemplateResponse(request, "pratica_detail.html", context)
 
 

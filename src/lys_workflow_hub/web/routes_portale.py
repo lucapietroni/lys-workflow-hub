@@ -46,6 +46,8 @@ from lys_workflow_hub.web.routes import (
     _allegati_con_url,
     _arricchisci_eventi_con_pratica,
     _contesto_calendario,
+    _costruisci_feed_attivita,
+    _FEED_LIMIT,
     _NON_RENDERIZZABILI,
     _parse_date,
     _raggruppa_per_giorno,
@@ -123,7 +125,12 @@ def portale_list(
         if pratica is not None:
             pratiche.append(pratica)
 
-    context = {"version": __version__, "pratiche": pratiche, "stato_labels": STATO_LABELS}
+    context = {
+        "version": __version__,
+        "pratiche": pratiche,
+        "stato_labels": STATO_LABELS,
+        "stati_disponibili": STATI,
+    }
 
     # Stato corrente di ciascuna pratica (v3.0 fase 5, parte E) — nessuna
     # query bulk in PraticaStatoRepository, N chiamate come per wincar_repo
@@ -253,6 +260,25 @@ def portale_pratica_detail(
         context["pratica_stato_storia"] = []
     context["stati_disponibili"] = STATI
     context["stato_labels"] = STATO_LABELS
+
+    # Storico stato dedicato al feed (non `pratica_stato_storia`, tagliato a
+    # 5 per il widget "Storico ultimi cambi") — vedi commento analogo in
+    # `routes.pratica_detail`.
+    try:
+        stato_storia_feed = PraticaStatoRepository(
+            db_path=settings.app_db_path
+        ).storia(numero, limit=_FEED_LIMIT)
+        context["feed_attivita"] = _costruisci_feed_attivita(
+            note=context["note_pratica"],
+            eventi=context["eventi_pratica"],
+            stato_storia=stato_storia_feed,
+            stato_labels=context["stato_labels"],
+            foto=context["foto_pratica"],
+            documenti=context["documenti_pratica"],
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Portale: impossibile costruire il feed attività per %s: %s", numero, exc)
+        context["feed_attivita"] = []
 
     return templates.TemplateResponse(request, "portale_pratica_detail.html", context)
 

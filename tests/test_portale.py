@@ -116,6 +116,27 @@ def test_portale_evidenzia_pratica_chiusa(
     assert "row-chiusa" in resp.text
 
 
+def test_portale_lista_ha_filtro_ricerca_e_stato(authenticated_app, portale_client) -> None:
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    portale_client.assegna(766, esterno.id, assegnato_da=1)
+
+    client = TestClient(app)
+    login_as(client, "agenzia@esempio.it", "password1234")
+    resp = client.get("/portale")
+    assert resp.status_code == 200
+    assert 'id="portale-filtro-testo"' in resp.text
+    assert 'id="portale-filtro-stato"' in resp.text
+    assert 'data-numero="766"' in resp.text
+    assert 'data-cliente="rossi mario"' in resp.text
+    assert 'data-targa="ab123cd"' in resp.text
+    assert 'data-stato="aperta"' in resp.text
+    # tutte le voci di stato disponibili (usate come opzioni del filtro)
+    assert "Periziata" in resp.text
+    assert "In trattativa" in resp.text
+
+
 def test_portale_non_mostra_pratiche_di_altri_utenti(authenticated_app, portale_client) -> None:
     esterno_a = authenticated_app.create(
         email="a@esempio.it", password="password1234", ruolo="esterno"

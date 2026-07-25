@@ -1,6 +1,6 @@
 # LYS Workflow Hub — Contesto di sviluppo
 
-> Branch: **v2** · Versione: **3.11.1** (base: v1.0.4 / main)
+> Branch: **v2** · Versione: **3.12.0** (base: v1.0.4 / main)
 
 ---
 
@@ -889,6 +889,7 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 | 3.10.0 | v2 | + Nuovo stato pratica "In trattativa" (dopo "Periziata"). L'esterno assegnato può ora caricare foto e documenti direttamente da `/portale/pratiche/{numero}` (tasto "Upload" nelle sezioni "Foto pratica"/"Documenti"), salvati nelle cartelle WinCar `Pubblici/Foto`/`Pubblici/Allegati` della pratica — visibili anche in WinCar come i file caricati dall'admin. Validazione estensione (niente eseguibili), dimensione max 20MB, CSRF esplicito (multipart), notifica push all'admin |
 | 3.11.0 | v2 | + Numero pratica cliccabile nelle tabelle home admin e `/portale`. + Occhiolino mostra/nascondi sulla password (login e form utente). + Notifica email/push all'esterno secondo le sue preferenze quando gli viene assegnata una pratica (non solo su nota/evento/stato come prima), `PraticaAssegnazioniRepository.assegna()` ora ritorna se ha creato una nuova riga per evitare notifiche duplicate su resubmit. UI: sezione "Stato pratica" spostata sotto "Collaboratori esterni" su `/pratiche/{numero}` |
 | 3.11.1 | v2 | UI: sezione "Calendario" spostata subito sotto "Stato pratica" (prima di "Note") su `/portale/pratiche/{numero}` |
+| 3.12.0 | v2 | + Feed "Attività recenti" su `/pratiche/{numero}` e `/portale/pratiche/{numero}`: timeline unica (note, eventi, cambi stato, upload foto/documenti) ordinata dal più recente, subito sotto "Stato pratica" — evita di dover scorrere ogni sezione per capire cosa è successo di recente. + Ricerca/filtro nell'elenco `/portale`: campo di ricerca (numero/cliente/targa) e filtro per stato, lato client, senza ricaricare la pagina |
 
 ---
 
