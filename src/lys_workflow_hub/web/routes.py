@@ -575,6 +575,7 @@ def _notifica_esterni_assegnati(
                     fcm_token=u.fcm_token,
                     titolo=subject,
                     messaggio=body_text,
+                    click_path=f"/portale/pratiche/{numero}",
                     disabled=settings.notify_disabled,
                 )
     except Exception as exc:  # noqa: BLE001
@@ -727,6 +728,7 @@ def _notifica_esterno_assegnazione(
                 fcm_token=u.fcm_token,
                 titolo=subject,
                 messaggio=body_text,
+                click_path=f"/portale/pratiche/{numero}",
                 disabled=settings.notify_disabled,
             )
     except Exception as exc:  # noqa: BLE001

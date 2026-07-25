@@ -110,6 +110,19 @@
             PushNotifications.addListener("registrationError", function (err) {
               console.error("FCM registration error", err);
             });
+            // Tap sulla notifica (app in foreground, background o killed):
+            // Capacitor riapre/porta in primo piano l'app sulla sua pagina di
+            // partenza (server.url) e SOLO DOPO consegna questo evento —
+            // quindi qui reindirizziamo alla pratica giusta invece di restare
+            // sulla home. click_path arriva nel payload "data" di send_fcm_push.
+            PushNotifications.addListener("pushNotificationActionPerformed", function (action) {
+              var clickPath = action.notification && action.notification.data
+                ? action.notification.data.click_path
+                : null;
+              if (clickPath) {
+                window.location.href = clickPath;
+              }
+            });
           } catch (e) {
             console.error("Push notification setup failed", e);
           }
