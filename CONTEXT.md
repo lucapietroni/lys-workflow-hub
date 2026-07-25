@@ -1,6 +1,6 @@
 # LYS Workflow Hub — Contesto di sviluppo
 
-> Branch: **v2** · Versione: **3.12.0** (base: v1.0.4 / main)
+> Branch: **v2** · Versione: **4.0.0** (base: v1.0.4 / main)
 
 ---
 
@@ -890,6 +890,7 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 | 3.11.0 | v2 | + Numero pratica cliccabile nelle tabelle home admin e `/portale`. + Occhiolino mostra/nascondi sulla password (login e form utente). + Notifica email/push all'esterno secondo le sue preferenze quando gli viene assegnata una pratica (non solo su nota/evento/stato come prima), `PraticaAssegnazioniRepository.assegna()` ora ritorna se ha creato una nuova riga per evitare notifiche duplicate su resubmit. UI: sezione "Stato pratica" spostata sotto "Collaboratori esterni" su `/pratiche/{numero}` |
 | 3.11.1 | v2 | UI: sezione "Calendario" spostata subito sotto "Stato pratica" (prima di "Note") su `/portale/pratiche/{numero}` |
 | 3.12.0 | v2 | + Feed "Attività recenti" su `/pratiche/{numero}` e `/portale/pratiche/{numero}`: timeline unica (note, eventi, cambi stato, upload foto/documenti) ordinata dal più recente, subito sotto "Stato pratica" — evita di dover scorrere ogni sezione per capire cosa è successo di recente. + Ricerca/filtro nell'elenco `/portale`: campo di ricerca (numero/cliente/targa) e filtro per stato, lato client, senza ricaricare la pagina |
+| 4.0.0 | v2 | **App Android companion** (Capacitor, wrappa `/portale`): Fase A+B wrapper Capacitor + backend push FCM (`send_fcm_push()`, colonna `fcm_token`); Fase C push FCM native client + deep-link alla pratica corretta; Fase D scatto foto nativo via `@capacitor/camera` (poi fix: base64 invece di `fetch(webPath)`); rebrand app → nome "LYSApp" + icona logo LYS Auto; Fase E build release firmata (keystore) per closed testing. + UI: sezioni "Attività recenti" e "Collaboratori esterni" a tendina su `/pratiche/{numero}` |
 
 ---
 
