@@ -440,6 +440,7 @@
       {% for f in foto_pratica %}
       <div class="foto-item">
         <input type="checkbox" class="foto-select" name="path" value="{{ f.path }}" />
+        <button type="button" class="foto-elimina" data-path="{{ f.path }}" title="Elimina foto" aria-label="Elimina foto">&times;</button>
         <button type="button" class="foto-thumb" data-full="{{ f.url }}" data-name="{{ f.nome_file }}" title="{{ f.nome_file }}">
           <img src="{{ f.url }}" alt="{{ f.nome_file }}" loading="lazy" />
         </button>
@@ -468,6 +469,30 @@
       selezionaTutte.addEventListener("change", function () {
         checkboxes.forEach(function (cb) { cb.checked = selezionaTutte.checked; });
         aggiornaBottone();
+      });
+
+      // Eliminazione singola foto: form costruito al volo e appeso al
+      // <body>, non nidificato dentro il form GET di download (l'HTML non
+      // permette form annidati).
+      document.querySelectorAll(".foto-elimina").forEach(function (btn) {
+        btn.addEventListener("click", function (e) {
+          e.stopPropagation();
+          if (!confirm("Eliminare questa foto? L'operazione non è reversibile.")) return;
+          var f = document.createElement("form");
+          f.method = "post";
+          f.action = "/pratiche/{{ pratica.numero }}/foto/elimina";
+          f.style.display = "none";
+          var csrf = document.createElement("input");
+          csrf.name = "csrf_token";
+          csrf.value = {{ csrf_token|tojson }};
+          var path = document.createElement("input");
+          path.name = "path";
+          path.value = btn.dataset.path;
+          f.appendChild(csrf);
+          f.appendChild(path);
+          document.body.appendChild(f);
+          f.submit();
+        });
       });
     })();
   </script>

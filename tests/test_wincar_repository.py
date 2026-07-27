@@ -94,6 +94,14 @@ def repo(tmp_path: Path) -> WinCarRepository:
     return WinCarRepository(archivio_root=tmp_path, odbc_driver="Test Driver")
 
 
+def test_connessione_resta_sempre_readonly(repo: WinCarRepository) -> None:
+    """Guardia di non-regressione sull'invariante "mai una scrittura" di
+    questo connettore (vedi il modulo separato wincar_carvei_write.py per
+    l'unica, deliberata eccezione a questa regola, su un campo diverso)."""
+    conn_str = repo._connection_string(repo.DB_FILE_ARCHIVI)
+    assert "ReadOnly=1" in conn_str
+
+
 # ---------------------------------------------------------------------------
 # helper puri
 # ---------------------------------------------------------------------------

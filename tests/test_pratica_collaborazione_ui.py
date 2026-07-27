@@ -16,6 +16,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from lys_workflow_hub.config import Settings
 from lys_workflow_hub.core.pratica_assegnazioni_repository import (
@@ -40,6 +41,12 @@ from lys_workflow_hub.web.routes_portale import (
     get_wincar_repo,
 )
 from tests.conftest import get_csrf, login_as, login_as_admin
+
+
+def _jpeg_bytes(size: tuple[int, int] = (49, 88)) -> bytes:
+    buffer = io.BytesIO()
+    Image.new("RGB", size, color=(120, 40, 10)).save(buffer, format="JPEG")
+    return buffer.getvalue()
 
 
 def _sample_pratica(numero: int = 766) -> Pratica:
@@ -824,6 +831,108 @@ def test_admin_upload_documento_salva_negli_allegati(admin_client) -> None:
     allegati_dir = settings.wincar_archivio / "Pratiche" / "766" / "Pubblici" / "Allegati"
     salvati = list(allegati_dir.glob("preventivo_*.pdf"))
     assert len(salvati) == 1
+
+
+def test_admin_elimina_foto_rimuove_file_e_thumb(admin_client) -> None:
+    client, settings = admin_client
+    resp = client.post(
+        "/pratiche/766/foto",
+        data={"csrf_token": get_csrf(client, "/pratiche/766")},
+        files={"files": ("danno.jpg", _jpeg_bytes(), "image/jpeg")},
+    )
+    foto_dir = settings.wincar_archivio / "Pratiche" / "766" / "Pubblici" / "Foto"
+    salvata = list(foto_dir.glob("danno_*.jpg"))[0]
+    thumb = salvata.with_name(salvata.name + ".thumb")
+    # Byte JPEG reali (non un placeholder): il thumb DEVE esistere prima
+    # della cancellazione, altrimenti l'assert sotto sarebbe vacuamente vera
+    # (non proverebbe che la route lo elimina davvero).
+    assert thumb.exists()
+
+    resp = client.post(
+        "/pratiche/766/foto/elimina",
+        data={"csrf_token": get_csrf(client, "/pratiche/766"), "path": str(salvata)},
+    )
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/pratiche/766#foto"
+    assert not salvata.exists()
+    assert not thumb.exists()
+
+
+def test_admin_elimina_foto_azzera_f_foto_su_ultima_rimasta(
+    admin_client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, settings = admin_client
+    client.post(
+        "/pratiche/766/foto",
+        data={"csrf_token": get_csrf(client, "/pratiche/766")},
+        files={"files": ("danno.jpg", b"fake-jpeg-bytes", "image/jpeg")},
+    )
+    foto_dir = settings.wincar_archivio / "Pratiche" / "766" / "Pubblici" / "Foto"
+    salvata = list(foto_dir.glob("danno_*.jpg"))[0]
+
+    chiamate = []
+    monkeypatch.setattr(
+        "lys_workflow_hub.web.routes.marca_foto_assente",
+        lambda **kwargs: chiamate.append(kwargs),
+    )
+    client.post(
+        "/pratiche/766/foto/elimina",
+        data={"csrf_token": get_csrf(client, "/pratiche/766"), "path": str(salvata)},
+    )
+    assert len(chiamate) == 1
+    assert chiamate[0]["numero_pratica"] == 766
+
+
+def test_admin_elimina_foto_non_azzera_f_foto_se_ne_restano_altre(
+    admin_client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, settings = admin_client
+    for nome in ("danno1.jpg", "danno2.jpg"):
+        client.post(
+            "/pratiche/766/foto",
+            data={"csrf_token": get_csrf(client, "/pratiche/766")},
+            files={"files": (nome, b"fake-jpeg-bytes", "image/jpeg")},
+        )
+    foto_dir = settings.wincar_archivio / "Pratiche" / "766" / "Pubblici" / "Foto"
+    prima = list(foto_dir.glob("danno1_*.jpg"))[0]
+
+    chiamate = []
+    monkeypatch.setattr(
+        "lys_workflow_hub.web.routes.marca_foto_assente",
+        lambda **kwargs: chiamate.append(kwargs),
+    )
+    client.post(
+        "/pratiche/766/foto/elimina",
+        data={"csrf_token": get_csrf(client, "/pratiche/766"), "path": str(prima)},
+    )
+    assert chiamate == []
+
+
+def test_admin_elimina_foto_rifiuta_path_di_unaltra_pratica(admin_client) -> None:
+    client, settings = admin_client
+    fuori_pratica = settings.wincar_archivio / "segreto.jpg"
+    fuori_pratica.write_bytes(b"non-autorizzato")
+
+    resp = client.post(
+        "/pratiche/766/foto/elimina",
+        data={"csrf_token": get_csrf(client, "/pratiche/766"), "path": str(fuori_pratica)},
+    )
+    assert resp.status_code == 403
+    assert fuori_pratica.exists()
+
+
+def test_esterno_non_puo_eliminare_foto(authenticated_app, portale_setup) -> None:
+    authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, "agenzia@esempio.it", "password1234")
+
+    resp = client.post(
+        "/pratiche/766/foto/elimina",
+        data={"csrf_token": get_csrf(client, "/portale"), "path": "/qualsiasi/percorso.jpg"},
+    )
+    assert resp.status_code == 403
 
 
 def test_admin_upload_rifiuta_formato_non_supportato(admin_client) -> None:

@@ -47,6 +47,7 @@ from lys_workflow_hub.core.pratica_stato_repository import (
     STATO_PERIZIATA,
 )
 from lys_workflow_hub.core.utenti_repository import Utente, UtentiRepository
+from lys_workflow_hub.core.wincar_carvei_write import marca_foto_assente
 from lys_workflow_hub.core.wincar_repository import WinCarRepository
 from lys_workflow_hub.integrations.notifier import (
     notify_esterno_nuova_attivita,
@@ -907,6 +908,7 @@ def _salva_file_pratica(
                 categoria=categoria,
                 filename=f.filename,
                 raw=raw,
+                odbc_driver=settings.wincar_odbc_driver,
             )
             salvati.append(f.filename)
         except UploadRifiutato as exc:
@@ -981,6 +983,52 @@ def pratica_upload_documento(
     return _upload_pratica_admin(
         numero, "documento", "documenti", files, request, csrf_token, admin, settings
     )
+
+
+@router.post("/pratiche/{numero}/foto/elimina")
+def pratica_elimina_foto(
+    numero: int,
+    path: str = Form(...),
+    admin: Utente = Depends(require_admin),
+    settings: Settings = Depends(get_app_settings),
+) -> RedirectResponse:
+    """Elimina una foto (+ il suo sidecar .thumb) dalla pratica. Se era
+    l'ultima rimasta, azzera anche CARVEI.F_FOTO: WinCar non lo fa da solo
+    quando le foto vengono cancellate (bug segnalato dall'utente, icona
+    fotocamera rimane accesa a cartella vuota) — vedi
+    wincar_carvei_write.marca_foto_assente. Best-effort, come l'analogo
+    marca_foto_presente sull'upload: non deve mai bloccare l'eliminazione
+    vera e propria."""
+    try:
+        allegati = scan_allegati(settings.wincar_archivio, numero)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Impossibile leggere foto per %s: %s", numero, exc)
+        raise HTTPException(404, "Pratica non trovata o cartelle non accessibili.")
+    valid = {str(a.path) for a in allegati.foto}
+    if path not in valid:
+        raise HTTPException(403, "Foto non autorizzata per questa pratica.")
+
+    file_path = Path(path)
+    try:
+        file_path.unlink(missing_ok=True)
+        file_path.with_name(file_path.name + ".thumb").unlink(missing_ok=True)
+    except OSError as exc:
+        raise HTTPException(500, f"Impossibile eliminare il file: {exc}")
+
+    try:
+        rimanenti = scan_allegati(settings.wincar_archivio, numero)
+        if not rimanenti.foto:
+            marca_foto_assente(
+                archivio_root=settings.wincar_archivio,
+                odbc_driver=settings.wincar_odbc_driver,
+                numero_pratica=numero,
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "Impossibile aggiornare CARVEI.F_FOTO dopo eliminazione per %s: %s", numero, exc
+        )
+
+    return RedirectResponse(url=f"/pratiche/{numero}#foto", status_code=303)
 
 
 # --------------------------------------------------------------------------- #

@@ -321,3 +321,73 @@ def test_save_upload_thumbs_index_fallito_non_blocca_upload(
     assert target.exists()
     assert target.with_name(target.name + ".thumb").exists()
     assert not (target.parent / "Thumbs.thumb").exists()
+
+
+def test_save_upload_chiama_marca_foto_presente_con_i_parametri_giusti(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import lys_workflow_hub.core.pratica_files as pratica_files_mod
+
+    chiamate = []
+    monkeypatch.setattr(
+        pratica_files_mod, "marca_foto_presente", lambda **kwargs: chiamate.append(kwargs)
+    )
+
+    save_upload(
+        archivio_root=tmp_path,
+        numero_pratica=766,
+        categoria="foto",
+        filename="danno.jpg",
+        raw=_jpeg_bytes(),
+        odbc_driver="driver di test",
+    )
+
+    assert len(chiamate) == 1
+    assert chiamate[0]["archivio_root"] == tmp_path
+    assert chiamate[0]["odbc_driver"] == "driver di test"
+    assert chiamate[0]["numero_pratica"] == 766
+
+
+def test_save_upload_marca_foto_presente_fallito_non_blocca_upload(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Se l'update su CARVEI fallisce (driver assente, DB bloccato da
+    WinCar, ecc.), la foto e il suo sidecar .thumb devono comunque
+    salvarsi — l'icona in WinCar può mancare, la foto no."""
+    import lys_workflow_hub.core.pratica_files as pratica_files_mod
+
+    def _fallisce(**kwargs):
+        raise RuntimeError("CARVEI non aggiornabile (simulato)")
+
+    monkeypatch.setattr(pratica_files_mod, "marca_foto_presente", _fallisce)
+
+    target = save_upload(
+        archivio_root=tmp_path,
+        numero_pratica=766,
+        categoria="foto",
+        filename="danno.jpg",
+        raw=_jpeg_bytes(),
+    )
+    assert target.exists()
+    assert target.with_name(target.name + ".thumb").exists()
+
+
+def test_save_upload_documento_non_chiama_marca_foto_presente(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import lys_workflow_hub.core.pratica_files as pratica_files_mod
+
+    chiamate = []
+    monkeypatch.setattr(
+        pratica_files_mod, "marca_foto_presente", lambda **kwargs: chiamate.append(kwargs)
+    )
+
+    save_upload(
+        archivio_root=tmp_path,
+        numero_pratica=766,
+        categoria="documento",
+        filename="preventivo.pdf",
+        raw=b"%PDF-1.4 fake",
+    )
+
+    assert chiamate == []

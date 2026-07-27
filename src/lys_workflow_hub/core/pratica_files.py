@@ -29,6 +29,7 @@ from uuid import uuid4
 
 from PIL import Image, ImageOps
 
+from lys_workflow_hub.core.wincar_carvei_write import marca_foto_presente
 from lys_workflow_hub.core.wincar_thumbs_index import aggiorna_indice_thumbs
 
 logger = logging.getLogger(__name__)
@@ -188,6 +189,9 @@ def _genera_thumb_wincar(raw: bytes) -> tuple[bytes, int, int] | None:
         return None
 
 
+_ODBC_DRIVER_DEFAULT = "Microsoft Access Driver (*.mdb, *.accdb)"
+
+
 def save_upload(
     *,
     archivio_root: Path,
@@ -196,6 +200,7 @@ def save_upload(
     filename: str,
     raw: bytes,
     max_bytes: int = 20 * 1024 * 1024,
+    odbc_driver: str = _ODBC_DRIVER_DEFAULT,
 ) -> Path:
     """Salva un file caricato dal portale esterno nella cartella WinCar
     della pratica (``Pubblici/Foto`` o ``Pubblici/Allegati``, a seconda di
@@ -262,6 +267,22 @@ def save_upload(
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Impossibile aggiornare Thumbs.thumb per %s: %s", target, exc)
+        # Senza questo, l'icona fotocamera nell'elenco pratiche di WinCar non
+        # compare anche se le foto sono perfettamente visibili aprendo la
+        # pratica — vedi wincar_carvei_write.py per il dettaglio. Unica
+        # scrittura sul DB WinCar del progetto, deliberatamente isolata in un
+        # modulo a parte; best-effort come le due chiamate sopra.
+        try:
+            marca_foto_presente(
+                archivio_root=archivio_root,
+                odbc_driver=odbc_driver,
+                numero_pratica=numero_pratica,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Impossibile aggiornare CARVEI.F_FOTO per la pratica %s: %s",
+                numero_pratica, exc,
+            )
 
     return target
 
