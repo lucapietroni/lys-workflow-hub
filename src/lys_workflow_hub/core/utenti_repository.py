@@ -55,6 +55,7 @@ class Utente:
     notify_push_enabled: bool = False
     ntfy_topic: str = ""
     fcm_token: str = ""
+    login_count: int = 0
 
     @property
     def is_admin(self) -> bool:
@@ -93,6 +94,7 @@ _MIGRAZIONI_COLONNE = (
     "notify_push_enabled INTEGER NOT NULL DEFAULT 0",
     "ntfy_topic TEXT NOT NULL DEFAULT ''",
     "fcm_token TEXT NOT NULL DEFAULT ''",
+    "login_count INTEGER NOT NULL DEFAULT 0",
 )
 
 
@@ -175,6 +177,7 @@ class UtentiRepository:
             notify_push_enabled=bool(d.get("notify_push_enabled", 0)),
             ntfy_topic=d.get("ntfy_topic") or "",
             fcm_token=d.get("fcm_token") or "",
+            login_count=d.get("login_count") or 0,
         )
 
     # -- query -----------------------------------------------------------
@@ -386,7 +389,7 @@ class UtentiRepository:
             if _verify_password(password, d["password_hash"]):
                 conn.execute(
                     "UPDATE utenti SET failed_login_count = 0, locked_until = NULL, "
-                    "last_login = ? WHERE id = ?",
+                    "last_login = ?, login_count = login_count + 1 WHERE id = ?",
                     (datetime.now().isoformat(timespec="seconds"), utente_id),
                 )
                 # Ri-leggo la riga aggiornata: `row` è la snapshot pre-UPDATE,

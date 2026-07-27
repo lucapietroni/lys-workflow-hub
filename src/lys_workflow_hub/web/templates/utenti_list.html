@@ -29,6 +29,7 @@
           <th>Ruolo</th>
           <th>Stato</th>
           <th>Ultimo accesso</th>
+          <th>Accessi</th>
           <th class="col-actions"></th>
         </tr>
       </thead>
@@ -54,6 +55,7 @@
           <td class="meta">
             {{ u.last_login.strftime("%d/%m/%Y %H:%M") if u.last_login else "mai" }}
           </td>
+          <td class="meta">{{ u.login_count }}</td>
           <td class="col-actions">
             <a class="btn btn-sm" href="/utenti/{{ u.id }}">Modifica</a>
             <form method="post"

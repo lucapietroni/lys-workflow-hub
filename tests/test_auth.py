@@ -28,6 +28,23 @@ def test_create_and_authenticate(tmp_path: Path) -> None:
     assert utente.email == "test@example.com"
     assert utente.is_admin
     assert utente.last_login is not None
+    assert utente.login_count == 1
+
+
+def test_authenticate_incrementa_login_count_a_ogni_accesso(tmp_path: Path) -> None:
+    repo = UtentiRepository(db_path=tmp_path / "u.db")
+    creato = repo.create(email="a@b.it", password="password123")
+    assert creato.login_count == 0
+
+    repo.authenticate("a@b.it", "password123")
+    repo.authenticate("a@b.it", "password123")
+    utente = repo.authenticate("a@b.it", "password123")
+    assert utente.login_count == 3
+
+    # Un tentativo fallito non deve incrementarlo.
+    with pytest.raises(AuthError):
+        repo.authenticate("a@b.it", "sbagliata")
+    assert repo.get(utente.id).login_count == 3
 
 
 def test_authenticate_wrong_password_raises(tmp_path: Path) -> None:
