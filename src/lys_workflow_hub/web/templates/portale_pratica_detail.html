@@ -10,7 +10,7 @@
 
 {% block content %}
 <nav class="breadcrumb">
-  <a href="/portale">← Torna alle tue pratiche</a>
+  <a href="/portale" class="btn btn-sm">← Torna alle tue pratiche</a>
 </nav>
 
 {% if upload_ok %}
@@ -27,7 +27,6 @@
 
 <header class="pratica-header">
   <div>
-    <div class="hero-eyebrow">Portale collaborazione</div>
     <span class="badge">Pratica</span>
     <h1>N. {{ pratica.numero }}</h1>
     {% if pratica.data_creazione %}
@@ -367,6 +366,10 @@
     }
   </script>
 </section>
+
+<nav class="breadcrumb">
+  <a href="/portale" class="btn btn-sm">← Torna alle tue pratiche</a>
+</nav>
 
 <div id="foto-lightbox" class="lightbox" hidden>
   <button type="button" class="lightbox-close" id="lightbox-close" aria-label="Chiudi">&times;</button>

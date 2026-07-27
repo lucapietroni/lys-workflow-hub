@@ -1510,16 +1510,26 @@ html.is-app, html.is-app body {
 
 /* Header compatto + hamburger reale */
 html.is-app .topbar {
-  height: calc(52px + env(safe-area-inset-top, 0px));
+  height: calc(60px + env(safe-area-inset-top, 0px));
   padding: env(safe-area-inset-top, 0px) var(--app-pad-x) 0;
   align-items: flex-end;
   padding-bottom: 0;
 }
 html.is-app .topbar::after { bottom: 0; }
-html.is-app .brand { height: 52px; gap: 8px; }
-html.is-app .brand-logo { height: 26px; }
-html.is-app .brand-sub { display: none; }
-html.is-app .brand-title { font-size: 0.88rem; }
+html.is-app .brand { height: 60px; gap: 8px; }
+/* Solo logo, niente scritta "Workflow Hub": più spazio per ingrandirlo. */
+html.is-app .brand-logo { height: 42px; }
+
+/* Portale esterno (browser, non solo app): stessa scelta, niente "Workflow
+   Hub"/"Gestione Sinistri" accanto al logo, solo logo più grande — l'admin
+   da browser mantiene l'header invariato. La versione app (regole sopra)
+   ha già le sue dimensioni coerenti con l'header compatto/hamburger: qui
+   copriamo solo il caso browser puro (:not(.is-app), niente conflitto). */
+html.is-app .brand-sub,
+html.esterno .brand-sub { display: none; }
+html.is-app .brand-title,
+html.esterno .brand-title { display: none; }
+html.esterno:not(.is-app) .brand-logo { height: 50px; }
 
 html.is-app .nav-toggle-input {
   display: block;
@@ -1566,7 +1576,7 @@ html.is-app .nav-toggle-input:checked ~ .nav-toggle-btn span::after { transform:
 html.is-app .topbar-panel {
   display: block;
   position: fixed;
-  top: calc(52px + env(safe-area-inset-top, 0px));
+  top: calc(60px + env(safe-area-inset-top, 0px));
   left: 0; right: 0;
   max-height: 0;
   overflow: hidden;
