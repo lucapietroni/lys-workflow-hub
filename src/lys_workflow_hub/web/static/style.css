@@ -1695,6 +1695,12 @@ html.is-app .btn-azzera-filtri {
   font-size: 0.82rem;
 }
 
+/* -- Cambio stato pratica: colonna a piena larghezza invece di riga stretta -- */
+html.is-app .form-inline-stato { flex-direction: column; align-items: stretch; gap: 10px; }
+html.is-app .form-inline-stato .select-inline,
+html.is-app .form-inline-stato input[type="text"] { width: 100%; }
+html.is-app .form-inline-stato .btn { width: 100%; }
+
 /* -- Elenco pratiche: card invece di tabella (solo sotto tablet) -- */
 @media (max-width: 599px) {
   html.is-app .pratiche-table thead { display: none; }

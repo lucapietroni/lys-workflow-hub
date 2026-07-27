@@ -301,7 +301,7 @@
   <ul class="files-list">
     {% for d in documenti_pratica %}
     <li>
-      <a class="file-name" href="{{ d.url }}" target="_blank" rel="noopener" style="text-decoration:none;">{{ d.nome_file }}</a>
+      <a class="file-name documento-link" href="{{ d.url }}" target="_blank" rel="noopener" style="text-decoration:none;">{{ d.nome_file }}</a>
       <span class="file-meta">{{ d.data_modifica.strftime("%d/%m/%Y") }} · {{ d.size_label }}</span>
     </li>
     {% endfor %}
@@ -314,6 +314,21 @@
     <input type="file" name="files" accept=".pdf,.doc,.docx,.xls,.xlsx,.odt,.ods,.txt,.msg,.eml,image/*" multiple required />
     <button type="submit" class="btn btn-primary">Upload</button>
   </form>
+  <script>
+    // Apertura documenti dentro l'app Capacitor: target="_blank" non fa nulla
+    // nella WebView (nessun supporto multi-finestra), quindi i link restano
+    // invariati per il browser desktop/mobile ma dentro l'app li apriamo con
+    // @capacitor/browser (Chrome Custom Tabs) — unico modo di rendere
+    // PDF inline e gestire il download di .docx/.xlsx/.msg ecc.
+    if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
+      document.querySelectorAll(".documento-link").forEach(function (link) {
+        link.addEventListener("click", function (e) {
+          e.preventDefault();
+          window.Capacitor.Plugins.Browser.open({ url: link.href });
+        });
+      });
+    }
+  </script>
 </section>
 
 <div id="foto-lightbox" class="lightbox" hidden>
