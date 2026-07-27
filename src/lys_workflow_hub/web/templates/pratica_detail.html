@@ -415,13 +415,15 @@
 <section class="card">
   <h2>Foto pratica <span class="tag">{{ foto_pratica|length }}</span></h2>
   {% if foto_pratica %}
-  <form method="get" action="/pratiche/{{ pratica.numero }}/foto/zip" id="foto-download-form" class="foto-download-bar">
-    <label>
-      <input type="checkbox" id="foto-seleziona-tutte" />
-      Seleziona tutte
-    </label>
-    <button type="submit" class="btn btn-sm" id="foto-scarica-selezionate" disabled>Scarica selezionate</button>
-    <a class="btn btn-sm" href="/pratiche/{{ pratica.numero }}/foto/zip">Scarica tutte</a>
+  <form method="get" action="/pratiche/{{ pratica.numero }}/foto/zip" id="foto-download-form">
+    <div class="foto-download-bar">
+      <label>
+        <input type="checkbox" id="foto-seleziona-tutte" />
+        Seleziona tutte
+      </label>
+      <button type="submit" class="btn btn-sm" id="foto-scarica-selezionate" disabled>Scarica selezionate</button>
+      <a class="btn btn-sm" href="/pratiche/{{ pratica.numero }}/foto/zip">Scarica tutte</a>
+    </div>
     <div class="foto-grid">
       {% for f in foto_pratica %}
       <div class="foto-item">
