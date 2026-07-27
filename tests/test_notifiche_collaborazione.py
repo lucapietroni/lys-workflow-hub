@@ -305,6 +305,78 @@ def test_esterno_cambia_stato_notifica_admin(authenticated_app, portale_setup) -
         assert "Agenzia" in mock_notify.call_args.kwargs["messaggio"]
 
 
+def test_esterno_carica_foto_notifica_admin(authenticated_app, portale_setup) -> None:
+    assegnazioni_repo, _ = portale_setup
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
+
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, "agenzia@esempio.it", "password1234")
+
+    token = get_csrf(client, "/portale/pratiche/766")
+    with patch("lys_workflow_hub.web.routes_portale.notify_push_nuova_attivita") as mock_notify:
+        resp = client.post(
+            "/portale/pratiche/766/foto",
+            data={"csrf_token": token},
+            files={"files": ("danno.jpg", b"fake-jpeg-bytes", "image/jpeg")},
+        )
+        assert resp.status_code == 303
+        assert resp.headers["location"].startswith("/portale/pratiche/766?upload_ok=1")
+        mock_notify.assert_called_once()
+        assert "766" in mock_notify.call_args.kwargs["titolo"]
+        assert "Agenzia" in mock_notify.call_args.kwargs["messaggio"]
+
+
+def test_esterno_carica_documento_notifica_admin(authenticated_app, portale_setup) -> None:
+    assegnazioni_repo, _ = portale_setup
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
+
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, "agenzia@esempio.it", "password1234")
+
+    token = get_csrf(client, "/portale/pratiche/766")
+    with patch("lys_workflow_hub.web.routes_portale.notify_push_nuova_attivita") as mock_notify:
+        resp = client.post(
+            "/portale/pratiche/766/documenti",
+            data={"csrf_token": token},
+            files={"files": ("doc.pdf", b"%PDF-fake", "application/pdf")},
+        )
+        assert resp.status_code == 303
+        assert resp.headers["location"].startswith("/portale/pratiche/766?upload_ok=1")
+        mock_notify.assert_called_once()
+        assert "766" in mock_notify.call_args.kwargs["titolo"]
+        assert "Agenzia" in mock_notify.call_args.kwargs["messaggio"]
+
+
+def test_esterno_carica_file_rifiutato_non_notifica_admin(authenticated_app, portale_setup) -> None:
+    """Un upload interamente respinto (estensione non valida) non deve
+    notificare l'admin — `_notifica_admin` è dentro `if salvati:`."""
+    assegnazioni_repo, _ = portale_setup
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
+
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, "agenzia@esempio.it", "password1234")
+
+    token = get_csrf(client, "/portale/pratiche/766")
+    with patch("lys_workflow_hub.web.routes_portale.notify_push_nuova_attivita") as mock_notify:
+        resp = client.post(
+            "/portale/pratiche/766/documenti",
+            data={"csrf_token": token},
+            files={"files": ("virus.exe", b"MZ-fake-binary", "application/octet-stream")},
+        )
+        assert resp.status_code == 303
+        assert resp.headers["location"].startswith("/portale/pratiche/766?upload_ok=0")
+        mock_notify.assert_not_called()
+
+
 # --------------------------------------------------------------------------- #
 #  Widget "Prossimi appuntamenti"
 # --------------------------------------------------------------------------- #
