@@ -235,6 +235,29 @@ def test_admin_calendario_naviga_mese_senza_eventi(admin_client) -> None:
 # --------------------------------------------------------------------------- #
 
 
+def test_portale_list_ordina_per_numero_decrescente(authenticated_app, portale_setup) -> None:
+    assegnazioni_repo, _ = portale_setup
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    for numero in (100, 300, 200):
+        assegnazioni_repo.assegna(numero, esterno.id, assegnato_da=1)
+
+    wincar_repo = app.dependency_overrides[get_wincar_repo]()
+    wincar_repo.get_pratica.side_effect = lambda n: _sample_pratica(n)
+
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, "agenzia@esempio.it", "password1234")
+    resp = client.get("/portale")
+    assert resp.status_code == 200
+    testo = resp.text
+    assert (
+        testo.index('data-numero="300"')
+        < testo.index('data-numero="200"')
+        < testo.index('data-numero="100"')
+    )
+
+
 def test_portale_detail_richiede_assegnazione(authenticated_app, portale_setup) -> None:
     authenticated_app.create(
         email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
@@ -767,6 +790,89 @@ def test_portale_upload_richiede_csrf_valido(authenticated_app, portale_setup) -
     resp = client.post(
         "/portale/pratiche/766/foto",
         data={"csrf_token": "token-invalido"},
+        files={"files": ("danno.jpg", b"fake-jpeg-bytes", "image/jpeg")},
+    )
+    assert resp.status_code == 403
+
+
+def test_admin_upload_foto_salva_nella_cartella_wincar(admin_client) -> None:
+    client, settings = admin_client
+    resp = client.post(
+        "/pratiche/766/foto",
+        data={"csrf_token": get_csrf(client, "/pratiche/766")},
+        files={"files": ("danno.jpg", b"fake-jpeg-bytes", "image/jpeg")},
+    )
+    assert resp.status_code == 303
+    assert resp.headers["location"].startswith("/pratiche/766?upload_ok=1")
+
+    foto_dir = settings.wincar_archivio / "Pratiche" / "766" / "Pubblici" / "Foto"
+    salvati = list(foto_dir.glob("danno_*.jpg"))
+    assert len(salvati) == 1
+    assert salvati[0].read_bytes() == b"fake-jpeg-bytes"
+
+
+def test_admin_upload_documento_salva_negli_allegati(admin_client) -> None:
+    client, settings = admin_client
+    resp = client.post(
+        "/pratiche/766/documenti",
+        data={"csrf_token": get_csrf(client, "/pratiche/766")},
+        files={"files": ("preventivo.pdf", b"%PDF-1.4 fake", "application/pdf")},
+    )
+    assert resp.status_code == 303
+    assert resp.headers["location"].startswith("/pratiche/766?upload_ok=1")
+
+    allegati_dir = settings.wincar_archivio / "Pratiche" / "766" / "Pubblici" / "Allegati"
+    salvati = list(allegati_dir.glob("preventivo_*.pdf"))
+    assert len(salvati) == 1
+
+
+def test_admin_upload_rifiuta_formato_non_supportato(admin_client) -> None:
+    client, settings = admin_client
+    resp = client.post(
+        "/pratiche/766/documenti",
+        data={"csrf_token": get_csrf(client, "/pratiche/766")},
+        files={"files": ("virus.exe", b"MZ-fake-binary", "application/octet-stream")},
+    )
+    assert resp.status_code == 303
+    assert "errori=1" in resp.headers["location"]
+
+    allegati_dir = settings.wincar_archivio / "Pratiche" / "766" / "Pubblici" / "Allegati"
+    assert not allegati_dir.exists() or list(allegati_dir.iterdir()) == []
+
+
+def test_admin_upload_richiede_csrf_valido(admin_client) -> None:
+    client, _ = admin_client
+    resp = client.post(
+        "/pratiche/766/foto",
+        data={"csrf_token": "token-invalido"},
+        files={"files": ("danno.jpg", b"fake-jpeg-bytes", "image/jpeg")},
+    )
+    assert resp.status_code == 403
+
+
+def test_admin_upload_richiede_login(authenticated_app) -> None:
+    client = TestClient(app, follow_redirects=False)
+    resp = client.post(
+        "/pratiche/766/foto",
+        data={"csrf_token": "qualsiasi"},
+        files={"files": ("danno.jpg", b"fake-jpeg-bytes", "image/jpeg")},
+    )
+    assert resp.status_code == 303
+    assert resp.headers["location"].startswith("/login")
+
+
+def test_esterno_non_puo_uploadare_su_route_admin(authenticated_app, portale_setup) -> None:
+    """route admin-only (/pratiche/... senza /portale) deve rifiutare un
+    esterno anche se loggato, non solo un utente anonimo."""
+    authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, "agenzia@esempio.it", "password1234")
+
+    resp = client.post(
+        "/pratiche/766/foto",
+        data={"csrf_token": get_csrf(client, "/portale")},
         files={"files": ("danno.jpg", b"fake-jpeg-bytes", "image/jpeg")},
     )
     assert resp.status_code == 403

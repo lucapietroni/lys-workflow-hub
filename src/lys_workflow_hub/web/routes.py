@@ -36,7 +36,9 @@ from lys_workflow_hub.core.pratica_assegnazioni_repository import (
     PraticaAssegnazioniRepository,
 )
 from lys_workflow_hub.core.pratica_eventi_repository import PraticaEventiRepository
-from lys_workflow_hub.core.pratica_files import Allegato, scan as scan_allegati
+from lys_workflow_hub.core.pratica_files import Allegato, UploadRifiutato
+from lys_workflow_hub.core.pratica_files import save_upload as save_pratica_upload
+from lys_workflow_hub.core.pratica_files import scan as scan_allegati
 from lys_workflow_hub.core.pratica_note_repository import PraticaNoteRepository
 from lys_workflow_hub.core.pratica_stato_repository import (
     PraticaStatoRepository,
@@ -372,6 +374,8 @@ def pratica_detail(
     numero: int,
     request: Request,
     uploaded: str | None = None,
+    upload_ok: int = 0,
+    errori: int = 0,
     repo: WinCarRepository = Depends(get_repository),
     settings: Settings = Depends(get_app_settings),
 ) -> HTMLResponse:
@@ -380,6 +384,8 @@ def pratica_detail(
     context["pratica"] = pratica
     context["numero"] = numero
     context["uploaded"] = uploaded
+    context["upload_ok"] = upload_ok
+    context["upload_errori"] = errori
     if pratica is None:
         return templates.TemplateResponse(
             request, "pratica_non_trovata.html", context, status_code=404
@@ -869,6 +875,112 @@ def pratica_foto_zip(
     settings: Settings = Depends(get_app_settings),
 ) -> Response:
     return build_foto_zip(numero, path, settings)
+
+
+# Un batch enorme (es. selezione multipla di centinaia di foto ad alta
+# risoluzione) può arrivare a 20MB per file (vedi `save_upload`) — questo cap
+# evita che una singola richiesta saturi memoria/tempo di risposta. Condiviso
+# tra upload admin (qui sotto) e upload dal portale esterno (routes_portale.py).
+_MAX_FILES_PER_UPLOAD = 20
+
+
+def _salva_file_pratica(
+    numero: int, categoria: str, files: list[UploadFile], settings: Settings
+) -> tuple[list[str], list[str]]:
+    """Salva ogni file valido in Pubblici/Foto o Pubblici/Allegati, continuando
+    sugli altri se uno fallisce. Nessun controllo di accesso/CSRF qui dentro —
+    responsabilità del chiamante (admin-only vs assegnazione esterno diversi
+    tra routes.py e routes_portale.py, condividono solo questo nucleo)."""
+    if len(files) > _MAX_FILES_PER_UPLOAD:
+        raise HTTPException(400, f"Troppi file in un'unica richiesta (max {_MAX_FILES_PER_UPLOAD}).")
+
+    salvati: list[str] = []
+    errori: list[str] = []
+    for f in files:
+        if not f.filename:
+            continue
+        try:
+            raw = f.file.read()
+            save_pratica_upload(
+                archivio_root=settings.wincar_archivio,
+                numero_pratica=numero,
+                categoria=categoria,
+                filename=f.filename,
+                raw=raw,
+            )
+            salvati.append(f.filename)
+        except UploadRifiutato as exc:
+            errori.append(f"{f.filename}: {exc}")
+        except OSError as exc:
+            logger.exception("Errore filesystem upload %s pratica %s", categoria, numero)
+            errori.append(f"{f.filename}: errore di filesystem ({exc})")
+    return salvati, errori
+
+
+def _upload_pratica_admin(
+    numero: int,
+    categoria: str,
+    ancora: str,
+    files: list[UploadFile],
+    request: Request,
+    csrf_token: str,
+    admin: Utente,
+    settings: Settings,
+) -> RedirectResponse:
+    """Upload admin di foto/documenti — simmetrico a `_upload_pratica` in
+    routes_portale.py (stesso `_salva_file_pratica`), ma notifica gli esterni
+    assegnati invece dell'admin (`_notifica_esterni_assegnati`, come
+    nota/evento). CSRF esplicito: multipart è escluso dal middleware globale
+    (vedi `web/auth.py`)."""
+    if not verify_csrf(request, csrf_token):
+        raise HTTPException(403, "Token di sicurezza mancante o scaduto. Ricarica la pagina e riprova.")
+
+    salvati, errori = _salva_file_pratica(numero, categoria, files, settings)
+
+    if salvati:
+        _notifica_esterni_assegnati(
+            request,
+            settings,
+            numero,
+            costruisci_messaggio=lambda: (
+                f"[LYS Hub] Nuovi file sulla pratica {numero}",
+                f"{admin.nome or admin.email} ha caricato {len(salvati)} file "
+                f"({categoria}) sulla pratica {numero}: {', '.join(salvati)}\n\n"
+                f"Apri la pratica: {settings.public_url(f'/portale/pratiche/{numero}#{ancora}')}",
+            ),
+        )
+
+    esito = "&errori=" + str(len(errori)) if errori else ""
+    return RedirectResponse(
+        url=f"/pratiche/{numero}?upload_ok={len(salvati)}{esito}#{ancora}",
+        status_code=303,
+    )
+
+
+@router.post("/pratiche/{numero}/foto")
+def pratica_upload_foto(
+    numero: int,
+    request: Request,
+    files: list[UploadFile] = File(...),
+    csrf_token: str = Form(""),
+    admin: Utente = Depends(require_admin),
+    settings: Settings = Depends(get_app_settings),
+) -> RedirectResponse:
+    return _upload_pratica_admin(numero, "foto", "foto", files, request, csrf_token, admin, settings)
+
+
+@router.post("/pratiche/{numero}/documenti")
+def pratica_upload_documento(
+    numero: int,
+    request: Request,
+    files: list[UploadFile] = File(...),
+    csrf_token: str = Form(""),
+    admin: Utente = Depends(require_admin),
+    settings: Settings = Depends(get_app_settings),
+) -> RedirectResponse:
+    return _upload_pratica_admin(
+        numero, "documento", "documenti", files, request, csrf_token, admin, settings
+    )
 
 
 # --------------------------------------------------------------------------- #

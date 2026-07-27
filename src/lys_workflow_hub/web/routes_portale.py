@@ -29,8 +29,6 @@ from lys_workflow_hub.core.pratica_assegnazioni_repository import (
     PraticaAssegnazioniRepository,
 )
 from lys_workflow_hub.core.pratica_eventi_repository import PraticaEventiRepository
-from lys_workflow_hub.core.pratica_files import UploadRifiutato
-from lys_workflow_hub.core.pratica_files import save_upload as save_pratica_upload
 from lys_workflow_hub.core.pratica_files import scan as scan_allegati
 from lys_workflow_hub.core.pratica_note_repository import PraticaNoteRepository
 from lys_workflow_hub.core.pratica_stato_repository import (
@@ -52,6 +50,7 @@ from lys_workflow_hub.web.routes import (
     _NON_RENDERIZZABILI,
     _parse_date,
     _raggruppa_per_giorno,
+    _salva_file_pratica,
     build_foto_zip,
     resolve_pratica_file,
 )
@@ -65,11 +64,6 @@ templates = Jinja2Templates(
 )
 
 router = APIRouter(tags=["portale"])
-
-# Limite file per richiesta di upload foto/documenti (v3.0 fase 6): ogni file
-# può arrivare a 20MB (vedi `save_upload`), senza questo cap una singola
-# richiesta multipart potrebbe far leggere in RAM decine di file di fila.
-_MAX_FILES_PER_UPLOAD = 20
 
 
 def get_assegnazioni_repo(
@@ -126,6 +120,7 @@ def portale_list(
             pratica = None
         if pratica is not None:
             pratiche.append(pratica)
+    pratiche.sort(key=lambda p: p.numero, reverse=True)
 
     context = {
         "version": __version__,
@@ -365,36 +360,15 @@ def _upload_pratica(
     """Comune a upload foto/documenti (v3.0 fase 6): CSRF esplicito (multipart,
     escluso dal middleware — vedi `web/auth.py`) verificato per primo come nel
     resto del codebase (es. `cessione_upload_signed`), poi verifica accesso,
-    poi salva ogni file valido continuando sugli altri se uno fallisce, poi
-    notifica l'admin in un unico messaggio riassuntivo."""
+    poi salva ogni file valido (`_salva_file_pratica`, condivisa con l'upload
+    admin in routes.py), poi notifica l'admin in un unico messaggio
+    riassuntivo."""
     if not verify_csrf(request, csrf_token):
         raise HTTPException(403, "Token di sicurezza mancante o scaduto. Ricarica la pagina e riprova.")
     utente = _require_user(current_user)
     _verifica_accesso(utente, numero, assegnazioni_repo)
 
-    if len(files) > _MAX_FILES_PER_UPLOAD:
-        raise HTTPException(400, f"Troppi file in un'unica richiesta (max {_MAX_FILES_PER_UPLOAD}).")
-
-    salvati: list[str] = []
-    errori: list[str] = []
-    for f in files:
-        if not f.filename:
-            continue
-        try:
-            raw = f.file.read()
-            save_pratica_upload(
-                archivio_root=settings.wincar_archivio,
-                numero_pratica=numero,
-                categoria=categoria,
-                filename=f.filename,
-                raw=raw,
-            )
-            salvati.append(f.filename)
-        except UploadRifiutato as exc:
-            errori.append(f"{f.filename}: {exc}")
-        except OSError as exc:
-            logger.exception("Portale: errore filesystem upload %s pratica %s", categoria, numero)
-            errori.append(f"{f.filename}: errore di filesystem ({exc})")
+    salvati, errori = _salva_file_pratica(numero, categoria, files, settings)
 
     if salvati:
         _notifica_admin(

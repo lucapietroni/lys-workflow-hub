@@ -241,6 +241,58 @@ def test_admin_aggiunge_nota_non_notifica_se_nessun_assegnato(admin_client) -> N
         mock_notify.assert_not_called()
 
 
+def test_admin_carica_foto_notifica_esterno_assegnato(admin_client, authenticated_app) -> None:
+    client, settings = admin_client
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    assegnazioni_repo = PraticaAssegnazioniRepository(db_path=settings.app_db_path)
+    assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
+
+    with patch("lys_workflow_hub.web.routes.notify_esterno_nuova_attivita") as mock_notify:
+        resp = client.post(
+            "/pratiche/766/foto",
+            data={"csrf_token": get_csrf(client, "/pratiche/766")},
+            files={"files": ("danno.jpg", b"fake-jpeg-bytes", "image/jpeg")},
+        )
+        assert resp.status_code == 303
+        mock_notify.assert_called_once()
+        assert mock_notify.call_args.kwargs["recipient"] == "agenzia@esempio.it"
+        assert "766" in mock_notify.call_args.kwargs["subject"]
+
+
+def test_admin_carica_documento_notifica_esterno_assegnato(admin_client, authenticated_app) -> None:
+    client, settings = admin_client
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    assegnazioni_repo = PraticaAssegnazioniRepository(db_path=settings.app_db_path)
+    assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
+
+    with patch("lys_workflow_hub.web.routes.notify_esterno_nuova_attivita") as mock_notify:
+        resp = client.post(
+            "/pratiche/766/documenti",
+            data={"csrf_token": get_csrf(client, "/pratiche/766")},
+            files={"files": ("preventivo.pdf", b"%PDF-1.4 fake", "application/pdf")},
+        )
+        assert resp.status_code == 303
+        mock_notify.assert_called_once()
+        assert mock_notify.call_args.kwargs["recipient"] == "agenzia@esempio.it"
+        assert "766" in mock_notify.call_args.kwargs["subject"]
+
+
+def test_admin_carica_foto_non_notifica_se_nessun_assegnato(admin_client) -> None:
+    client, _ = admin_client
+    with patch("lys_workflow_hub.web.routes.notify_esterno_nuova_attivita") as mock_notify:
+        resp = client.post(
+            "/pratiche/766/foto",
+            data={"csrf_token": get_csrf(client, "/pratiche/766")},
+            files={"files": ("danno.jpg", b"fake-jpeg-bytes", "image/jpeg")},
+        )
+        assert resp.status_code == 303
+        mock_notify.assert_not_called()
+
+
 def test_esterno_aggiunge_nota_notifica_admin(authenticated_app, portale_setup) -> None:
     assegnazioni_repo, _ = portale_setup
     esterno = authenticated_app.create(

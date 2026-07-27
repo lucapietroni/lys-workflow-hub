@@ -27,6 +27,18 @@
   </div>
 {% endif %}
 
+{% if upload_ok %}
+  <div class="alert alert-success">
+    <strong>{{ upload_ok }} file caricat{% if upload_ok == 1 %}o{% else %}i{% endif %} con successo.</strong>
+  </div>
+{% endif %}
+{% if upload_errori %}
+  <div class="alert alert-warn">
+    <strong>{{ upload_errori }} file non caricat{% if upload_errori == 1 %}o{% else %}i{% endif %}.</strong>
+    Formato non supportato o file troppo grande (max 20 MB).
+  </div>
+{% endif %}
+
 {% if request.query_params.get("verbale_salvato") %}
   <div class="alert alert-success">
     <strong>Verbale archiviato.</strong>
@@ -412,7 +424,7 @@
   </div>
 </section>
 
-<section class="card">
+<section class="card" id="foto">
   <h2>Foto pratica <span class="tag">{{ foto_pratica|length }}</span></h2>
   {% if foto_pratica %}
   <form method="get" action="/pratiche/{{ pratica.numero }}/foto/zip" id="foto-download-form">
@@ -462,9 +474,14 @@
   {% else %}
   <p class="meta" style="margin-top:-6px">Nessuna foto archiviata per questa pratica.</p>
   {% endif %}
+  <form method="post" action="/pratiche/{{ pratica.numero }}/foto" enctype="multipart/form-data" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:12px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <input type="file" name="files" accept="image/*" multiple required />
+    <button type="submit" class="btn btn-primary">Upload</button>
+  </form>
 </section>
 
-<section class="card">
+<section class="card" id="documenti">
   <h2>Documenti <span class="tag">{{ documenti_pratica|length }}</span></h2>
   {% if documenti_pratica %}
   <ul class="files-list">
@@ -478,6 +495,11 @@
   {% else %}
   <p class="meta" style="margin-top:-6px">Nessun documento archiviato per questa pratica.</p>
   {% endif %}
+  <form method="post" action="/pratiche/{{ pratica.numero }}/documenti" enctype="multipart/form-data" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:12px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <input type="file" name="files" accept=".pdf,.doc,.docx,.xls,.xlsx,.odt,.ods,.txt,.msg,.eml,image/*" multiple required />
+    <button type="submit" class="btn btn-primary">Upload</button>
+  </form>
 </section>
 
 <section class="card">
