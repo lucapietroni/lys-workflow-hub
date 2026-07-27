@@ -1752,6 +1752,12 @@ html.is-app .form-inline-stato .btn { width: 100%; }
     box-shadow: var(--shadow);
   }
   html.is-app .pratiche-table tr.row-chiusa { opacity: 0.6; }
+  /* Il filtro JS di /portale nasconde le righe via [hidden], ma la regola
+     sopra impone display:block a *tutte* le tr per il layout a card — una
+     regola author batte sempre lo user-agent stylesheet ([hidden]{display:
+     none}), quindi le righe filtrate restavano visibili. Serve una regola
+     esplicita, più specifica, per il caso [hidden]. */
+  html.is-app .pratiche-table tr[hidden] { display: none; }
   html.is-app .pratiche-table td {
     display: flex;
     align-items: center;
