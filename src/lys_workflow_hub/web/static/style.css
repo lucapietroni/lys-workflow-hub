@@ -984,6 +984,37 @@ html.is-app .foto-select { display: none; }
 }
 .foto-elimina:hover { background: var(--lys-danger); }
 
+/* Selezione multipla foto con pressione prolungata (solo app Android —
+   vedi portale_pratica_detail.html, gating isNativePlatform()). */
+.foto-thumb.selezionata {
+  outline: 3px solid var(--lys-gold-glow);
+  outline-offset: -3px;
+}
+.foto-selezione-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-top: 10px;
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.foto-selezione-bar span { flex: 1; font-size: 0.85rem; color: var(--lys-grey-700); }
+.foto-selezione-bar[hidden] { display: none; }
+/* Niente menu nativo "salva immagine" del WebView sulla pressione
+   prolungata delle miniature — interferirebbe col gesto di selezione. */
+html.is-app .foto-thumb img {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 .lightbox {
   position: fixed;
   inset: 0;
@@ -996,6 +1027,7 @@ html.is-app .foto-select { display: none; }
   justify-content: center;
   padding: 40px;
   cursor: zoom-out;
+  overflow: hidden;
 }
 .lightbox[hidden] { display: none; }
 .lightbox img {
@@ -1005,6 +1037,8 @@ html.is-app .foto-select { display: none; }
   box-shadow: var(--shadow-lg);
   cursor: default;
 }
+/* Solo in app: da browser mobile deve restare il pinch-zoom nativo. */
+html.is-app .lightbox img { touch-action: none; }
 .lightbox-close {
   position: absolute;
   top: 18px;

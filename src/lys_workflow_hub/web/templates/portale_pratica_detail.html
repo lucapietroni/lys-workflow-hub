@@ -252,6 +252,12 @@
       {% endfor %}
     </div>
   </form>
+  <div id="foto-selezione-bar" class="foto-selezione-bar" hidden>
+    <span><strong id="foto-selezione-count">0</strong> selezionate</span>
+    <button type="button" class="btn btn-sm btn-primary" id="foto-selezione-scarica">Scarica</button>
+    <button type="button" class="btn btn-sm btn-primary" id="foto-selezione-condividi">Condividi</button>
+    <button type="button" class="btn btn-sm" id="foto-selezione-annulla">Annulla</button>
+  </div>
   <script>
     (function () {
       var form = document.getElementById("foto-download-form");
@@ -382,7 +388,55 @@
     var lbImg = document.getElementById("lightbox-img");
     var closeBtn = document.getElementById("lightbox-close");
     if (!lb || !lbImg || !closeBtn) return;
+
+    var isApp = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+
+    // -- Zoom/pan a due dita nel lightbox (solo app) ----------------------
+    var scale = 1, panX = 0, panY = 0, startDist = 0, startScale = 1, panStart = null;
+    function applyTransform() {
+      lbImg.style.transform = "translate(" + panX + "px," + panY + "px) scale(" + scale + ")";
+    }
+    function resetZoom() {
+      scale = 1; panX = 0; panY = 0; startDist = 0; panStart = null;
+      lbImg.style.transform = "";
+    }
+    function distanza(touches) {
+      var dx = touches[0].clientX - touches[1].clientX;
+      var dy = touches[0].clientY - touches[1].clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+    if (isApp) {
+      lbImg.addEventListener("touchstart", function (e) {
+        if (e.touches.length === 2) {
+          startDist = distanza(e.touches);
+          startScale = scale;
+        } else if (e.touches.length === 1 && scale > 1) {
+          panStart = { x: e.touches[0].clientX - panX, y: e.touches[0].clientY - panY };
+        }
+      }, { passive: true });
+      lbImg.addEventListener("touchmove", function (e) {
+        if (e.touches.length === 2 && startDist) {
+          e.preventDefault();
+          scale = Math.min(Math.max(startScale * (distanza(e.touches) / startDist), 1), 4);
+          applyTransform();
+        } else if (e.touches.length === 1 && panStart) {
+          e.preventDefault();
+          panX = e.touches[0].clientX - panStart.x;
+          panY = e.touches[0].clientY - panStart.y;
+          applyTransform();
+        }
+      }, { passive: false });
+      lbImg.addEventListener("touchend", function (e) {
+        if (e.touches.length === 0) {
+          panStart = null;
+          startDist = 0;
+          if (scale <= 1) resetZoom();
+        }
+      });
+    }
+
     function openLightbox(src, alt) {
+      resetZoom();
       lbImg.src = src;
       lbImg.alt = alt || "";
       lb.hidden = false;
@@ -391,19 +445,195 @@
     function closeLightbox() {
       lb.hidden = true;
       lbImg.src = "";
+      resetZoom();
       document.body.classList.remove("lightbox-open");
     }
-    document.querySelectorAll(".foto-thumb").forEach(function(btn) {
-      btn.addEventListener("click", function() {
-        openLightbox(btn.getAttribute("data-full"), btn.getAttribute("data-name"));
-      });
-    });
     closeBtn.addEventListener("click", closeLightbox);
     lb.addEventListener("click", function(e) {
       if (e.target === lb) closeLightbox();
     });
     document.addEventListener("keydown", function(e) {
       if (e.key === "Escape" && !lb.hidden) closeLightbox();
+    });
+
+    if (!isApp) {
+      // Browser: comportamento invariato, nessun long-press/selezione multipla.
+      document.querySelectorAll(".foto-thumb").forEach(function(btn) {
+        btn.addEventListener("click", function() {
+          openLightbox(btn.getAttribute("data-full"), btn.getAttribute("data-name"));
+        });
+      });
+      return;
+    }
+
+    // -- Selezione multipla con pressione prolungata (solo app) -----------
+    var barra = document.getElementById("foto-selezione-bar");
+    var countEl = document.getElementById("foto-selezione-count");
+    var btnScarica = document.getElementById("foto-selezione-scarica");
+    var btnCondividi = document.getElementById("foto-selezione-condividi");
+    var btnAnnulla = document.getElementById("foto-selezione-annulla");
+    var selezione = new Map(); // url -> nome file
+    var LONG_PRESS_MS = 500;
+
+    function aggiornaBarra() {
+      barra.hidden = selezione.size === 0;
+      countEl.textContent = selezione.size;
+    }
+    function toggleSelezione(btn) {
+      var url = btn.getAttribute("data-full");
+      if (selezione.has(url)) {
+        selezione.delete(url);
+        btn.classList.remove("selezionata");
+      } else {
+        selezione.set(url, btn.getAttribute("data-name") || "foto.jpg");
+        btn.classList.add("selezionata");
+      }
+      aggiornaBarra();
+    }
+    function annullaSelezione() {
+      document.querySelectorAll(".foto-thumb.selezionata").forEach(function (b) {
+        b.classList.remove("selezionata");
+      });
+      selezione.clear();
+      aggiornaBarra();
+    }
+
+    var SOGLIA_MOVIMENTO_PX = 10; // un tap genera quasi sempre un micro-touchmove
+
+    document.querySelectorAll(".foto-thumb").forEach(function (btn) {
+      var timer = null;
+      var mosso = false;
+      var longPressScattato = false;
+      var startX = 0, startY = 0;
+
+      btn.addEventListener("touchstart", function (e) {
+        mosso = false;
+        longPressScattato = false;
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+        timer = setTimeout(function () {
+          timer = null;
+          longPressScattato = true;
+          if (navigator.vibrate) navigator.vibrate(30);
+          toggleSelezione(btn);
+        }, LONG_PRESS_MS);
+      }, { passive: true });
+
+      btn.addEventListener("touchmove", function (e) {
+        var dx = e.touches[0].clientX - startX;
+        var dy = e.touches[0].clientY - startY;
+        if (Math.sqrt(dx * dx + dy * dy) > SOGLIA_MOVIMENTO_PX) {
+          mosso = true;
+          if (timer) { clearTimeout(timer); timer = null; }
+        }
+      }, { passive: true });
+
+      btn.addEventListener("touchend", function () {
+        if (timer) { clearTimeout(timer); timer = null; }
+      });
+
+      // Il "click" scatta comunque dopo touchend (evento sintetico) — qui
+      // decidiamo cosa fare in base a cosa è successo nel touch che l'ha
+      // generato, invece di aprire sempre il lightbox.
+      btn.addEventListener("click", function () {
+        if (longPressScattato) { longPressScattato = false; return; }
+        if (mosso) return;
+        if (selezione.size > 0) {
+          toggleSelezione(btn);
+        } else {
+          openLightbox(btn.getAttribute("data-full"), btn.getAttribute("data-name"));
+        }
+      });
+    });
+
+    btnAnnulla.addEventListener("click", annullaSelezione);
+
+    function fetchBase64(url) {
+      return fetch(url)
+        .then(function (resp) { return resp.blob(); })
+        .then(function (blob) {
+          return new Promise(function (resolve, reject) {
+            var reader = new FileReader();
+            reader.onloadend = function () { resolve(reader.result.split(",")[1]); };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+        });
+    }
+    // Evita collisioni se due foto selezionate hanno lo stesso nome file.
+    function nomeFileUnivoco(nome, indice) {
+      var punto = nome.lastIndexOf(".");
+      if (punto === -1) return nome + "-" + indice;
+      return nome.slice(0, punto) + "-" + indice + nome.slice(punto);
+    }
+
+    btnScarica.addEventListener("click", function () {
+      // Directory.External (area esterna app-specifica, Android/data/<app>/files):
+      // MAI richiede permessi runtime, a differenza di Directory.Documents che
+      // su Android 10+ con scoped storage e targetSdk 34 di questo progetto
+      // non è scrivibile in pratica (verificato nel sorgente del plugin
+      // @capacitor/filesystem: isStoragePermissionGranted() ritorna sempre
+      // true da Android 11 in poi senza controllare nulla, mascherando un
+      // fallimento di scrittura reale). Non è la cartella "Documenti"
+      // visibile da altre app, ma è affidabile su ogni versione Android.
+      var Filesystem = window.Capacitor.Plugins.Filesystem;
+      var voci = Array.from(selezione.entries());
+      btnScarica.disabled = true;
+      Promise.all(voci.map(function (voce, i) {
+        var url = voce[0], nome = nomeFileUnivoco(voce[1], i);
+        return fetchBase64(url).then(function (base64) {
+          return Filesystem.writeFile({
+            path: nome,
+            data: base64,
+            directory: "EXTERNAL",
+            recursive: true,
+          });
+        });
+      }))
+        .then(function () {
+          alert(voci.length + " foto salvate nella cartella dell'app sul telefono.");
+          annullaSelezione();
+        })
+        .catch(function (err) {
+          console.error("Download foto fallito", err);
+          alert("Download non riuscito: " + (err && err.message ? err.message : err));
+        })
+        .finally(function () {
+          btnScarica.disabled = false;
+        });
+    });
+
+    btnCondividi.addEventListener("click", function () {
+      var Filesystem = window.Capacitor.Plugins.Filesystem;
+      var Share = window.Capacitor.Plugins.Share;
+      var voci = Array.from(selezione.entries());
+      btnCondividi.disabled = true;
+      Promise.all(voci.map(function (voce, i) {
+        var url = voce[0], nome = nomeFileUnivoco(voce[1], i);
+        return fetchBase64(url).then(function (base64) {
+          return Filesystem.writeFile({
+            path: nome,
+            data: base64,
+            directory: "CACHE",
+            recursive: true,
+          });
+        }).then(function (risultato) { return risultato.uri; });
+      })).then(function (uris) {
+        return Share.share({
+          title: "Foto pratica {{ pratica.numero }}",
+          dialogTitle: "Condividi foto",
+          files: uris,
+        });
+      }).then(function () {
+        annullaSelezione();
+      }).catch(function (err) {
+        // L'utente che chiude il foglio di condivisione senza scegliere
+        // un'app risulta anch'esso un "errore" per il plugin — non è un
+        // fallimento reale, non serve un alert in quel caso.
+        console.warn("Condivisione foto interrotta o fallita", err);
+      }).finally(function () {
+        btnCondividi.disabled = false;
+      });
     });
   })();
 </script>
