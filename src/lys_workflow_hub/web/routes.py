@@ -40,6 +40,7 @@ from lys_workflow_hub.core.pratica_stato_repository import (
     PraticaStatoRepository,
     STATI,
     STATO_LABELS,
+    STATO_PERIZIATA,
 )
 from lys_workflow_hub.core.utenti_repository import Utente, UtentiRepository
 from lys_workflow_hub.core.wincar_repository import WinCarRepository
@@ -251,11 +252,18 @@ def home(
         context["kpi_sla_breach"] = 0
 
     # Prossimi appuntamenti (v3.0 fase 5) — calendario condiviso, tutte le pratiche.
+    # Esclude gli eventi delle pratiche già "periziata": l'appuntamento (es. perizia)
+    # non è più rilevante una volta che la pratica ha superato quello stato.
     try:
         eventi_repo = PraticaEventiRepository(db_path=settings.app_db_path)
-        context["prossimi_eventi"] = _arricchisci_eventi_con_pratica(
-            eventi_repo.list_prossimi(entro_giorni=7), repo
-        )
+        stato_repo_eventi = PraticaStatoRepository(db_path=settings.app_db_path)
+        eventi_grezzi = []
+        for e in eventi_repo.list_prossimi(entro_giorni=7):
+            stato_obj = stato_repo_eventi.get_stato(e.pratica_numero)
+            stato_corrente = stato_obj.stato if stato_obj else "aperta"
+            if stato_corrente != STATO_PERIZIATA:
+                eventi_grezzi.append(e)
+        context["prossimi_eventi"] = _arricchisci_eventi_con_pratica(eventi_grezzi, repo)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Impossibile leggere prossimi eventi: %s", exc)
         context["prossimi_eventi"] = []
