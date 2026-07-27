@@ -164,6 +164,47 @@ def test_save_upload_foto_genera_thumb_wincar(tmp_path: Path) -> None:
         assert w == 49
 
 
+def test_save_upload_foto_crea_thumbs_thumb(tmp_path: Path) -> None:
+    """Il solo sidecar <nome>.jpg.thumb non basta a far comparire la foto in
+    WinCar (verificato manualmente) — serve anche l'indice condiviso
+    Thumbs.thumb nella stessa cartella."""
+    target = save_upload(
+        archivio_root=tmp_path,
+        numero_pratica=766,
+        categoria="foto",
+        filename="danno.jpg",
+        raw=_jpeg_bytes((576, 1024)),
+    )
+    indice = target.parent / "Thumbs.thumb"
+    assert indice.exists()
+    with Image.open(indice) as im:
+        assert im.tag_v2.get(270) == target.name + ".thumb"
+
+
+def test_save_upload_due_foto_thumbs_thumb_ha_due_frame(tmp_path: Path) -> None:
+    t1 = save_upload(
+        archivio_root=tmp_path, numero_pratica=766, categoria="foto",
+        filename="danno1.jpg", raw=_jpeg_bytes(),
+    )
+    t2 = save_upload(
+        archivio_root=tmp_path, numero_pratica=766, categoria="foto",
+        filename="danno2.jpg", raw=_jpeg_bytes(),
+    )
+    with Image.open(t1.parent / "Thumbs.thumb") as im:
+        n = 0
+        while True:
+            try:
+                im.seek(n)
+                n += 1
+            except EOFError:
+                break
+        assert n == 2
+        im.seek(0)
+        assert im.tag_v2.get(270) == t1.name + ".thumb"
+        im.seek(1)
+        assert im.tag_v2.get(270) == t2.name + ".thumb"
+
+
 def test_save_upload_documento_non_genera_thumb(tmp_path: Path) -> None:
     target = save_upload(
         archivio_root=tmp_path,
@@ -173,6 +214,7 @@ def test_save_upload_documento_non_genera_thumb(tmp_path: Path) -> None:
         raw=b"%PDF-1.4 fake",
     )
     assert not target.with_name(target.name + ".thumb").exists()
+    assert not (target.parent / "Thumbs.thumb").exists()
 
 
 def test_save_upload_foto_illeggibile_non_genera_thumb_ma_salva_comunque(
@@ -254,3 +296,28 @@ def test_save_upload_foto_thumb_scrittura_fallita_non_blocca_upload(
     )
     assert target.exists()
     assert target.read_bytes() != b""
+
+
+def test_save_upload_thumbs_index_fallito_non_blocca_upload(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Se l'aggiornamento di Thumbs.thumb fallisce (es. formato inatteso,
+    WinCar ha il file aperto su Windows), la foto e il suo sidecar .thumb
+    devono comunque salvarsi correttamente."""
+    import lys_workflow_hub.core.pratica_files as pratica_files_mod
+
+    def _fallisce(*args, **kwargs):
+        raise RuntimeError("Thumbs.thumb non aggiornabile (simulato)")
+
+    monkeypatch.setattr(pratica_files_mod, "aggiorna_indice_thumbs", _fallisce)
+
+    target = save_upload(
+        archivio_root=tmp_path,
+        numero_pratica=766,
+        categoria="foto",
+        filename="danno.jpg",
+        raw=_jpeg_bytes(),
+    )
+    assert target.exists()
+    assert target.with_name(target.name + ".thumb").exists()
+    assert not (target.parent / "Thumbs.thumb").exists()

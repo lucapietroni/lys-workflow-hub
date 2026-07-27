@@ -29,6 +29,8 @@ from uuid import uuid4
 
 from PIL import Image, ImageOps
 
+from lys_workflow_hub.core.wincar_thumbs_index import aggiorna_indice_thumbs
+
 logger = logging.getLogger(__name__)
 
 
@@ -146,19 +148,19 @@ def _sanitize_filename(nome_originale: str) -> str:
 
 # WinCar affianca a ogni foto un file <nome>.thumb (JPEG in miniatura, lato
 # lungo 88px — dedotto ispezionando i file reali generati da WinCar) più un
-# indice condiviso Thumbs.thumb (TIFF multi-frame, non toccato qui: formato
-# fragile/proprietario, rischio di corrompere le miniature di foto già
-# esistenti nella stessa cartella se scritto male — vedi CONTEXT.md).
-# Generiamo solo il sidecar per-foto: file nuovo e indipendente, zero rischio
-# per i dati esistenti anche se il risultato non fosse quello che WinCar si
-# aspetta (nel peggiore dei casi viene semplicemente ignorato).
+# indice condiviso Thumbs.thumb (TIFF multi-frame per cartella, un frame per
+# foto — vedi wincar_thumbs_index.py per il reverse engineering completo e
+# le garanzie di sicurezza sull'append). Generiamo entrambi: il sidecar
+# .thumb da solo si è rivelato insufficiente (WinCar continuava a non
+# mostrare le foto), serve anche l'indice.
 _WINCAR_THUMB_BOX = (88, 88)
 
 
-def _genera_thumb_wincar(raw: bytes) -> bytes | None:
-    """Ritorna i byte JPEG della miniatura in stile WinCar, o None se
-    l'immagine non è decodificabile da Pillow (es. HEIC senza plugin) — mai
-    solleva, la miniatura è un extra best-effort, non deve bloccare l'upload."""
+def _genera_thumb_wincar(raw: bytes) -> tuple[bytes, int, int] | None:
+    """Ritorna (byte JPEG, width, height) della miniatura in stile WinCar, o
+    None se l'immagine non è decodificabile da Pillow (es. HEIC senza
+    plugin) — mai solleva, la miniatura è un extra best-effort, non deve
+    bloccare l'upload."""
     try:
         with Image.open(io.BytesIO(raw)) as im:
             # Molte foto da smartphone hanno un tag EXIF Orientation (il
@@ -176,8 +178,11 @@ def _genera_thumb_wincar(raw: bytes) -> bytes | None:
                 im = im.convert("RGB")
             im.thumbnail(_WINCAR_THUMB_BOX, Image.LANCZOS)
             buffer = io.BytesIO()
-            im.save(buffer, format="JPEG", quality=85)
-            return buffer.getvalue()
+            # subsampling=1 (fattori 2,1): deve combaciare esattamente col
+            # tag YCbCrSubSampling hardcoded in wincar_thumbs_index.py, se no
+            # il frame nuovo di Thumbs.thumb risulta illeggibile.
+            im.save(buffer, format="JPEG", quality=85, subsampling=1)
+            return buffer.getvalue(), im.width, im.height
     except Exception as exc:  # noqa: BLE001
         logger.warning("Impossibile generare thumb WinCar: %s", exc)
         return None
@@ -240,12 +245,23 @@ def save_upload(
             target = target_dir / f"{stem}_{timestamp}-{uuid4().hex[:6]}{ext}"
 
     if categoria == "foto":
-        thumb_jpeg = _genera_thumb_wincar(raw)
-        if thumb_jpeg is not None:
+        thumb = _genera_thumb_wincar(raw)
+        if thumb is not None:
+            thumb_jpeg, thumb_w, thumb_h = thumb
             try:
                 target.with_name(target.name + ".thumb").write_bytes(thumb_jpeg)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Impossibile scrivere il thumb WinCar per %s: %s", target, exc)
+            try:
+                aggiorna_indice_thumbs(
+                    target_dir / "Thumbs.thumb",
+                    nome_thumb=target.name + ".thumb",
+                    jpeg=thumb_jpeg,
+                    width=thumb_w,
+                    height=thumb_h,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Impossibile aggiornare Thumbs.thumb per %s: %s", target, exc)
 
     return target
 
