@@ -48,6 +48,7 @@ from lys_workflow_hub.core.pratica_stato_repository import (
 )
 from lys_workflow_hub.core.utenti_repository import Utente, UtentiRepository
 from lys_workflow_hub.core.wincar_carvei_write import marca_foto_assente
+from lys_workflow_hub.core.wincar_thumbs_index import rimuovi_frame
 from lys_workflow_hub.core.wincar_repository import WinCarRepository
 from lys_workflow_hub.integrations.notifier import (
     notify_esterno_nuova_attivita,
@@ -1009,11 +1010,36 @@ def pratica_elimina_foto(
         raise HTTPException(403, "Foto non autorizzata per questa pratica.")
 
     file_path = Path(path)
+    nome_thumb = file_path.name + ".thumb"
+    if not file_path.exists():
+        # Non dovrebbe succedere: `path` è appena stato validato contro
+        # scan_allegati() qui sopra, quindi il file c'era un istante fa.
+        # Logghiamo comunque esplicitamente invece di lasciare che
+        # unlink(missing_ok=True) mascheri silenziosamente la cosa — se il
+        # problema segnalato ("non elimina il file fisico") è un mismatch di
+        # path, questo è il punto in cui deve emergere nei log.
+        logger.error("pratica_elimina_foto: file già assente su disco: %s", file_path)
     try:
         file_path.unlink(missing_ok=True)
-        file_path.with_name(file_path.name + ".thumb").unlink(missing_ok=True)
+        file_path.with_name(nome_thumb).unlink(missing_ok=True)
     except OSError as exc:
+        logger.exception("pratica_elimina_foto: unlink fallito per %s", file_path)
         raise HTTPException(500, f"Impossibile eliminare il file: {exc}")
+    if file_path.exists():
+        logger.error(
+            "pratica_elimina_foto: il file esiste ancora dopo unlink() senza errori: %s",
+            file_path,
+        )
+
+    # Senza questo, WinCar continuerebbe a mostrare la miniatura di una foto
+    # non più esistente (segnalato dall'utente) — l'indice condiviso non si
+    # aggiorna da solo togliendo il file su disco. Best-effort come sopra.
+    try:
+        rimuovi_frame(file_path.parent / "Thumbs.thumb", nome_thumb=nome_thumb)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "Impossibile rimuovere il frame da Thumbs.thumb per %s: %s", numero, exc
+        )
 
     try:
         rimanenti = scan_allegati(settings.wincar_archivio, numero)

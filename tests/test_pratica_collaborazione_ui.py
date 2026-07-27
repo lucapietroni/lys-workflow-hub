@@ -858,6 +858,36 @@ def test_admin_elimina_foto_rimuove_file_e_thumb(admin_client) -> None:
     assert not thumb.exists()
 
 
+def test_admin_elimina_foto_toglie_anche_il_frame_da_thumbs_thumb(admin_client) -> None:
+    """Regressione: senza questo, dopo un'eliminazione WinCar continuava a
+    mostrare la miniatura di una foto non più esistente (segnalato
+    dall'utente) — l'indice condiviso non si aggiorna da solo togliendo il
+    file su disco, va rimosso esplicitamente il frame corrispondente."""
+    client, settings = admin_client
+    foto_dir = settings.wincar_archivio / "Pratiche" / "766" / "Pubblici" / "Foto"
+
+    for nome in ("danno1.jpg", "danno2.jpg"):
+        client.post(
+            "/pratiche/766/foto",
+            data={"csrf_token": get_csrf(client, "/pratiche/766")},
+            files={"files": (nome, _jpeg_bytes(), "image/jpeg")},
+        )
+    indice = foto_dir / "Thumbs.thumb"
+    with Image.open(indice) as im:
+        assert im.n_frames == 2
+
+    salvata1 = list(foto_dir.glob("danno1_*.jpg"))[0]
+    salvata2 = list(foto_dir.glob("danno2_*.jpg"))[0]
+    client.post(
+        "/pratiche/766/foto/elimina",
+        data={"csrf_token": get_csrf(client, "/pratiche/766"), "path": str(salvata1)},
+    )
+
+    with Image.open(indice) as im:
+        assert im.n_frames == 1
+        assert im.tag_v2.get(270) == salvata2.name + ".thumb"
+
+
 def test_admin_elimina_foto_azzera_f_foto_su_ultima_rimasta(
     admin_client, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -5,14 +5,14 @@ con il gestionale **WinCar**. Legge le pratiche dal database WinCar in sola lett
 genera documenti precompilati, monitora le risposte delle compagnie assicurative
 via PEC/email, classifica le risposte con AI e genera alert mirati.
 
-> Branch: **main** · Versione: **4.8.0**
+> Branch: **main** · Versione: **4.9.0**
 
 ---
 
 ## Stato del progetto
 
 Repo unificato su branch **`main`** (i vecchi branch di sviluppo separati non
-esistono più). Versione **4.8.0** — copre: funzionalità assicurative base
+esistono più). Versione **4.9.0** — copre: funzionalità assicurative base
 (cessione del credito, vandalismo, classificazione AI risposte, bozze, SLA) +
 verbali cortesia + foto lavorazioni automatiche (Syncthing) + foto/documenti in
 pratica (vista + upload/download dal portale esterno) + autenticazione/

@@ -153,36 +153,84 @@ class ThumbsIndexError(Exception):
     infinito o dati incoerenti."""
 
 
-def _walk_ifd_chain(data: bytes) -> tuple[int, int]:
-    """Ritorna (numero di frame, offset del campo "next IFD" dell'ultimo
-    frame) percorrendo la catena. Solleva ThumbsIndexError se l'header non è
-    quello atteso o se la catena non è strettamente crescente (offset non
-    crescente = ciclo o riferimento a dati già scritti, impossibile per un
-    file scritto solo in append da questo modulo) — mai un loop infinito.
-    """
+def _leggi_descrizione(data: bytes, ifd_offset: int, count: int) -> str | None:
+    """Legge il valore del tag ImageDescription (270) di un IFD, se presente
+    — è il nome del file .thumb che identifica a quale foto appartiene il
+    frame, usato da `rimuovi_frame` per trovare quello giusto da togliere."""
+    entry_base = ifd_offset + 2
+    for i in range(count):
+        eoff = entry_base + i * 12
+        tag, typ, cnt = struct.unpack_from("<HHI", data, eoff)
+        if tag != _TAG_IMAGE_DESCRIPTION:
+            continue
+        if typ != _TYPE_ASCII or cnt == 0:
+            return None
+        if cnt <= 4:
+            raw = data[eoff + 8 : eoff + 8 + cnt - 1]
+        else:
+            off_ext = struct.unpack_from("<I", data, eoff + 8)[0]
+            raw = data[off_ext : off_ext + cnt - 1]
+        return raw.decode("ascii", errors="replace")
+    return None
+
+
+def _walk_ifd_chain_full(data: bytes) -> list[dict]:
+    """Percorre la catena IFD e ritorna un frame per elemento, in ordine:
+    ``{"ifd_offset", "next_field_offset", "descrizione"}``. Solleva
+    ThumbsIndexError se l'header non è quello atteso o se la catena non è
+    strettamente crescente (offset non crescente = ciclo o riferimento a
+    dati già scritti, impossibile per un file scritto solo da questo
+    modulo) — mai un loop infinito."""
     if data[:4] != _TIFF_HEADER:
         raise ThumbsIndexError(f"Header TIFF inatteso: {data[:4]!r}")
 
-    frame_count = 0
+    frames: list[dict] = []
     ifd_offset = struct.unpack_from("<I", data, 4)[0]
-    last_next_field = None
     offset_minimo = 8  # nessun IFD può stare dentro l'header di 8 byte
     while ifd_offset != 0:
         if ifd_offset < offset_minimo or ifd_offset + 2 > len(data):
             raise ThumbsIndexError(f"Offset IFD fuori range/non crescente: {ifd_offset}")
-        if frame_count >= _MAX_FRAME_CHAIN:
+        if len(frames) >= _MAX_FRAME_CHAIN:
             raise ThumbsIndexError(f"Catena IFD oltre {_MAX_FRAME_CHAIN} frame, probabile ciclo")
         count = struct.unpack_from("<H", data, ifd_offset)[0]
         next_field = ifd_offset + 2 + count * 12
         if next_field + 4 > len(data):
             raise ThumbsIndexError(f"Entry IFD oltre la fine del file: {next_field}")
+        descrizione = _leggi_descrizione(data, ifd_offset, count)
         next_ifd = struct.unpack_from("<I", data, next_field)[0]
-        last_next_field = next_field
-        frame_count += 1
+        frames.append({
+            "ifd_offset": ifd_offset,
+            "next_field_offset": next_field,
+            "descrizione": descrizione,
+        })
         offset_minimo = ifd_offset + 1  # il prossimo IFD deve stare più avanti
         ifd_offset = next_ifd
 
-    return frame_count, last_next_field
+    return frames
+
+
+def _walk_ifd_chain(data: bytes) -> tuple[int, int]:
+    """Ritorna (numero di frame, offset del campo "next IFD" dell'ultimo
+    frame) — usato da `aggiorna_indice_thumbs` per l'append, non serve la
+    descrizione di ogni frame lì."""
+    frames = _walk_ifd_chain_full(data)
+    ultimo = frames[-1]["next_field_offset"] if frames else None
+    return len(frames), ultimo
+
+
+def _scrivi_atomico(path: Path, data: bytes) -> None:
+    """File temporaneo + rename sopra l'originale: mai un write parziale
+    in-place sul file vero, in caso di crash a metà scrittura."""
+    tmp_path = path.parent / (path.name + ".tmp")
+    try:
+        tmp_path.write_bytes(data)
+        tmp_path.replace(path)
+    finally:
+        # replace() sposta/rinomina il file: se ha già avuto successo
+        # tmp_path non esiste più e unlink(missing_ok=True) non fa nulla; se
+        # ha sollevato (es. Windows con Thumbs.thumb aperto da WinCar senza
+        # FILE_SHARE_DELETE) ripuliamo il temporaneo invece di lasciarlo lì.
+        tmp_path.unlink(missing_ok=True)
 
 
 def aggiorna_indice_thumbs(
@@ -225,13 +273,51 @@ def aggiorna_indice_thumbs(
         struct.pack_into("<I", header, 4, ifd_abs)
         data = header + blob
 
-    tmp_path = path.parent / (path.name + ".tmp")
-    try:
-        tmp_path.write_bytes(bytes(data))
-        tmp_path.replace(path)
-    finally:
-        # replace() sposta/rinomina il file: se ha già avuto successo
-        # tmp_path non esiste più e unlink(missing_ok=True) non fa nulla; se
-        # ha sollevato (es. Windows con Thumbs.thumb aperto da WinCar senza
-        # FILE_SHARE_DELETE) ripuliamo il temporaneo invece di lasciarlo lì.
-        tmp_path.unlink(missing_ok=True)
+    _scrivi_atomico(path, bytes(data))
+
+
+def rimuovi_frame(path: Path, *, nome_thumb: str) -> bool:
+    """Toglie da `Thumbs.thumb` il frame la cui ImageDescription combacia
+    con `nome_thumb` (il nome del file `<foto>.thumb` eliminato) — senza
+    questo, dopo un'eliminazione WinCar continuerebbe a mostrare la
+    miniatura di una foto che non esiste più.
+
+    Stessa garanzia di sicurezza dell'append: non ricodifica MAI i byte
+    degli altri frame. Rimuovere un frame dal centro della catena richiede
+    solo di patchare UN puntatore a 4 byte (quello del frame precedente, o
+    l'offset-del-primo-IFD nell'header se si toglie il primo) perché
+    salti quello eliminato — i byte del frame tolto restano nel file,
+    orfani e mai più raggiunti dalla catena, ma non vengono sovrascritti
+    né spostati: stesso principio "patch di un puntatore, mai un
+    riordino/riscrittura dei dati esistenti" già validato per l'append.
+
+    Se il frame era l'unico rimasto, il file intero viene cancellato
+    (un Thumbs.thumb con zero frame non ha senso). Ritorna True se un
+    frame è stato effettivamente rimosso, False se il file non esiste o
+    non conteneva un frame con quella descrizione (no-op).
+    """
+    if not path.exists():
+        return False
+
+    data = bytearray(path.read_bytes())
+    frames = _walk_ifd_chain_full(data)
+    indice = next(
+        (i for i, f in enumerate(frames) if f["descrizione"] == nome_thumb), None
+    )
+    if indice is None:
+        return False
+
+    if len(frames) == 1:
+        path.unlink()
+        return True
+
+    offset_successivo = (
+        frames[indice + 1]["ifd_offset"] if indice + 1 < len(frames) else 0
+    )
+    if indice == 0:
+        struct.pack_into("<I", data, 4, offset_successivo)  # header: primo IFD
+    else:
+        struct.pack_into("<I", data, frames[indice - 1]["next_field_offset"], offset_successivo)
+
+    _scrivi_atomico(path, bytes(data))
+    return True

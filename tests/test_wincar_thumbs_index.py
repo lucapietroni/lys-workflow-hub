@@ -16,7 +16,11 @@ from PIL import Image
 
 import pytest
 
-from lys_workflow_hub.core.wincar_thumbs_index import ThumbsIndexError, aggiorna_indice_thumbs
+from lys_workflow_hub.core.wincar_thumbs_index import (
+    ThumbsIndexError,
+    aggiorna_indice_thumbs,
+    rimuovi_frame,
+)
 
 
 def _jpeg(color: tuple[int, int, int], size: tuple[int, int] = (49, 88)) -> bytes:
@@ -122,6 +126,104 @@ def test_header_non_tiff_solleva_invece_di_appendere(tmp_path: Path) -> None:
         aggiorna_indice_thumbs(
             path, nome_thumb="foto.jpg.thumb", jpeg=_jpeg((1, 2, 3)), width=49, height=88
         )
+
+
+def _crea_indice(path: Path, nomi: list[str]) -> None:
+    for i, nome in enumerate(nomi):
+        aggiorna_indice_thumbs(
+            path, nome_thumb=nome, jpeg=_jpeg((i * 10, i * 20, i * 30)), width=49, height=88
+        )
+
+
+def _frame_descrizioni(path: Path) -> list[str]:
+    with Image.open(path) as im:
+        out = []
+        i = 0
+        while True:
+            try:
+                im.seek(i)
+            except EOFError:
+                break
+            out.append(im.tag_v2.get(270))
+            i += 1
+        return out
+
+
+def test_rimuovi_frame_su_file_inesistente_e_no_op(tmp_path: Path) -> None:
+    assert rimuovi_frame(tmp_path / "Thumbs.thumb", nome_thumb="foto.jpg.thumb") is False
+
+
+def test_rimuovi_frame_descrizione_assente_e_no_op(tmp_path: Path) -> None:
+    path = tmp_path / "Thumbs.thumb"
+    _crea_indice(path, ["foto0.jpg.thumb"])
+    assert rimuovi_frame(path, nome_thumb="non-esiste.jpg.thumb") is False
+    assert _frame_descrizioni(path) == ["foto0.jpg.thumb"]
+
+
+def test_rimuovi_unico_frame_cancella_il_file(tmp_path: Path) -> None:
+    path = tmp_path / "Thumbs.thumb"
+    _crea_indice(path, ["foto0.jpg.thumb"])
+    assert rimuovi_frame(path, nome_thumb="foto0.jpg.thumb") is True
+    assert not path.exists()
+
+
+def test_rimuovi_primo_frame_di_tre(tmp_path: Path) -> None:
+    path = tmp_path / "Thumbs.thumb"
+    _crea_indice(path, ["foto0.jpg.thumb", "foto1.jpg.thumb", "foto2.jpg.thumb"])
+    assert rimuovi_frame(path, nome_thumb="foto0.jpg.thumb") is True
+    assert _frame_descrizioni(path) == ["foto1.jpg.thumb", "foto2.jpg.thumb"]
+    with Image.open(path) as im:
+        im.seek(0)
+        im.convert("RGB").load()  # ancora decodificabile
+
+
+def test_rimuovi_frame_centrale_di_tre(tmp_path: Path) -> None:
+    path = tmp_path / "Thumbs.thumb"
+    _crea_indice(path, ["foto0.jpg.thumb", "foto1.jpg.thumb", "foto2.jpg.thumb"])
+    assert rimuovi_frame(path, nome_thumb="foto1.jpg.thumb") is True
+    assert _frame_descrizioni(path) == ["foto0.jpg.thumb", "foto2.jpg.thumb"]
+
+
+def test_rimuovi_ultimo_frame_di_tre(tmp_path: Path) -> None:
+    path = tmp_path / "Thumbs.thumb"
+    _crea_indice(path, ["foto0.jpg.thumb", "foto1.jpg.thumb", "foto2.jpg.thumb"])
+    assert rimuovi_frame(path, nome_thumb="foto2.jpg.thumb") is True
+    assert _frame_descrizioni(path) == ["foto0.jpg.thumb", "foto1.jpg.thumb"]
+
+
+def test_rimuovi_frame_non_tocca_i_byte_dei_frame_rimanenti(tmp_path: Path) -> None:
+    """Stessa garanzia dell'append, in direzione opposta: i byte dei frame
+    NON rimossi devono restare identici — la rimozione patcha solo un
+    puntatore (header o next-IFD del frame precedente), mai ricodifica."""
+    path = tmp_path / "Thumbs.thumb"
+    _crea_indice(path, ["foto0.jpg.thumb", "foto1.jpg.thumb", "foto2.jpg.thumb"])
+
+    # Offset assoluto del frame1 (quello che sopravvive) prima della rimozione.
+    from lys_workflow_hub.core.wincar_thumbs_index import _walk_ifd_chain_full
+
+    prima_bytes = path.read_bytes()
+    frames_prima = _walk_ifd_chain_full(prima_bytes)
+    frame1_offset = frames_prima[1]["ifd_offset"]
+    frame1_len = frames_prima[1]["next_field_offset"] + 4 - frame1_offset
+    frame1_bytes_prima = prima_bytes[frame1_offset : frame1_offset + frame1_len]
+
+    rimuovi_frame(path, nome_thumb="foto0.jpg.thumb")
+
+    dopo_bytes = path.read_bytes()
+    frame1_bytes_dopo = dopo_bytes[frame1_offset : frame1_offset + frame1_len]
+    assert frame1_bytes_prima == frame1_bytes_dopo
+
+
+def test_rimuovi_poi_appendi_ancora_funziona(tmp_path: Path) -> None:
+    """La catena deve restare valida per operazioni successive dopo una
+    rimozione (non solo leggibile una tantum)."""
+    path = tmp_path / "Thumbs.thumb"
+    _crea_indice(path, ["foto0.jpg.thumb", "foto1.jpg.thumb"])
+    rimuovi_frame(path, nome_thumb="foto0.jpg.thumb")
+    aggiorna_indice_thumbs(
+        path, nome_thumb="foto2.jpg.thumb", jpeg=_jpeg((9, 9, 9)), width=49, height=88
+    )
+    assert _frame_descrizioni(path) == ["foto1.jpg.thumb", "foto2.jpg.thumb"]
 
 
 def test_catena_ifd_ciclica_solleva_invece_di_girare_per_sempre(tmp_path: Path) -> None:
