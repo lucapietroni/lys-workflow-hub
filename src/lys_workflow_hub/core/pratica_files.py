@@ -19,11 +19,17 @@ shim/re-export per non rompere import esistenti.
 """
 from __future__ import annotations
 
+import io
+import logging
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 from typing import Iterable
 from uuid import uuid4
+
+from PIL import Image, ImageOps
+
+logger = logging.getLogger(__name__)
 
 
 # Estensioni considerate immagini del danno.
@@ -138,6 +144,45 @@ def _sanitize_filename(nome_originale: str) -> str:
     return nome
 
 
+# WinCar affianca a ogni foto un file <nome>.thumb (JPEG in miniatura, lato
+# lungo 88px — dedotto ispezionando i file reali generati da WinCar) più un
+# indice condiviso Thumbs.thumb (TIFF multi-frame, non toccato qui: formato
+# fragile/proprietario, rischio di corrompere le miniature di foto già
+# esistenti nella stessa cartella se scritto male — vedi CONTEXT.md).
+# Generiamo solo il sidecar per-foto: file nuovo e indipendente, zero rischio
+# per i dati esistenti anche se il risultato non fosse quello che WinCar si
+# aspetta (nel peggiore dei casi viene semplicemente ignorato).
+_WINCAR_THUMB_BOX = (88, 88)
+
+
+def _genera_thumb_wincar(raw: bytes) -> bytes | None:
+    """Ritorna i byte JPEG della miniatura in stile WinCar, o None se
+    l'immagine non è decodificabile da Pillow (es. HEIC senza plugin) — mai
+    solleva, la miniatura è un extra best-effort, non deve bloccare l'upload."""
+    try:
+        with Image.open(io.BytesIO(raw)) as im:
+            # Molte foto da smartphone hanno un tag EXIF Orientation (il
+            # sensore scatta sempre "orizzontale", la rotazione è solo
+            # metadato): senza applicarlo qui il thumb esce con le
+            # proporzioni scambiate (es. 88x49 invece di 49x88) — il thumb
+            # non porta EXIF proprio, deve avere i pixel già corretti.
+            im = ImageOps.exif_transpose(im)
+            if im.mode in ("RGBA", "LA", "P"):
+                sfondo = Image.new("RGB", im.size, (255, 255, 255))
+                rgba = im.convert("RGBA")
+                sfondo.paste(rgba, mask=rgba.split()[-1])
+                im = sfondo
+            else:
+                im = im.convert("RGB")
+            im.thumbnail(_WINCAR_THUMB_BOX, Image.LANCZOS)
+            buffer = io.BytesIO()
+            im.save(buffer, format="JPEG", quality=85)
+            return buffer.getvalue()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Impossibile generare thumb WinCar: %s", exc)
+        return None
+
+
 def save_upload(
     *,
     archivio_root: Path,
@@ -193,6 +238,14 @@ def save_upload(
             break
         except FileExistsError:
             target = target_dir / f"{stem}_{timestamp}-{uuid4().hex[:6]}{ext}"
+
+    if categoria == "foto":
+        thumb_jpeg = _genera_thumb_wincar(raw)
+        if thumb_jpeg is not None:
+            try:
+                target.with_name(target.name + ".thumb").write_bytes(thumb_jpeg)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Impossibile scrivere il thumb WinCar per %s: %s", target, exc)
 
     return target
 

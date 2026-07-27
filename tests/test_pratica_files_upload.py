@@ -1,11 +1,30 @@
 """Test unitari per `save_upload` (upload foto/documenti dal portale esterno, v3.0 fase 6)."""
 from __future__ import annotations
 
+import io
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
 from lys_workflow_hub.core.pratica_files import UploadRifiutato, save_upload
+
+
+def _jpeg_bytes(size: tuple[int, int] = (576, 1024)) -> bytes:
+    buffer = io.BytesIO()
+    Image.new("RGB", size, color=(120, 40, 10)).save(buffer, format="JPEG")
+    return buffer.getvalue()
+
+
+def _jpeg_bytes_ruotato(size: tuple[int, int], orientation: int) -> bytes:
+    """JPEG con tag EXIF Orientation — simula una foto da smartphone dove il
+    sensore scatta sempre "orizzontale" e la rotazione è solo metadato.
+    `size` è la dimensione dei pixel grezzi (pre-rotazione)."""
+    exif = Image.Exif()
+    exif[0x0112] = orientation  # tag Orientation
+    buffer = io.BytesIO()
+    Image.new("RGB", size, color=(10, 80, 200)).save(buffer, format="JPEG", exif=exif)
+    return buffer.getvalue()
 
 
 def test_save_upload_foto_salva_in_cartella_foto(tmp_path: Path) -> None:
@@ -119,3 +138,119 @@ def test_save_upload_categoria_non_valida(tmp_path: Path) -> None:
             filename="file.pdf",
             raw=b"dati",
         )
+
+
+def test_save_upload_foto_genera_thumb_wincar(tmp_path: Path) -> None:
+    """WinCar affianca a ogni foto un file <nome>.thumb (JPEG in miniatura,
+    lato lungo 88px) — senza non mostra la foto nella sua UI. Verifica che
+    save_upload lo generi accanto al file originale, con le dimensioni
+    corrette (aspect ratio preservato, lato lungo scalato a 88px)."""
+    target = save_upload(
+        archivio_root=tmp_path,
+        numero_pratica=766,
+        categoria="foto",
+        filename="danno.jpg",
+        raw=_jpeg_bytes((576, 1024)),
+    )
+    thumb_path = target.with_name(target.name + ".thumb")
+    assert thumb_path.exists()
+
+    with Image.open(thumb_path) as thumb:
+        assert thumb.format == "JPEG"
+        w, h = thumb.size
+        # Lato lungo (altezza, originale 1024) scalato a 88px, lato corto
+        # in proporzione — PIL arrotonda per difetto qui (49, non 50).
+        assert h == 88
+        assert w == 49
+
+
+def test_save_upload_documento_non_genera_thumb(tmp_path: Path) -> None:
+    target = save_upload(
+        archivio_root=tmp_path,
+        numero_pratica=766,
+        categoria="documento",
+        filename="preventivo.pdf",
+        raw=b"%PDF-1.4 fake",
+    )
+    assert not target.with_name(target.name + ".thumb").exists()
+
+
+def test_save_upload_foto_illeggibile_non_genera_thumb_ma_salva_comunque(
+    tmp_path: Path,
+) -> None:
+    """Un'immagine che Pillow non riesce a decodificare (es. HEIC senza
+    plugin, o dati corrotti) non deve bloccare l'upload della foto vera e
+    propria — solo saltare la generazione del thumb, con un warning nel log."""
+    target = save_upload(
+        archivio_root=tmp_path,
+        numero_pratica=766,
+        categoria="foto",
+        filename="danno.jpg",
+        raw=b"non-sono-davvero-byte-jpeg",
+    )
+    assert target.exists()
+    assert not target.with_name(target.name + ".thumb").exists()
+
+
+def test_scan_ignora_i_file_thumb(tmp_path: Path) -> None:
+    """I file .thumb generati non devono comparire come foto/documenti
+    separati nella scansione della pratica (già filtrati da _is_ignored,
+    verifica di non regressione con un thumb generato realmente)."""
+    from lys_workflow_hub.core.pratica_files import scan
+
+    save_upload(
+        archivio_root=tmp_path,
+        numero_pratica=766,
+        categoria="foto",
+        filename="danno.jpg",
+        raw=_jpeg_bytes(),
+    )
+    allegati = scan(tmp_path, 766)
+    nomi = [a.nome_file for a in allegati.tutti]
+    assert len(nomi) == 1
+    assert not any(n.endswith(".thumb") for n in nomi)
+
+
+def test_save_upload_foto_ruotata_applica_orientamento_exif(tmp_path: Path) -> None:
+    """Regressione: senza `ImageOps.exif_transpose()` il thumb usciva con le
+    proporzioni scambiate (es. 88x49 invece di 49x88) per una foto scattata
+    in verticale ma con pixel grezzi orizzontali + tag EXIF di rotazione —
+    il caso comune delle foto da smartphone."""
+    target = save_upload(
+        archivio_root=tmp_path,
+        numero_pratica=766,
+        categoria="foto",
+        filename="danno.jpg",
+        # Pixel grezzi 1024x576 (orizzontali) + Orientation=6 (ruota 90° CW
+        # in visualizzazione) -> risultato logico verticale 576x1024, come
+        # la foto "dritta" di test_save_upload_foto_genera_thumb_wincar.
+        raw=_jpeg_bytes_ruotato((1024, 576), orientation=6),
+    )
+    thumb_path = target.with_name(target.name + ".thumb")
+    assert thumb_path.exists()
+
+    with Image.open(thumb_path) as thumb:
+        w, h = thumb.size
+        assert (w, h) == (49, 88)
+
+
+def test_save_upload_foto_thumb_scrittura_fallita_non_blocca_upload(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Se la scrittura del file .thumb fallisce (es. permessi, disco pieno),
+    l'upload della foto vera e propria deve comunque andare a buon fine."""
+
+    def _write_bytes_fallisce(self: Path, data: bytes) -> int:
+        raise OSError("disco pieno (simulato)")
+
+    monkeypatch.setattr(Path, "write_bytes", _write_bytes_fallisce)
+
+    target = save_upload(
+        archivio_root=tmp_path,
+        numero_pratica=766,
+        categoria="foto",
+        filename="danno.jpg",
+        raw=_jpeg_bytes(),
+    )
+    assert target.exists()
+    assert target.read_bytes() != b""
