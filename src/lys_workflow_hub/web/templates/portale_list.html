@@ -99,7 +99,8 @@
           <td data-label="Cliente">{{ p.cliente.nominativo or "—" }}</td>
           <td data-label="Targa"><code>{{ p.veicolo.targa or "—" }}</code></td>
           <td data-label="Veicolo">
-            {%- set marca_modello = [(p.veicolo.marca or ""), (p.veicolo.modello or "")]|join(" ")|trim -%}
+            {%- set modello_corto = (p.veicolo.modello or "").split(" dal ")[0] -%}
+            {%- set marca_modello = [(p.veicolo.marca or ""), modello_corto]|join(" ")|trim -%}
             {{ marca_modello or "—" }}
           </td>
           <td data-label="Data sinistro">{{ p.sinistro.data.strftime("%d/%m/%Y") if p.sinistro.data else "—" }}</td>
