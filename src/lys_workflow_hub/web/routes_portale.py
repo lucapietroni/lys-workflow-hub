@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Callable
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from lys_workflow_hub import __version__
@@ -52,6 +52,7 @@ from lys_workflow_hub.web.routes import (
     _NON_RENDERIZZABILI,
     _parse_date,
     _raggruppa_per_giorno,
+    build_foto_zip,
     resolve_pratica_file,
 )
 
@@ -310,6 +311,19 @@ def portale_pratica_file_preview(
     utente = _require_user(current_user)
     _verifica_accesso(utente, numero, assegnazioni_repo)
     return resolve_pratica_file(numero, path, settings)
+
+
+@router.get("/portale/pratiche/{numero}/foto/zip")
+def portale_pratica_foto_zip(
+    numero: int,
+    path: list[str] = Query(default=[]),
+    current_user: Utente | None = Depends(get_current_user),
+    assegnazioni_repo: PraticaAssegnazioniRepository = Depends(get_assegnazioni_repo),
+    settings: Settings = Depends(get_portale_settings),
+) -> Response:
+    utente = _require_user(current_user)
+    _verifica_accesso(utente, numero, assegnazioni_repo)
+    return build_foto_zip(numero, path, settings)
 
 
 def _notifica_admin(

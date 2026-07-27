@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import calendar
 import logging
+import zipfile
 from datetime import date, datetime, time
+from io import BytesIO
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import quote as _urlquote
@@ -125,6 +127,7 @@ def _allegati_con_url(
             "size_label": a.size_label,
             "data_modifica": a.data_modifica,
             "categoria": a.categoria,
+            "path": str(a.path),
             "url": f"{base}/{numero}/file?path={_urlquote(str(a.path))}",
         }
         for a in items
@@ -816,6 +819,56 @@ def pratica_file_preview(
     settings: Settings = Depends(get_app_settings),
 ) -> FileResponse:
     return resolve_pratica_file(numero, path, settings)
+
+
+def build_foto_zip(numero: int, paths: list[str], settings: Settings) -> Response:
+    """Zippa le foto di una pratica: tutte se `paths` è vuoto, altrimenti solo
+    quelle richieste (validate contro le foto reali della pratica — stesso
+    principio di sicurezza di `resolve_pratica_file`, niente path arbitrari).
+
+    Solo browser (no app): il download di un file generato via query string
+    lunga non è gestito dalla WebView Capacitor, stesso limite già visto per
+    i documenti prima del fix `@capacitor/browser` — qui non serve, la UI di
+    selezione è nascosta in app via CSS (`html.is-app`).
+    """
+    try:
+        allegati = scan_allegati(settings.wincar_archivio, numero)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Impossibile leggere foto per %s: %s", numero, exc)
+        raise HTTPException(404, "Pratica non trovata o cartelle non accessibili.")
+    valid = {str(a.path): a for a in allegati.foto}
+    selezionati = list(valid.values()) if not paths else [valid[p] for p in paths if p in valid]
+    if not selezionati:
+        raise HTTPException(400, "Nessuna foto valida selezionata.")
+
+    buffer = BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        nomi_usati: set[str] = set()
+        for a in selezionati:
+            nome = a.nome_file
+            if nome in nomi_usati:
+                stem, suffix = Path(nome).stem, Path(nome).suffix
+                i = 2
+                while nome in nomi_usati:
+                    nome = f"{stem}_{i}{suffix}"
+                    i += 1
+            nomi_usati.add(nome)
+            zf.write(a.path, arcname=nome)
+
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/zip",
+        headers={"content-disposition": f'attachment; filename="pratica_{numero}_foto.zip"'},
+    )
+
+
+@router.get("/pratiche/{numero}/foto/zip")
+def pratica_foto_zip(
+    numero: int,
+    path: list[str] = Query(default=[]),
+    settings: Settings = Depends(get_app_settings),
+) -> Response:
+    return build_foto_zip(numero, path, settings)
 
 
 # --------------------------------------------------------------------------- #

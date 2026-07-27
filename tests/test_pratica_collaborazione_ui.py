@@ -7,7 +7,9 @@ cancellazione di un evento di un'altra pratica.
 """
 from __future__ import annotations
 
+import io
 import re
+import zipfile
 from datetime import date, datetime
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -497,6 +499,97 @@ def test_portale_foto_pratica_serve_file_reale_non_403(authenticated_app, portal
     resp = client.get(match.group(1))
     assert resp.status_code == 200
     assert resp.content == b"fake-jpeg-bytes"
+
+
+def test_portale_foto_zip_scarica_tutte(authenticated_app, portale_setup) -> None:
+    """Senza `path` in query, /foto/zip zippa tutte le foto della pratica."""
+    assegnazioni_repo, settings = portale_setup
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
+
+    foto_dir = settings.wincar_archivio / "Pratiche" / "766" / "Pubblici" / "Foto"
+    foto_dir.mkdir(parents=True)
+    (foto_dir / "danno1.jpg").write_bytes(b"foto-1")
+    (foto_dir / "danno2.jpg").write_bytes(b"foto-2")
+
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, "agenzia@esempio.it", "password1234")
+
+    resp = client.get("/portale/pratiche/766/foto/zip")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/zip"
+
+    zf = zipfile.ZipFile(io.BytesIO(resp.content))
+    assert set(zf.namelist()) == {"danno1.jpg", "danno2.jpg"}
+
+
+def test_portale_foto_zip_scarica_selezionate(authenticated_app, portale_setup) -> None:
+    """Con `path` valorizzato, /foto/zip zippa solo le foto richieste."""
+    assegnazioni_repo, settings = portale_setup
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
+
+    foto_dir = settings.wincar_archivio / "Pratiche" / "766" / "Pubblici" / "Foto"
+    foto_dir.mkdir(parents=True)
+    (foto_dir / "danno1.jpg").write_bytes(b"foto-1")
+    scelta = foto_dir / "danno2.jpg"
+    scelta.write_bytes(b"foto-2")
+
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, "agenzia@esempio.it", "password1234")
+
+    resp = client.get("/portale/pratiche/766/foto/zip", params={"path": str(scelta)})
+    assert resp.status_code == 200
+    zf = zipfile.ZipFile(io.BytesIO(resp.content))
+    assert zf.namelist() == ["danno2.jpg"]
+    assert zf.read("danno2.jpg") == b"foto-2"
+
+
+def test_portale_foto_zip_ignora_path_esterno_alla_pratica(authenticated_app, portale_setup) -> None:
+    """Un path che non appartiene alle foto della pratica (IDOR) viene
+    ignorato, non solleva un file arbitrario dal filesystem."""
+    assegnazioni_repo, settings = portale_setup
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
+
+    foto_dir = settings.wincar_archivio / "Pratiche" / "766" / "Pubblici" / "Foto"
+    foto_dir.mkdir(parents=True)
+    (foto_dir / "danno1.jpg").write_bytes(b"foto-1")
+
+    fuori_pratica = settings.wincar_archivio / "segreto.jpg"
+    fuori_pratica.write_bytes(b"non-autorizzato")
+
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, "agenzia@esempio.it", "password1234")
+
+    resp = client.get("/portale/pratiche/766/foto/zip", params={"path": str(fuori_pratica)})
+    assert resp.status_code == 400
+
+    resp = client.get(
+        "/portale/pratiche/766/foto/zip",
+        params={"path": [str(fuori_pratica), str(foto_dir / "danno1.jpg")]},
+    )
+    assert resp.status_code == 200
+    zf = zipfile.ZipFile(io.BytesIO(resp.content))
+    assert zf.namelist() == ["danno1.jpg"]
+
+
+def test_admin_foto_zip_scarica_tutte(admin_client) -> None:
+    client, settings = admin_client
+    foto_dir = settings.wincar_archivio / "Pratiche" / "766" / "Pubblici" / "Foto"
+    foto_dir.mkdir(parents=True)
+    (foto_dir / "danno1.jpg").write_bytes(b"foto-1")
+
+    resp = client.get("/pratiche/766/foto/zip")
+    assert resp.status_code == 200
+    zf = zipfile.ZipFile(io.BytesIO(resp.content))
+    assert zf.namelist() == ["danno1.jpg"]
 
 
 def test_portale_non_puo_eliminare_evento_di_altra_pratica(authenticated_app, portale_setup) -> None:

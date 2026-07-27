@@ -946,6 +946,23 @@ code {
   display: block;
 }
 
+/* Selezione + download foto (solo browser, nascosta in app — vedi html.is-app sotto) */
+.foto-download-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.foto-download-bar > label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.85rem; color: var(--lys-grey-700); }
+.foto-item { position: relative; }
+.foto-select {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 2;
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  accent-color: var(--lys-gold-glow);
+}
+html.is-app .foto-download-bar,
+html.is-app .foto-select { display: none; }
+
 .lightbox {
   position: fixed;
   inset: 0;

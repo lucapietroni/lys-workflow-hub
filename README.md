@@ -5,17 +5,24 @@ con il gestionale **WinCar**. Legge le pratiche dal database WinCar in sola lett
 genera documenti precompilati, monitora le risposte delle compagnie assicurative
 via PEC/email, classifica le risposte con AI e genera alert mirati.
 
-> Branch attivo: **v2** · Versione: **4.0.0**
-> Branch stabile: **main** (v1.0.4)
+> Branch: **main** · Versione: **4.2.0**
 
 ---
 
-## Rami di sviluppo
+## Stato del progetto
 
-| Branch | Versione | Stato |
-|--------|----------|-------|
-| `main` | **1.0.4** | Stabile — funzionalità assicurative complete + allegati email + fix re-download |
-| `v2` | **4.0.0** | Sviluppo attivo — verbali cortesia + foto lavorazioni automatiche + foto/documenti in pratica (vista + upload dal portale esterno) + autenticazione/pubblicazione internet + assegnazione pratiche + note/calendario condivisi + notifiche collaborazione (real-time + self-service + reminder schedulati) + stato pratica nel portale (vista + modifica) + CSRF su tutti i form + calendario mensile + UI responsive tablet/telefono + feed attività recenti + ricerca/filtro pratiche nel portale + **app Android companion** (wrapper Capacitor del portale esterno, push FCM nativo, scatto foto nativo, rebrand LYSApp, build release firmata per closed testing) |
+Repo unificato su branch **`main`** (i vecchi branch di sviluppo separati non
+esistono più). Versione **4.2.0** — copre: funzionalità assicurative base
+(cessione del credito, vandalismo, classificazione AI risposte, bozze, SLA) +
+verbali cortesia + foto lavorazioni automatiche (Syncthing) + foto/documenti in
+pratica (vista + upload/download dal portale esterno) + autenticazione/
+pubblicazione internet + assegnazione pratiche + note/calendario condivisi +
+notifiche collaborazione (real-time + self-service + reminder schedulati) +
+stato pratica nel portale (vista + modifica) + CSRF su tutti i form + calendario
+mensile + UI responsive tablet/telefono + feed attività recenti + ricerca/filtro
+pratiche nel portale + **app Android companion** (wrapper Capacitor del portale
+esterno, push FCM nativo, scatto/download foto nativo, rebrand LYSApp, build
+release firmata per closed testing).
 
 ---
 

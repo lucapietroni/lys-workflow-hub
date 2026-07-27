@@ -415,13 +415,48 @@
 <section class="card">
   <h2>Foto pratica <span class="tag">{{ foto_pratica|length }}</span></h2>
   {% if foto_pratica %}
-  <div class="foto-grid">
-    {% for f in foto_pratica %}
-    <button type="button" class="foto-thumb" data-full="{{ f.url }}" data-name="{{ f.nome_file }}" title="{{ f.nome_file }}">
-      <img src="{{ f.url }}" alt="{{ f.nome_file }}" loading="lazy" />
-    </button>
-    {% endfor %}
-  </div>
+  <form method="get" action="/pratiche/{{ pratica.numero }}/foto/zip" id="foto-download-form" class="foto-download-bar">
+    <label>
+      <input type="checkbox" id="foto-seleziona-tutte" />
+      Seleziona tutte
+    </label>
+    <button type="submit" class="btn btn-sm" id="foto-scarica-selezionate" disabled>Scarica selezionate</button>
+    <a class="btn btn-sm" href="/pratiche/{{ pratica.numero }}/foto/zip">Scarica tutte</a>
+    <div class="foto-grid">
+      {% for f in foto_pratica %}
+      <div class="foto-item">
+        <input type="checkbox" class="foto-select" name="path" value="{{ f.path }}" />
+        <button type="button" class="foto-thumb" data-full="{{ f.url }}" data-name="{{ f.nome_file }}" title="{{ f.nome_file }}">
+          <img src="{{ f.url }}" alt="{{ f.nome_file }}" loading="lazy" />
+        </button>
+      </div>
+      {% endfor %}
+    </div>
+  </form>
+  <script>
+    (function () {
+      var form = document.getElementById("foto-download-form");
+      if (!form) return;
+      var selezionaTutte = document.getElementById("foto-seleziona-tutte");
+      var checkboxes = form.querySelectorAll(".foto-select");
+      var scaricaBtn = document.getElementById("foto-scarica-selezionate");
+      function aggiornaBottone() {
+        var almenoUna = Array.prototype.some.call(checkboxes, function (cb) { return cb.checked; });
+        scaricaBtn.disabled = !almenoUna;
+      }
+      checkboxes.forEach(function (cb) {
+        cb.addEventListener("click", function (e) { e.stopPropagation(); });
+        cb.addEventListener("change", function () {
+          aggiornaBottone();
+          selezionaTutte.checked = Array.prototype.every.call(checkboxes, function (c) { return c.checked; });
+        });
+      });
+      selezionaTutte.addEventListener("change", function () {
+        checkboxes.forEach(function (cb) { cb.checked = selezionaTutte.checked; });
+        aggiornaBottone();
+      });
+    })();
+  </script>
   {% else %}
   <p class="meta" style="margin-top:-6px">Nessuna foto archiviata per questa pratica.</p>
   {% endif %}
