@@ -33,6 +33,7 @@ from lys_workflow_hub.integrations.notifier import (
     notify_esterno_nuova_attivita,
     notify_fcm_nuova_attivita,
     notify_push_nuova_attivita,
+    send_fcm_push,
 )
 from lys_workflow_hub.main import app
 from lys_workflow_hub.web.routes import get_app_settings, get_repository
@@ -114,6 +115,42 @@ def test_notify_fcm_nuova_attivita_non_solleva_se_push_fallisce() -> None:
             titolo="x",
             messaggio="y",
         )  # non deve sollevare
+
+
+def test_send_fcm_push_richiede_priorita_alta_android() -> None:
+    # Senza android.priority=high, FCM consegna a priorità "normal" e Android
+    # può ritardare la notifica di minuti sotto Doze/App Standby — bug reale
+    # segnalato dall'utente (notifica arrivata 5 minuti dopo, in modo non
+    # riproducibile, nessun errore lato server). L'endpoint FCM HTTP v1
+    # ignora silenziosamente i campi sconosciuti/mal posizionati: un domani
+    # spostare o rinominare questa chiave passerebbe il controllo HTTP 2xx
+    # senza errori, riproducendo lo stesso sintomo. Questo test blocca quella
+    # regressione silenziosa.
+    fake_creds = MagicMock()
+    fake_creds.token = "fake-access-token"
+    fake_response = MagicMock()
+    fake_response.status_code = 200
+
+    with (
+        patch(
+            "google.oauth2.service_account.Credentials.from_service_account_file",
+            return_value=fake_creds,
+        ),
+        patch("requests.post", return_value=fake_response) as mock_post,
+    ):
+        ok, err = send_fcm_push(
+            project_id="lys-workflow-hub",
+            credentials_path="/tmp/fake-service-account.json",
+            token="device-token-xyz",
+            title="Nuova nota",
+            message="ciao",
+        )
+
+    assert ok is True
+    assert err == ""
+    mock_post.assert_called_once()
+    payload = mock_post.call_args.kwargs["json"]
+    assert payload["message"]["android"]["priority"] == "high"
 
 
 def test_notify_esterno_nuova_attivita_chiama_send_email_se_configurato() -> None:

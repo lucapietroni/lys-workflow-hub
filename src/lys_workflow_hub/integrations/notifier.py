@@ -131,6 +131,12 @@ def send_fcm_push(
             "token": token,
             "notification": {"title": title, "body": message},
             "data": {"click_path": click_path} if click_path else {},
+            # Senza priorità esplicita FCM consegna a priorità "normal": sotto
+            # Doze/App Standby Android può ritardare la consegna di minuti in
+            # modo imprevedibile invece di svegliare subito il device — "high"
+            # richiede consegna immediata (osservato: notifica arrivata con
+            # ~5 minuti di ritardo, in modo non riproducibile, senza errori).
+            "android": {"priority": "high"},
         }
     }
     try:
