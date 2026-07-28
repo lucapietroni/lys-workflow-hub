@@ -17,7 +17,7 @@ in LAN aziendale.
 7. [Trovare l'indirizzo per i tablet](#7-trovare-lindirizzo-per-i-tablet)
 8. [Aggiornare l'app](#8-aggiornare-lapp)
 9. [Risoluzione problemi](#9-risoluzione-problemi)
-10. [Pubblicazione su internet — reverse proxy + TLS (v3.0 fase 2)](#10-pubblicazione-su-internet--reverse-proxy--tls-v30-fase-2)
+10. [Pubblicazione su internet — reverse proxy + TLS](#10-pubblicazione-su-internet--reverse-proxy--tls)
 
 ---
 
@@ -184,6 +184,32 @@ APP_ARCHIVIO_CESSIONI=C:\LYSApp\Cessioni_firmate
 >   scatta solo se il corpo della mail è più corto di questo valore.
 
 Salva e chiudi il blocco note.
+
+### 3.4 Notifiche push (opzionale ma consigliato)
+
+Tre canali indipendenti, tutti disattivati di default (vuoto = nessun
+tentativo di invio, nessun errore):
+
+- **ntfy.sh** (`NTFY_TOPIC`/`NTFY_SERVER`): canale dell'admin per gli alert
+  automatici (SLA, nuove attività esterne). Basta un topic segreto e l'app
+  gratuita ntfy sul telefono, nessun account da creare.
+- **FCM app Android** (`FCM_PROJECT_ID`, `FCM_CREDENTIALS_PATH`): notifiche
+  push native per gli utenti esterni che usano **LYSApp**. Richiede una
+  service account Firebase: Console Firebase → progetto → ⚙️ Project
+  Settings → Service Accounts → *Generate new private key* → salva il JSON
+  scaricato in produzione (es. `C:\LYSApp\firebase-service-account.json`,
+  **fuori dalla cartella del repo**, mai committato) e puntaci
+  `FCM_CREDENTIALS_PATH`.
+- **FCM Web** (`FCM_WEB_API_KEY`, `FCM_WEB_AUTH_DOMAIN`, `FCM_WEB_PROJECT_ID`,
+  `FCM_WEB_STORAGE_BUCKET`, `FCM_WEB_MESSAGING_SENDER_ID`, `FCM_WEB_APP_ID`,
+  `FCM_WEB_VAPID_KEY`): notifiche push nel browser del portale esterno,
+  stesso progetto Firebase di sopra. A differenza del JSON della service
+  account, questi valori **sono pubblici** (finiscono nel JS servito al
+  browser) — presi da Console Firebase → ⚙️ Project Settings → General →
+  Your apps → app Web (creane una se non esiste, "Add app" → Web, non serve
+  Firebase Hosting) per i primi sei; la VAPID key da Project Settings →
+  Cloud Messaging → Web configuration → Web Push certificates → *Generate
+  key pair*.
 
 ---
 
@@ -404,7 +430,7 @@ Dovresti vedere righe tipo:
 
 ---
 
-## 5.6 Task Scheduler per i reminder di calendario (v3.0 fase 5, parte B)
+## 5.6 Task Scheduler per i reminder di calendario
 
 Terzo task, simile a §5.5: gira **una volta al giorno** e manda un promemoria
 (push admin + email/push ai collaboratori esterni assegnati) per ogni
@@ -654,7 +680,7 @@ apri `C:\LYSApp\logs\lys-hub.log` e cerca tracebacks o errori di config
 
 ---
 
-## 10. Pubblicazione su internet — reverse proxy + TLS (v3.0 fase 2)
+## 10. Pubblicazione su internet — reverse proxy + TLS
 
 > Prerequisito: fase 1 già installata (login funzionante, vedi §3.3 —
 > `SECRET_KEY` impostata, `scripts\create_admin.py` eseguito). **Non aprire
@@ -851,7 +877,7 @@ C:\LYSApp\
 ├── Cessioni_firmate\         <- archivio centrale, copia delle scansioni
 │   └── 2026\
 ├── logs\                     <- log dell'app (opzionale)
-└── caddy\                    <- reverse proxy + TLS (fase 2, §10)
+└── caddy\                    <- reverse proxy + TLS (§10)
     ├── caddy.exe
     └── Caddyfile
 ```

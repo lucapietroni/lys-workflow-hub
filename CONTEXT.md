@@ -1,6 +1,6 @@
 # LYS Workflow Hub — Contesto di sviluppo
 
-> Branch: **v2** · Versione: **4.9.2** (base: v1.0.4 / main)
+> Branch: **main** · Versione: **4.10.0** · In produzione su `hub.lysauto.it`
 
 ---
 
@@ -10,14 +10,20 @@ Piattaforma di automazione documentale per **Carrozzeria LYS Auto srl** (Roma).
 Legge le pratiche dal gestionale **WinCar** (database Microsoft Access `.mdb`) in
 sola lettura, genera documenti precompilati, monitora le risposte assicurative
 via PEC/email, classifica con AI (Anthropic Claude), produce bozze di replica,
-genera alert SLA. Branch v2 aggiunge i verbali di consegna/riconsegna veicoli di cortesia (v2.0),
-il sistema di foto lavorazioni automatiche via Syncthing + Claude Vision (v2.1), e — a partire
-dalla v3.0 — un sistema di login/ruoli in vista della pubblicazione dell'app su internet e di
-un portale di collaborazione per agenzie pratiche auto / avvocati esterni.
+genera alert SLA. Include anche: verbali di consegna/riconsegna veicoli di
+cortesia, foto lavorazioni automatiche via Syncthing + Claude Vision,
+autenticazione con ruoli e portale di collaborazione per agenzie pratiche
+auto/avvocati esterni, app Android companion (LYSApp) con notifiche push
+native, notifiche push anche nel browser del portale.
+
+Riepilogo funzionalità orientato all'utente in `README.md`. Questo file
+documenta COME funziona ogni sottosistema (decisioni tecniche, formati,
+gotcha) — il changelog per-commit è in `git log`.
 
 **Stack**: FastAPI + Jinja2 · SQLite `lys_hub.db` · pyodbc → WinCar `.mdb` ·
 InfoCert Legalmail (IMAP + SMTP SSL 465) · Anthropic Claude API · `pypdf` ·
-python-docx + docx2pdf (Word COM) · watchdog (file system events)
+python-docx + docx2pdf (Word COM) · watchdog (file system events) ·
+Firebase Cloud Messaging (push app Android + browser)
 
 **Deploy**: `C:\LYSApp\lys-workflow-hub` (Windows, Task Scheduler).
 Dev: WSL2 (`/mnt/c/Users/lucap/Documents/Claude/Projects/Lysauto/lys-workflow-hub`).
@@ -32,14 +38,17 @@ Web UI (FastAPI + Jinja2)
     ├── Workflow A — Cessione del credito        → python-docx → PDF via Word COM
     ├── Workflow B — Richiesta vandalismo         → PEC/email SMTP
     ├── Workflow C — Lettura risposte             → IMAP → AI → bozze → SLA
-    ├── Workflow D — Verbali cortesia [v2]        → python-docx → PDF via Word COM
-    └── Workflow E — Foto lavorazioni [v2.1]      → watchdog → Claude Vision → file copy
+    ├── Workflow D — Verbali cortesia             → python-docx → PDF via Word COM
+    └── Workflow E — Foto lavorazioni             → watchdog → Claude Vision → file copy
 
 Script polling (Task Scheduler)
     └── run_polling.py: fetch → match → classify → auto-transition → notify
 
 Foto watcher (thread daemon, avviato al boot se FOTO_INBOX_PATH configurato)
     └── Syncthing inbox → targa via Claude Vision → fallback/<TARGA>/ + WinCar Pratiche/
+
+App Android (Capacitor, wrapper del portale esterno /portale)
+    └── mobile/ — vedi mobile/README.md
 ```
 
 **DB SQLite** tabelle principali:
@@ -51,8 +60,8 @@ Foto watcher (thread daemon, avviato al boot se FOTO_INBOX_PATH configurato)
 - `compagnie_assicurative` — anagrafica + PEC + soglie SLA personalizzate
 - `categoria_policy` — policy generazione bozze per categoria AI
 - `pec_sla_reminder` — tracking escalation SLA già inviati
-- `foto_lavorazioni` — log foto processate dal watcher [v2.1]
-- `utenti` — account applicativi: email, password_hash (bcrypt), ruolo (admin/esterno) [v3.0]
+- `foto_lavorazioni` — log foto processate dal watcher
+- `utenti` — account applicativi: email, password_hash (bcrypt), ruolo (admin/esterno)
 
 ---
 
@@ -71,45 +80,45 @@ src/lys_workflow_hub/
 │   ├── compagnie_repository.py     Anagrafica compagnie
 │   ├── categoria_policy_repository.py  Policy bozze
 │   ├── sollecito_repository.py     Solleciti SLA
-│   ├── foto_lavorazioni_repository.py  Log foto processate [v2.1]
-│   └── utenti_repository.py        Utenti + autenticazione (bcrypt, lockout) [v3.0]
+│   ├── foto_lavorazioni_repository.py  Log foto processate
+│   └── utenti_repository.py        Utenti + autenticazione (bcrypt, lockout)
 ├── integrations/
 │   ├── imap_fetcher.py             Fetch IMAP + estrazione body + PDF
 │   ├── ai_classifier.py            Classificatore Anthropic Claude
 │   ├── pdf_extractor.py            Estrazione testo PDF allegati (pypdf)
 │   ├── pec_mailer.py               SMTP + IMAP append posta inviata
 │   ├── notifier.py                 Push ntfy + email
-│   └── foto_watcher.py             Watchdog + Claude Vision + routing foto [v2.1]
+│   └── foto_watcher.py             Watchdog + Claude Vision + routing foto
 ├── workflows/
 │   ├── cessione_credito/           Workflow A (data.py, generator.py, archive.py)
 │   │   └── assets/                 Firma pre-apposta (PNG)
 │   ├── risarcimento_vandalismo/    Workflow B (data.py, pec_generator.py, invio_pec.py)
 │   ├── risposte/                   Workflow C (matcher.py, body_generator.py, ...)
-│   └── verbale_cortesia/           Workflow D [v2]
+│   └── verbale_cortesia/           Workflow D
 │       ├── data.py                 VerbaleData dataclass + from_pratica()
 │       ├── generator.py            DOCX uscita/rientro (logo LYS, tabelle bordate)
 │       ├── archive.py              Salva PDF in Pratiche/<n>/Pubblici/Allegati/
 │       └── assets/logo_lys.png     Logo LYS Auto Carrozzeria & Noleggio
 └── web/
-    ├── auth.py                     Sessione, AuthMiddleware, require_admin, CSRF [v3.0]
-    ├── routes_auth.py              GET/POST /login, POST /logout [v3.0]
+    ├── auth.py                     Sessione, AuthMiddleware, require_admin, CSRF
+    ├── routes_auth.py              GET/POST /login, POST /logout
     ├── routes.py                   Pratica + Workflow A (admin-only)
     ├── routes_vandalismo.py        Workflow B (admin-only)
     ├── routes_risposte.py          Cruscotto risposte (admin-only)
     ├── routes_bozze.py             Cruscotto bozze (admin-only)
-    ├── routes_verbale.py           Workflow D [v2] — 6 route (admin-only)
-    ├── routes_foto.py              Workflow E [v2.1] — log foto /foto (admin-only)
+    ├── routes_verbale.py           Workflow D — 6 route (admin-only)
+    ├── routes_foto.py              Workflow E — log foto /foto (admin-only)
     ├── routes_compagnie.py         CRUD compagnie (admin-only)
     ├── routes_impostazioni.py      Statistiche + policy editor (admin-only)
     └── templates/ + static/
 scripts/
 ├── run_polling.py                  Ciclo polling completo
-└── create_admin.py                 Bootstrap primo utente admin [v3.0]
+└── create_admin.py                 Bootstrap primo utente admin
 ```
 
 ---
 
-## Workflow D — Verbali cortesia [v2]
+## Workflow D — Verbali cortesia
 
 ### Flusso utente
 1. Pagina pratica → bottone "Verbale uscita / rientro veicolo cortesia"
@@ -159,7 +168,7 @@ Template lista allegati con nome/tipo/dimensione e link "Apri" (nuova scheda).
 
 ---
 
-## Workflow E — Foto lavorazioni [v2.1, migliorato in v2.2]
+## Workflow E — Foto lavorazioni
 
 ### Flusso automatico
 1. Syncthing deposita foto da smartphone Android in `foto_inbox_path`
@@ -239,7 +248,7 @@ POST /foto/copia-pratica      Toggle copia_pratica_abilitata
 
 ---
 
-## Foto e documenti in pratica [v2.2]
+## Foto e documenti in pratica
 
 Su `/pratiche/<n>`, sotto "Assicurazione cliente": riquadro **Foto pratica**
 (miniature) e riquadro **Documenti** (elenco). Riusa `pratica_files.scan()`
@@ -280,7 +289,7 @@ sotto) → il browser renderizza invece di scaricare. Le altre estensioni
 
 ---
 
-## Autenticazione [v3.0 fase 1]
+## Autenticazione
 
 Prerequisito per pubblicare l'app su internet (port forwarding dal router
 della carrozzeria): fino alla v2.2 l'app non aveva alcun login, chiunque
@@ -375,7 +384,7 @@ POST /logout    Chiude la sessione
 
 ---
 
-## Assegnazione pratiche [v3.0 fase 3]
+## Assegnazione pratiche
 
 Decide sempre l'admin chi assegnare (mai self-service per l'esterno).
 Relazione **many-to-many**: una pratica può avere più collaboratori esterni
@@ -442,7 +451,7 @@ fase, stesso pattern di quello preso dal code-reviewer in fase 1).
 
 ---
 
-## Note e calendario condivisi [v3.0 fase 4]
+## Note e calendario condivisi
 
 Thread di note e calendario **condivisi** tra admin e collaboratori esterni
 sulla stessa pratica — non un canale separato per utente. Sia l'admin
@@ -516,7 +525,7 @@ livello più alto).
 
 ---
 
-## Notifiche di collaborazione + prossimi appuntamenti [v3.0 fase 5, parte A+C]
+## Notifiche di collaborazione + prossimi appuntamenti
 
 Due pezzi, entrambi **live** (nessun job schedulato — vedi nota sotto sulla
 parte B, non ancora costruita):
@@ -567,7 +576,7 @@ vera resta impostare `PUBLIC_BASE_URL=https://hub.lysauto.it` in prod
 `.env`** — il fallback a `localhost` è solo difesa in profondità, funziona
 comunque solo da dentro la LAN (e nemmeno da lì se non sei sullo stesso PC).
 
-## Preferenze di notifica self-service [v3.0 fase 5, parte D]
+## Preferenze di notifica self-service
 
 Motivazione: parte A manda **sempre** email all'esterno assegnato e **sempre**
 push all'admin sullo stesso topic ntfy globale — nessun modo per l'esterno di
@@ -600,7 +609,7 @@ dell'esterno. `_notifica_esterni_assegnati` (routes.py) legge
 `u.notify_email_enabled`/`u.notify_push_enabled`/`u.ntfy_topic` per ogni
 assegnatario invece di mandare sempre email.
 
-## Stato pratica nel portale esterno [v3.0 fase 5, parte E]
+## Stato pratica nel portale esterno
 
 Motivazione: l'elenco `/portale` mostrava numero/cliente/veicolo/data
 sinistro ma non lo stato della pratica — l'esterno non poteva capire a
@@ -623,7 +632,7 @@ logica in `pratica_detail.html`). Pratiche con stato `chiusa` ricevono la
 classe riga `row-chiusa` (`style.css`: `opacity: 0.55`, `0.8` in hover) per
 distinguerle visivamente dalle pratiche ancora attive.
 
-## Stato pratica modificabile dall'esterno + nuovo stato "periziata" [v3.0 fase 5, parte F]
+## Stato pratica modificabile dall'esterno + nuovo stato "periziata"
 
 `routes_portale.py::portale_pratica_detail()` carica anche `pratica_stato`/
 `pratica_stato_storia`/`stati_disponibili`; `portale_pratica_detail.html`
@@ -644,7 +653,7 @@ stato (resta manuale, come già per aperta/chiusa). Nuova classe CSS
 `badge-periziata`/`badge-teal` (teal, per non confondersi con l'arancio di
 "perito nominato" o il viola di "in liquidazione").
 
-## CSRF su tutti i form [v3.0 fase 5, parte G — hardening]
+## CSRF su tutti i form
 
 Prima esteso solo al login (debito tecnico segnalato fin dalla fase 2).
 `template_context_processor` in `web/auth.py` ora inietta `csrf_token` in
@@ -686,7 +695,7 @@ csrf_token_rifiutato`/`..._con_csrf_token_falso_rifiutato` in
 rifiutato`/`..._con_csrf_token_falso_rifiutato` in
 `test_cessione_upload_route.py` per il path multipart.
 
-## Reminder schedulati "il giorno prima" [v3.0 fase 5, parte B]
+## Reminder schedulati "il giorno prima"
 
 Ultimo pezzo della roadmap v3.0 collaborazione. `scripts/send_event_
 reminders.py` (+ `send_event_reminders.bat`), stesso pattern di
@@ -708,7 +717,7 @@ self-service (`notify_email_enabled`/`notify_push_enabled`/`ntfy_topic`,
 stessa logica già usata in `_notifica_esterni_assegnati` di `routes.py`,
 duplicata qui perché lo script non deve dipendere dal layer web).
 
-## Calendario mensile [v3.0 fase 5, parte H]
+## Calendario mensile
 
 `GET /calendario` (admin, tutte le pratiche) e `GET /portale/calendario`
 (esterno, solo pratiche assegnate) — vista mensile stile Google Calendar,
@@ -725,7 +734,7 @@ in `_contesto_calendario()` (routes.py, riusata da routes_portale.py —
 stesso pattern di condivisione già in uso per `_allegati_con_url`/
 `_parse_date`/`resolve_pratica_file`).
 
-## Modifica/eliminazione note (admin) [v3.0 fase 5, parte H]
+## Modifica/eliminazione note (admin)
 
 `PraticaNoteRepository.update()`/`.delete()` nuovi, stesso pattern IDOR-safe
 di `PraticaEventiRepository.delete()` (`pratica_numero` obbligatorio nel
@@ -734,7 +743,7 @@ WHERE). Route `POST /pratiche/{numero}/note/{nota_id}/modifica` e
 utenti esterni continuano a poter solo aggiungere note, non modificarle né
 eliminarle — scelta esplicita, non un'omissione.
 
-## Home admin: ultime pratiche invece di suggerimenti statici [v3.0 fase 5, parte H]
+## Home admin: ultime pratiche invece di suggerimenti statici
 
 `home()` in `routes.py`: quando non c'è una ricerca in corso, invece del
 box statico "Suggerimenti rapidi" chiama `repo.search_pratiche(limit=20)`
@@ -742,7 +751,7 @@ senza filtri — che ordina già per `F_NUMPRA DESC` (i numeri pratica
 WinCar sono progressivi, quindi "ultime pratiche" in pratica), zero nuove
 query. Stessa tabella `results-table` già usata per i risultati di ricerca.
 
-## Widget "Prossimi appuntamenti" con cliente/targa [v3.0 fase 5, parte I]
+## Widget "Prossimi appuntamenti" con cliente/targa
 
 Il widget mostrava solo titolo evento + numero pratica. `_arricchisci_
 eventi_con_pratica(eventi, repo)` (routes.py, condivisa con
@@ -754,7 +763,7 @@ template cambia forma: da `list[Evento]` a `list[dict]` con chiavi
 `evento`/`cliente`/`targa` — i template (`index.html`, `portale_list.html`)
 fanno `{% set e = item.evento %}` all'inizio del loop.
 
-## UI responsive tablet/telefono [v3.0 fase 5, parte I]
+## UI responsive tablet/telefono
 
 Audit statico (nessun browser disponibile nell'ambiente di sviluppo per
 screenshot reali — verificare comunque su un dispositivo vero dopo il
@@ -866,78 +875,14 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 
 ---
 
-## Versioni
+## Stato attuale
 
-| Versione | Branch | Contenuto |
-|----------|--------|-----------|
-| 1.0.4 | main | Base stabile: cessione, vandalismo, risposte AI, bozze, SLA, UI dark glass, allegati email, fix re-download |
-| 2.0.0 | v2 | + Verbali cortesia con auto di cortesia DB, dichiarazione necessità, timbro LYS |
-| 2.1.0 | v2 | + Foto lavorazioni: Syncthing + watchdog + Claude Vision → routing automatico per targa |
-| 2.2.0 | v2 | + Foto/documenti in pratica (anteprima inline) + lettura targa a due passaggi (locate+zoom), toggle copia-pratica, fix orario UTC |
-| 3.0.0 | v2 | + Autenticazione fase 1: utenti/ruoli, login/logout, sessione cookie, route admin-only, lockout anti-bruteforce, bootstrap CLI. Fase 2: reverse proxy + TLS (Caddy), app pubblicata su `hub.lysauto.it` |
-| 3.1.0 | v2 | + Assegnazione pratiche fase 3: UI gestione utenti (`/utenti`), assegnazione pratiche many-to-many (`pratica_assegnazioni`), portale esterno di sola lettura (`/portale`), nav condizionale per ruolo |
-| 3.2.0 | v2 | + Note e calendario condivisi fase 4: thread note (`pratica_note`) e calendario (`pratica_eventi`) tra admin e collaboratori esterni, su `/pratiche/{numero}` e nuova `/portale/pratiche/{numero}` (dettaglio completo esterno: WinCar + note + calendario), fix redirect post-login esterno (`/portale` invece di `/`, admin-only) |
-| 3.3.0 | v2 | + Notifiche collaborazione fase 5 (parte A+C): push admin/email esterno in tempo reale su nuova nota/evento, widget "Prossimi appuntamenti" su home e `/portale`, `Settings.public_url()`/`PUBLIC_BASE_URL` per link corretti fuori LAN nelle notifiche |
-| 3.4.0 | v2 | + Notifiche self-service fase 5 (parte D): pagina `/portale/impostazioni`, ogni esterno sceglie email on/off e push on/off con proprio topic ntfy personale, `notify_admin_nuova_attivita` rinominata `notify_push_nuova_attivita` (generica per topic) |
-| 3.5.0 | v2 | + Stato pratica fase 5 (parte E): colonna "Stato" nell'elenco `/portale` con badge colorato, pratiche chiuse evidenziate (riga attenuata) |
-| 3.6.0 | v2 | + Fase 5 parte F: l'esterno può cambiare (non solo vedere) lo stato pratica dal portale, nuovo stato "periziata". Parte G: CSRF esteso a tutti i 41 form dell'app (era solo login), fix bug Starlette `BaseHTTPMiddleware`/body consumption. UI: sezione "Collaboratori esterni" a tendina |
-| 3.7.0 | v2 | + Fase 5 parte B: reminder schedulati "il giorno prima" (`scripts/send_event_reminders.py`, Task Scheduler). Parte H: pagina calendario mensile (`/calendario` admin, `/portale/calendario` esterno), modifica/eliminazione note (admin), home admin mostra ultime 20 pratiche invece di suggerimenti statici |
-| 3.7.1 | v2 | Fix: un esterno con sessione già valida che apriva "/" (bookmark, home browser) riceveva il 403 JSON grezzo di `require_admin` invece del redirect a `/portale` — bug reale segnalato in produzione, `AuthMiddleware` ora tratta "/" come caso speciale |
-| 3.7.2 | v2 | Fix: `Settings.public_url()` senza `PUBLIC_BASE_URL` impostato produceva link tipo `http://0.0.0.0:8000/...` nelle notifiche push (APP_HOST=0.0.0.0 è un indirizzo di bind, non navigabile) — bug reale segnalato in produzione, fallback ora usa `localhost` in quel caso |
-| 3.8.0 | v2 | + Fase 5 parte I: widget "Prossimi appuntamenti" mostra cliente/targa oltre al titolo evento. UI responsive: nav scrollabile invece di rompere il layout, tabelle scrollabili, form inline vanno a capo su tablet/telefono |
-| 3.9.0 | v2 | Elenco pratiche di `/portale` riallineato allo stile della home admin (`results-table`: colonne N./Cliente/Targa/Veicolo/Data sinistro/Stato + link "Apri →"). Fix: campo Veicolo mostrava letteralmente "None" quando marca o modello mancava (bug propagato da `index.html`, corretto in entrambi i template) |
-| 3.10.0 | v2 | + Nuovo stato pratica "In trattativa" (dopo "Periziata"). L'esterno assegnato può ora caricare foto e documenti direttamente da `/portale/pratiche/{numero}` (tasto "Upload" nelle sezioni "Foto pratica"/"Documenti"), salvati nelle cartelle WinCar `Pubblici/Foto`/`Pubblici/Allegati` della pratica — visibili anche in WinCar come i file caricati dall'admin. Validazione estensione (niente eseguibili), dimensione max 20MB, CSRF esplicito (multipart), notifica push all'admin |
-| 3.11.0 | v2 | + Numero pratica cliccabile nelle tabelle home admin e `/portale`. + Occhiolino mostra/nascondi sulla password (login e form utente). + Notifica email/push all'esterno secondo le sue preferenze quando gli viene assegnata una pratica (non solo su nota/evento/stato come prima), `PraticaAssegnazioniRepository.assegna()` ora ritorna se ha creato una nuova riga per evitare notifiche duplicate su resubmit. UI: sezione "Stato pratica" spostata sotto "Collaboratori esterni" su `/pratiche/{numero}` |
-| 3.11.1 | v2 | UI: sezione "Calendario" spostata subito sotto "Stato pratica" (prima di "Note") su `/portale/pratiche/{numero}` |
-| 3.12.0 | v2 | + Feed "Attività recenti" su `/pratiche/{numero}` e `/portale/pratiche/{numero}`: timeline unica (note, eventi, cambi stato, upload foto/documenti) ordinata dal più recente, subito sotto "Stato pratica" — evita di dover scorrere ogni sezione per capire cosa è successo di recente. + Ricerca/filtro nell'elenco `/portale`: campo di ricerca (numero/cliente/targa) e filtro per stato, lato client, senza ricaricare la pagina |
-| 4.0.0 | v2 | **App Android companion** (Capacitor, wrappa `/portale`): Fase A+B wrapper Capacitor + backend push FCM (`send_fcm_push()`, colonna `fcm_token`); Fase C push FCM native client + deep-link alla pratica corretta; Fase D scatto foto nativo via `@capacitor/camera` (poi fix: base64 invece di `fetch(webPath)`); rebrand app → nome "LYSApp" + icona logo LYS Auto; Fase E build release firmata (keystore) per closed testing. + UI: sezioni "Attività recenti" e "Collaboratori esterni" a tendina su `/pratiche/{numero}` |
-| 4.1.0 | main | Fix UI app Android: form cambio stato (`.form-inline-stato`) a colonna piena larghezza dentro l'app (era compresso, placeholder "Note (opzionale)" tagliato a "Not"). Fix apertura documenti: i link `.documento-link` in `/portale/pratiche/{numero}` erano `target="_blank"`, no-op nella WebView Capacitor (nessun supporto multi-finestra) — dentro l'app ora aprono con `@capacitor/browser` (Chrome Custom Tabs: rendering PDF inline + download nativo per .docx/.xlsx/.msg ecc.), invariato da browser desktop/mobile. `versionCode`/`versionName` Android bump a 3/"4.1.0" |
-| 4.2.0 | main | + Download foto pratica (solo browser, non in app): su `/pratiche/{numero}` e `/portale/pratiche/{numero}`, checkbox su ogni foto + "Seleziona tutte" + "Scarica selezionate"/"Scarica tutte" — nuova route `GET .../foto/zip` (`build_foto_zip()` in `routes.py`, condivisa tra admin e portale, valida i path richiesti contro le foto reali della pratica). UI di selezione nascosta via CSS dentro l'app Capacitor (`html.is-app`). + Icona app Android: logo LYS ingrandito ~1.45x nel foreground adaptive icon (era minuscolo nel canvas, illeggibile in home screen), rigenerate tutte le densità incluso lo splash screen che riusa lo stesso asset. `versionCode`/`versionName` Android bump a 4/"4.2.0" |
-| 4.3.0 | main | + Upload foto/documenti anche dall'admin su `/pratiche/{numero}` (prima solo l'esterno assegnato dal portale) — nuove route `POST /pratiche/{numero}/foto` e `/documenti`, `_salva_file_pratica()` estratta in `routes.py` e condivisa con l'upload portale (`routes_portale.py`, prima duplicava il loop). L'upload admin notifica gli esterni assegnati (`_notifica_esterni_assegnati`) invece dell'admin stesso. + Elenco pratiche `/portale` (home + app) ordinato per numero pratica decrescente. + Fix: sezioni Foto/Documenti di `pratica_detail.html` senza `id`, l'ancora `#foto`/`#documenti` del redirect post-upload non scrollava. + Test end-to-end sulla notifica push esterno→admin per upload foto/documento (esisteva dalla v3.10.0, mai testata direttamente: confermato funzionante, un sintomo "non arriva" è quindi di configurazione NTFY_TOPIC/NTFY_SERVER prod, non applicativo) |
-| 4.4.0 | main | + App Android full screen: status bar e navigation bar dello stesso colore dello sfondo app (`#0B1525`) invece delle barre grigie di sistema — `android:statusBarColor`/`navigationBarColor`/`windowLightStatusBar`/`windowLightNavigationBar` su `AppTheme.NoActionBar` e `AppTheme.NoActionBarLaunch` (`mobile/android/app/src/main/res/values/styles.xml`), nessun plugin nuovo. `versionCode`/`versionName` Android bump a 5/"4.4.0" |
-| 4.5.0 | main | + Colonna "Accessi" in `/utenti`: nuova colonna `login_count` su `Utente`, incrementata sui soli login riusciti. + Thumb WinCar per le foto caricate (admin/esterno, portale e app): `save_upload()` genera `<nome>.thumb` (JPEG 88px lato lungo, `ImageOps.exif_transpose()` applicato prima del resize) accanto a ogni foto, best-effort — mai blocca l'upload. `Thumbs.thumb` (indice TIFF multi-frame condiviso, encoding "old-style" JPEG-in-TIFF non standard, probabile artefatto .NET/GDI+) deliberatamente non toccato: rischio di corrompere le miniature di foto già esistenti nella stessa cartella, non verificabile contro WinCar reale da questo ambiente — verifica manuale in WinCar ancora da fare prima di considerare la feature chiusa |
-| 4.6.0 | main | + Aggiorna anche `Thumbs.thumb` (era rimasto volutamente fuori dalla v4.5.0: il solo `.thumb` per-foto non bastava, confermato dall'utente). Nuovo modulo `wincar_thumbs_index.py`: append byte-safe (mai ricodifica i frame esistenti, patcha solo i 4 byte del puntatore "next IFD" dell'ultimo frame + accoda in fondo, scrittura via file temporaneo + rename atomico), validato byte-per-byte contro un `Thumbs.thumb` reale fornito dall'utente (non committato, dati di un cliente). Fix critico da review: guardia anti-loop-infinito (`ThumbsIndexError`) se la catena IFD risultasse malformata/ciclica — nessun `except` generico l'avrebbe intercettato altrimenti. Nota di rischio residuo (accettata): niente locking, upload concorrenti sulla stessa pratica possono far perdere permanentemente il frame di uno dei due |
-| 4.7.0 | main | + **Prima scrittura deliberata sul database di WinCar** (`wcArchivi.mdb`, tabella `CARVEI`): l'icona fotocamera nell'elenco pratiche di WinCar non compariva per le foto caricate da noi — individuato empiricamente (dump before/after di un upload nativo WinCar via `scripts/dump_pratica_carvei.py`) che dipende da `CARVEI.F_FOTO` (booleano Access: -1/0, non 1/0). Nuovo modulo isolato `wincar_carvei_write.py` (deroga esplicita e concordata con l'utente all'invariante "mai scrittura" di `wincar_repository.py`, che resta interamente read-only — test di non-regressione aggiunto): `marca_foto_presente()` su upload, `marca_foto_assente()` su eliminazione, connessione dedicata con timeout esplicito sulla query (fix da review: `pyodbc.connect(timeout=...)` copre solo il login, non la query — un lock Jet/ACE di WinCar aperto sulla stessa pratica altrimenti farebbe restare appesa la richiesta). + Nuova funzione: eliminazione singola foto (solo admin, `/pratiche/{numero}/foto/elimina`) — WinCar ha un bug suo (l'icona resta accesa anche cancellando tutte le foto da dentro WinCar), la nostra elimina file+thumb e azzera `F_FOTO` quando non resta più nessuna foto. Nota aperta: `Thumbs.thumb` non viene aggiornato all'eliminazione (frame orfano innocuo, non una corruzione — rimuovere un frame dal centro della catena TIFF è più rischioso del solo append) |
-| 4.8.0 | main | + Gallery foto nell'app Android (solo app, mai in browser): pinch-zoom + pan a due dita nel lightbox; pressione prolungata (~500ms) su una miniatura entra in modalità selezione multipla (bordo oro, barra azioni sticky in fondo con conteggio + Scarica/Condividi/Annulla), tap singolo su altre miniature le aggiunge/rimuove dalla selezione. "Scarica" salva su `Directory.External` (area app-specifica, nessun permesso richiesto su nessuna versione Android), "Condividi" scrive su `Directory.Cache` e invoca il foglio di condivisione nativo (`@capacitor/share`, es. WhatsApp) — nuovi plugin `@capacitor/filesystem` + `@capacitor/share`. Fix critici da review prima del deploy: `Directory.Documents` (scelta iniziale per "Scarica") verificato via sorgente del plugin come non funzionante su Android 11+/targetSdk 34 di questo progetto (scoped storage, nessun controllo permessi reale) — sostituito con `Directory.External`, rimossi i permessi manifest ormai inutili; barra di selezione priva della regola `[hidden]{display:none}` la rendeva visibile anche da browser, corretto; `touch-action:none` sul lightbox non era scoped `html.is-app` e avrebbe disabilitato lo zoom nativo del browser mobile, corretto; soglia di movimento (10px) aggiunta al rilevamento pressione prolungata per non scambiare un tap tremolante per uno spostamento. Nessun test su device Android reale possibile da questo ambiente — comportamento gesture/permessi/condivisione da verificare sul telefono |
-| 4.9.0 | main | + Eliminazione foto ora toglie anche il frame corrispondente da `Thumbs.thumb` (segnalato dall'utente: dopo un'eliminazione WinCar continuava a mostrare la miniatura). Nuova `wincar_thumbs_index.rimuovi_frame()`: stessa garanzia di sicurezza dell'append — non ricodifica mai i byte degli altri frame, patcha solo il puntatore del frame precedente (o l'header se si toglie il primo) perché salti quello rimosso; cancella l'intero file se era l'unico frame rimasto. + Diagnostica per il secondo problema segnalato ("il file fisico non viene eliminato"): `pratica_elimina_foto` ora logga esplicitamente se il file non esiste già al momento dell'unlink o se esiste ancora subito dopo senza errori — `unlink(missing_ok=True)` mascherava silenziosamente un eventuale mismatch di path, indagine in corso con l'utente sui log di produzione (`C:\LYSApp\logs\lys-hub.log`) |
-| 4.9.1 | main | Fix: notifiche push dell'app Android non arrivavano mai (segnalato dall'utente, ntfy funzionava). Causa: il canale FCM in `_notifica_esterni_assegnati`/`_notifica_esterno_assegnazione` (`routes.py`) era condizionato allo stesso flag `notify_push_enabled` pensato solo per ntfy (`set_notifiche()` lo rifiuta senza `ntfy_topic`, default `False`, l'unico toggle self-service è etichettato "Notifica push (ntfy.sh)" e non menziona l'app) — un utente app reale col `fcm_token` correttamente registrato non riceveva comunque nulla. Ora FCM si attiva solo in base a `u.fcm_token` presente (il token registrato è di per sé opt-in), indipendente dalla preferenza ntfy. + Nota in `/portale/impostazioni` per chiarire che gli utenti app non devono configurare nulla lì. Follow-up non bloccante identificato in review: nessuna pulizia automatica di `fcm_token` stale su invio fallito (token non registrato/app disinstallata) — da considerare in futuro |
-| 4.9.2 | main | Fix: dopo la 4.9.1 le notifiche app arrivavano ma con ritardo casuale (fino a 5 minuti, osservato dall'utente, nessun errore nei log — l'utente ha confermato flag/token/credenziali FCM tutti a posto). Causa: `send_fcm_push()` non specificava priorità nel payload FCM HTTP v1, quindi Android tratta il messaggio a priorità "normal" e può ritardarne la consegna in modo imprevedibile sotto Doze/App Standby. Aggiunto `message.android.priority: "high"` (schema FCM v1, non l'API legacy — v1 ignora silenziosamente campi sconosciuti/mal posizionati, quindi un nome/posizione sbagliati non si sarebbero visti in nessun test né in produzione). Nuovo test `test_send_fcm_push_richiede_priorita_alta_android` che ispeziona il payload JSON reale (mock solo su `requests.post`/credenziali, non sul wrapper) per bloccare regressioni silenziose di questo tipo |
+Versione **4.10.0**, tutto su branch `main`, in produzione su
+`https://hub.lysauto.it`. Changelog per-commit in `git log`; le decisioni
+tecniche non ovvie dal codice (formati, gotcha, cause di bug reali) restano
+documentate nelle sezioni sopra, per sottosistema.
 
----
-
-## TODO v2
-
-- Deploy v2.2 su prod (dopo test completo su dev)
-  - `pip install -r requirements.txt` (installa watchdog + Pillow, già in requirements.txt)
-  - Verificare `ANTHROPIC_VISION_MODEL` in `.env` prod (default claude-sonnet-5 se assente)
-  - Setup Syncthing smartphone → PC (se non già fatto)
-- Sezione danni verbali: UI grafica schema auto cliccabile
-- Franchigie verbali: definire valori default LYS Auto
-- **v3.0 fase 2** completata — app raggiungibile su `https://hub.lysauto.it`
-  (dettagli/gotcha firewall in sezione "Autenticazione" sopra). CSRF esteso
-  a tutti i form: vedi fase 5 parte G più sotto (v3.6.0).
-- **v3.0 fase 3** completata — vedi sezione "Assegnazione pratiche".
-- **v3.0 fase 4** completata — vedi sezione "Note e calendario condivisi".
-- **v3.0 fase 5 parte A+C** completata — vedi sezione "Notifiche di
-  collaborazione + prossimi appuntamenti". Ricorda di impostare
-  `PUBLIC_BASE_URL` in `.env` prod perché i link nelle notifiche funzionino
-  fuori LAN.
-- **v3.0 fase 5 parte D** completata — vedi sezione "Preferenze di notifica
-  self-service".
-- **v3.0 fase 5 parte E** completata — vedi sezione "Stato pratica nel
-  portale esterno".
-- **v3.0 fase 5 parte F** completata — vedi sezione "Stato pratica
-  modificabile dall'esterno + nuovo stato periziata".
-- **v3.0 fase 5 parte G** completata (CSRF hardening) — vedi sezione "CSRF
-  su tutti i form". Debito tecnico chiuso: era l'ultimo punto aperto della
-  sezione "Autenticazione" fin dalla fase 2.
-- **v3.0 fase 5 parte B** completata — vedi sezione "Reminder schedulati
-  'il giorno prima'". **Dopo il deploy, ricordarsi di creare la voce Task
-  Scheduler** `LYS Reminder Calendario` (guida in
-  `docs/SETUP_PRODUCTION.md` §5.6) — senza, lo script esiste ma non gira
-  mai.
-- **v3.0 fase 5 parte H** completata — vedi sezioni "Calendario mensile",
-  "Modifica/eliminazione note (admin)", "Home admin: ultime pratiche".
-  **Roadmap v3.0 collaborazione completa** (fasi 1→5 tutte costruite).
-- Dopo deploy v3.0 in prod: lanciare `scripts/create_admin.py` per creare il
-  primo utente admin, e impostare `SECRET_KEY` in `.env` prod
+Candidate non ancora costruite (nessuna traccia nel codice, verificato via
+grep): matching ricevuta PEC InfoCert (accettazione/consegna), export
+CSV/Excel elenco pratiche, backup notte automatico DB, filtri sulla home
+admin (il portale esterno li ha già).

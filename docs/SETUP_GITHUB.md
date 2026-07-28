@@ -103,11 +103,11 @@ convivono, ma se vedi errori strani durante un push o un commit:
   → impostazioni → Backup → Gestisci backup → escludi
   `Documenti\Claude\Projects\Lysauto\lys-workflow-hub\.git\`.
 
-## Cosa NON è ancora automatizzato
+## Stato attuale
 
-- **CI / GitHub Actions**: niente test automatici al push. Si aggiungono dopo il
-  primo milestone produttivo.
-- **Releases / tag**: per ora una versione lineare; gli sviluppi grossi
-  verranno taggati con `v0.1.0`, `v0.2.0`, ecc.
-- **Deploy**: l'app gira solo localmente sul PC della carrozzeria, non c'è
-  rilascio cloud.
+- **CI / GitHub Actions**: niente test automatici al push — i test (`pytest`)
+  si lanciano a mano prima di ogni push significativo.
+- **Releases**: usate per distribuire l'APK Android firmato (`LYSApp Android
+  (release build)`), non per il backend Python.
+- **Deploy**: manuale sul PC carrozzeria (`docs/SETUP_PRODUCTION.md`), non
+  c'è CD automatico — un push su GitHub non aggiorna da solo la produzione.
