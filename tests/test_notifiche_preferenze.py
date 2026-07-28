@@ -370,6 +370,68 @@ def test_portale_fcm_token_salva_per_utente_loggato(authenticated_app) -> None:
     assert resp.status_code == 200
     assert resp.json() == {"ok": True}
     assert authenticated_app.get(esterno.id).fcm_token == "device-token-xyz"
+    # default platform "android" (retrocompatibilità con le build app già in
+    # circolazione, che non mandano ancora il campo platform): non deve mai
+    # toccare fcm_token_web.
+    assert authenticated_app.get(esterno.id).fcm_token_web == ""
+
+
+def test_portale_fcm_token_platform_web_salva_su_colonna_separata(authenticated_app) -> None:
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, "agenzia@esempio.it", "password1234")
+
+    resp = client.post(
+        "/portale/fcm-token",
+        data={
+            "fcm_token": "web-token-xyz",
+            "platform": "web",
+            "csrf_token": get_csrf(client, "/portale/impostazioni"),
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True}
+    aggiornato = authenticated_app.get(esterno.id)
+    assert aggiornato.fcm_token_web == "web-token-xyz"
+    # non deve toccare il token app: un utente può avere entrambi i canali
+    # attivi contemporaneamente (app Android + portale in browser).
+    assert aggiornato.fcm_token == ""
+
+
+def test_portale_fcm_token_app_e_web_coesistono(authenticated_app) -> None:
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, "agenzia@esempio.it", "password1234")
+    csrf = get_csrf(client, "/portale/impostazioni")
+
+    client.post(
+        "/portale/fcm-token",
+        data={"fcm_token": "android-token", "platform": "android", "csrf_token": csrf},
+    )
+    client.post(
+        "/portale/fcm-token",
+        data={"fcm_token": "web-token", "platform": "web", "csrf_token": csrf},
+    )
+    aggiornato = authenticated_app.get(esterno.id)
+    assert aggiornato.fcm_token == "android-token"
+    assert aggiornato.fcm_token_web == "web-token"
+
+
+def test_set_fcm_token_web_salva_e_sovrascrive(utenti_repo: UtentiRepository) -> None:
+    esterno = utenti_repo.create(
+        email="agenzia@esempio.it", password="password1234", ruolo="esterno"
+    )
+    assert esterno.fcm_token_web == ""
+
+    utenti_repo.set_fcm_token_web(esterno.id, "web-token-1")
+    assert utenti_repo.get(esterno.id).fcm_token_web == "web-token-1"
+
+    utenti_repo.set_fcm_token_web(esterno.id, "web-token-2")
+    assert utenti_repo.get(esterno.id).fcm_token_web == "web-token-2"
 
 
 # --------------------------------------------------------------------------- #
@@ -414,3 +476,74 @@ def test_assegna_pratica_manda_fcm_se_esterno_ha_token(admin_client, authenticat
         assert resp.status_code == 303
         mock_fcm.assert_called_once()
         assert mock_fcm.call_args.kwargs["fcm_token"] == "device-token-xyz"
+
+
+def test_admin_nota_manda_fcm_su_entrambi_i_canali_se_presenti(
+    admin_client, authenticated_app
+) -> None:
+    # Un utente può avere sia l'app Android sia il portale in browser
+    # registrati: entrambi i token (colonne indipendenti) devono ricevere,
+    # non solo uno dei due.
+    client, settings = admin_client
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    authenticated_app.set_fcm_token(esterno.id, "android-token")
+    authenticated_app.set_fcm_token_web(esterno.id, "web-token")
+    assegnazioni_repo = PraticaAssegnazioniRepository(db_path=settings.app_db_path)
+    assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
+
+    with patch("lys_workflow_hub.web.routes.notify_fcm_nuova_attivita") as mock_fcm:
+        resp = client.post(
+            "/pratiche/766/note",
+            data={"testo": "aggiornamento", "csrf_token": get_csrf(client, "/pratiche/766")},
+        )
+        assert resp.status_code == 303
+        assert mock_fcm.call_count == 2
+        token_inviati = {c.kwargs["fcm_token"] for c in mock_fcm.call_args_list}
+        assert token_inviati == {"android-token", "web-token"}
+
+
+def test_assegna_pratica_manda_fcm_su_entrambi_i_canali_se_presenti(
+    admin_client, authenticated_app
+) -> None:
+    # Stesso caso multi-canale del test sopra, ma sull'altro call site
+    # refactorizzato in _notifica_fcm_tutti_i_canali (assegnazione pratica
+    # invece di nuova nota) — deve valere identico su entrambi.
+    client, settings = admin_client
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    authenticated_app.set_fcm_token(esterno.id, "android-token")
+    authenticated_app.set_fcm_token_web(esterno.id, "web-token")
+
+    with patch("lys_workflow_hub.web.routes.notify_fcm_nuova_attivita") as mock_fcm:
+        resp = client.post(
+            "/pratiche/766/assegna",
+            data={"utente_id": esterno.id, "csrf_token": get_csrf(client, "/pratiche/766")},
+        )
+        assert resp.status_code == 303
+        assert mock_fcm.call_count == 2
+        token_inviati = {c.kwargs["fcm_token"] for c in mock_fcm.call_args_list}
+        assert token_inviati == {"android-token", "web-token"}
+
+
+def test_admin_nota_manda_fcm_solo_su_web_se_solo_quello_presente(
+    admin_client, authenticated_app
+) -> None:
+    client, settings = admin_client
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    authenticated_app.set_fcm_token_web(esterno.id, "web-token")
+    assegnazioni_repo = PraticaAssegnazioniRepository(db_path=settings.app_db_path)
+    assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
+
+    with patch("lys_workflow_hub.web.routes.notify_fcm_nuova_attivita") as mock_fcm:
+        resp = client.post(
+            "/pratiche/766/note",
+            data={"testo": "aggiornamento", "csrf_token": get_csrf(client, "/pratiche/766")},
+        )
+        assert resp.status_code == 303
+        mock_fcm.assert_called_once()
+        assert mock_fcm.call_args.kwargs["fcm_token"] == "web-token"

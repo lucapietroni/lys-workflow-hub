@@ -28,6 +28,69 @@
 <div class="alert alert-warn">{{ errore }}</div>
 {% endif %}
 
+{% if fcm_web_configured and not current_user.is_admin %}
+<section class="card">
+  <div class="form-field">
+    <label>Notifiche push nel browser</label>
+    <small class="hint">
+      Ricevi una notifica sul computer o sul telefono quando la carrozzeria
+      aggiorna una tua pratica, anche con questa scheda in secondo piano —
+      basta che resti aperta in una finestra del browser.
+    </small>
+    <p id="stato-notifiche-web" class="hint"></p>
+    <button id="btn-notifiche-web" type="button" class="btn btn-primary" hidden>
+      Attiva notifiche browser
+    </button>
+  </div>
+</section>
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    var btn = document.getElementById("btn-notifiche-web");
+    var stato = document.getElementById("stato-notifiche-web");
+    if (!btn || !stato) return;
+
+    function aggiornaStato() {
+      if (!("Notification" in window)) {
+        stato.textContent = "Non supportate da questo browser.";
+        btn.hidden = true;
+        return;
+      }
+      if (Notification.permission === "granted") {
+        stato.textContent = "Attive su questo browser.";
+        btn.hidden = true;
+      } else if (Notification.permission === "denied") {
+        stato.textContent = "Bloccate nelle impostazioni del browser — riattivale da lì per usarle qui.";
+        btn.hidden = true;
+      } else {
+        stato.textContent = "";
+        btn.hidden = false;
+      }
+    }
+    aggiornaStato();
+
+    btn.addEventListener("click", function () {
+      btn.disabled = true;
+      btn.textContent = "Attivazione...";
+      if (!window.lysAttivaNotificheWeb) {
+        stato.textContent = "Funzione non disponibile, ricarica la pagina.";
+        btn.disabled = false;
+        btn.textContent = "Attiva notifiche browser";
+        return;
+      }
+      window.lysAttivaNotificheWeb().then(function (ok) {
+        btn.disabled = false;
+        btn.textContent = "Attiva notifiche browser";
+        aggiornaStato();
+        if (!ok) {
+          stato.textContent = "Attivazione non riuscita o permesso negato.";
+          btn.hidden = false;
+        }
+      });
+    });
+  });
+</script>
+{% endif %}
+
 <section class="card">
   <form method="post" action="/portale/impostazioni">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />

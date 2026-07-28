@@ -168,6 +168,22 @@ class Settings(BaseSettings):
     # HTTP v1: https://fcm.googleapis.com/v1/projects/<id>/messages:send
     fcm_project_id: str = Field(default="")
 
+    # --- FCM push (Web, browser desktop/mobile del portale esterno) ---
+    # Config pubblica dell'app Web Firebase (Console Firebase > Project
+    # Settings > General > Your apps > app Web) — sono valori destinati al
+    # browser, non segreti (a differenza di fcm_credentials_path sopra, che
+    # resta server-side). Vuoto = notifiche Web push disattivate, nessun
+    # errore (lo script client-side non parte).
+    fcm_web_api_key: str = Field(default="")
+    fcm_web_auth_domain: str = Field(default="")
+    fcm_web_project_id: str = Field(default="")
+    fcm_web_storage_bucket: str = Field(default="")
+    fcm_web_messaging_sender_id: str = Field(default="")
+    fcm_web_app_id: str = Field(default="")
+    # VAPID public key (Console Firebase > Project Settings > Cloud Messaging
+    # > Web configuration > Web Push certificates > Generate key pair).
+    fcm_web_vapid_key: str = Field(default="")
+
     def public_url(self, path: str) -> str:
         """Costruisce un URL assoluto per link in notifiche push/email.
 

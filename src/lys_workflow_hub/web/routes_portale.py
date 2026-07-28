@@ -587,14 +587,23 @@ def portale_impostazioni_salva(
 def portale_fcm_token(
     request: Request,
     fcm_token: str = Form(""),
+    platform: str = Form("android"),
     current_user: Utente | None = Depends(get_current_user),
     utenti_repo: UtentiRepository = Depends(get_utenti_repo),
 ) -> JSONResponse:
     """Registra il device token FCM dell'utente loggato — chiamato dal JS del
-    wrapper Capacitor subito dopo l'evento `registration` del plugin
-    @capacitor/push-notifications. Form-urlencoded (non JSON): il CSRF
-    middleware globale legge `request.form()` su ogni POST non-multipart
-    (`web/auth.py`), quindi un body `application/json` lo salterebbe."""
+    wrapper Capacitor (platform="android", default per compatibilità con le
+    build app già in circolazione) subito dopo l'evento `registration` del
+    plugin @capacitor/push-notifications, oppure dal JS del portale in
+    browser (platform="web") dopo `getToken()` del Firebase Web SDK. Due
+    colonne separate (`fcm_token`/`fcm_token_web`): un utente può avere sia
+    l'app sia il browser attivi senza che l'uno cancelli il token dell'altro.
+    Form-urlencoded (non JSON): il CSRF middleware globale legge
+    `request.form()` su ogni POST non-multipart (`web/auth.py`), quindi un
+    body `application/json` lo salterebbe."""
     utente = _require_user(current_user)
-    utenti_repo.set_fcm_token(utente.id, fcm_token)
+    if platform == "web":
+        utenti_repo.set_fcm_token_web(utente.id, fcm_token)
+    else:
+        utenti_repo.set_fcm_token(utente.id, fcm_token)
     return JSONResponse({"ok": True})

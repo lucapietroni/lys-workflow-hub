@@ -55,6 +55,7 @@ class Utente:
     notify_push_enabled: bool = False
     ntfy_topic: str = ""
     fcm_token: str = ""
+    fcm_token_web: str = ""
     login_count: int = 0
 
     @property
@@ -95,6 +96,7 @@ _MIGRAZIONI_COLONNE = (
     "ntfy_topic TEXT NOT NULL DEFAULT ''",
     "fcm_token TEXT NOT NULL DEFAULT ''",
     "login_count INTEGER NOT NULL DEFAULT 0",
+    "fcm_token_web TEXT NOT NULL DEFAULT ''",
 )
 
 
@@ -177,6 +179,7 @@ class UtentiRepository:
             notify_push_enabled=bool(d.get("notify_push_enabled", 0)),
             ntfy_topic=d.get("ntfy_topic") or "",
             fcm_token=d.get("fcm_token") or "",
+            fcm_token_web=d.get("fcm_token_web") or "",
             login_count=d.get("login_count") or 0,
         )
 
@@ -328,14 +331,28 @@ class UtentiRepository:
         """Registra (o cancella, se stringa vuota) il device token FCM per un
         utente esterno — chiamato da `POST /portale/fcm-token` subito dopo che
         il plugin @capacitor/push-notifications ottiene/rinnova il token sul
-        device. Un utente ha un solo token registrato alla volta: se lo stesso
-        account si logga su un secondo device, il nuovo token sovrascrive il
-        vecchio (niente multi-device fan-out in questa fase)."""
+        device. Un utente ha un solo token app registrato alla volta: se lo
+        stesso account si logga su un secondo device, il nuovo token
+        sovrascrive il vecchio (niente multi-device fan-out in questa fase).
+        Colonna separata da `fcm_token_web` (vedi `set_fcm_token_web`): un
+        utente può avere sia l'app Android sia il portale in browser attivi
+        contemporaneamente, senza che l'uno cancelli il token dell'altro."""
         fcm_token = (fcm_token or "").strip()
         with self._connect() as conn:
             conn.execute(
                 "UPDATE utenti SET fcm_token = ? WHERE id = ?",
                 (fcm_token, int(utente_id)),
+            )
+
+    def set_fcm_token_web(self, utente_id: int, fcm_token_web: str) -> None:
+        """Come `set_fcm_token`, ma per il token Web Push registrato dal
+        browser del portale (Firebase Web SDK) invece che dall'app Android —
+        colonna indipendente, stesso motivo: coesistenza app+browser."""
+        fcm_token_web = (fcm_token_web or "").strip()
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE utenti SET fcm_token_web = ? WHERE id = ?",
+                (fcm_token_web, int(utente_id)),
             )
 
     def delete(self, utente_id: int) -> bool:

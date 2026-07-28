@@ -540,6 +540,30 @@ def _arricchisci_eventi_con_pratica(eventi: list, repo: WinCarRepository) -> lis
     return arricchiti
 
 
+def _notifica_fcm_tutti_i_canali(
+    u: Utente,
+    settings: Settings,
+    *,
+    subject: str,
+    body_text: str,
+    numero: int,
+) -> None:
+    """Invia FCM su ogni canale con un token registrato — un utente può avere
+    l'app Android E il portale in browser aperti contemporaneamente
+    (`fcm_token`/`fcm_token_web`, colonne indipendenti), entrambi ricevono."""
+    for token in (u.fcm_token, u.fcm_token_web):
+        if token:
+            notify_fcm_nuova_attivita(
+                fcm_project_id=settings.fcm_project_id,
+                fcm_credentials_path=str(settings.fcm_credentials_path or ""),
+                fcm_token=token,
+                titolo=subject,
+                messaggio=body_text,
+                click_path=f"/portale/pratiche/{numero}",
+                disabled=settings.notify_disabled,
+            )
+
+
 def _notifica_esterni_assegnati(
     request: Request,
     settings: Settings,
@@ -587,16 +611,9 @@ def _notifica_esterni_assegnati(
                     messaggio=body_text,
                     disabled=settings.notify_disabled,
                 )
-            if u.fcm_token:
-                notify_fcm_nuova_attivita(
-                    fcm_project_id=settings.fcm_project_id,
-                    fcm_credentials_path=str(settings.fcm_credentials_path or ""),
-                    fcm_token=u.fcm_token,
-                    titolo=subject,
-                    messaggio=body_text,
-                    click_path=f"/portale/pratiche/{numero}",
-                    disabled=settings.notify_disabled,
-                )
+            _notifica_fcm_tutti_i_canali(
+                u, settings, subject=subject, body_text=body_text, numero=numero
+            )
     except Exception as exc:  # noqa: BLE001
         logger.warning("Impossibile notificare esterni assegnati a %s: %s", numero, exc)
 
@@ -740,16 +757,9 @@ def _notifica_esterno_assegnazione(
                 messaggio=body_text,
                 disabled=settings.notify_disabled,
             )
-        if u.fcm_token:
-            notify_fcm_nuova_attivita(
-                fcm_project_id=settings.fcm_project_id,
-                fcm_credentials_path=str(settings.fcm_credentials_path or ""),
-                fcm_token=u.fcm_token,
-                titolo=subject,
-                messaggio=body_text,
-                click_path=f"/portale/pratiche/{numero}",
-                disabled=settings.notify_disabled,
-            )
+        _notifica_fcm_tutti_i_canali(
+            u, settings, subject=subject, body_text=body_text, numero=numero
+        )
     except Exception as exc:  # noqa: BLE001
         logger.warning(
             "Impossibile notificare utente %s per assegnazione pratica %s: %s",

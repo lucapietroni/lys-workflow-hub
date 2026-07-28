@@ -39,7 +39,9 @@ if sys.stderr is None:
     sys.stderr = open(os.devnull, "w", buffering=1, encoding="utf-8")
 
 
-from fastapi import FastAPI
+import json
+
+from fastapi import FastAPI, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -269,6 +271,73 @@ app.include_router(api_router)
 async def health() -> dict:
     """Sanity check di base, NON tocca WinCar."""
     return {"status": "ok", "version": __version__}
+
+
+@app.get("/firebase-messaging-sw.js")
+async def firebase_messaging_sw() -> Response:
+    """Service worker per le notifiche Web Push (portale, browser desktop/
+    mobile) — deve stare alla ROOT del sito (non sotto /static/) perché
+    Firebase la registri con lo scope di default previsto dalla libreria.
+    Contenuto generato qui invece che come file statico perché incorpora la
+    config pubblica dell'app Web Firebase, che vive in Settings/.env (così
+    dev e produzione possono avere progetti Firebase diversi senza toccare
+    il codice). `Cache-Control: no-cache` forza il browser a ricontrollare
+    il file a ogni avvio invece di tenersi in eterno una versione vecchia
+    (stesso problema di cache già visto con l'app Capacitor/WebView)."""
+    settings = get_settings()
+    config = {
+        "apiKey": settings.fcm_web_api_key,
+        "authDomain": settings.fcm_web_auth_domain,
+        "projectId": settings.fcm_web_project_id,
+        "storageBucket": settings.fcm_web_storage_bucket,
+        "messagingSenderId": settings.fcm_web_messaging_sender_id,
+        "appId": settings.fcm_web_app_id,
+    }
+    body = f"""\
+importScripts("https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js");
+importScripts("https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js");
+
+// Attiva subito la versione nuova invece di restare in stato "waiting" fino
+// alla chiusura di ogni tab del portale — importante se la config Firebase
+// cambia (es. rotazione VAPID key), altrimenti il vecchio SW continuerebbe
+// silenziosamente a girare con la config precedente nel frattempo.
+self.skipWaiting();
+self.addEventListener("activate", function (event) {{
+  event.waitUntil(self.clients.claim());
+}});
+
+firebase.initializeApp({json.dumps(config)});
+var messaging = firebase.messaging();
+
+messaging.onBackgroundMessage(function (payload) {{
+  var notification = payload.notification || {{}};
+  var data = payload.data || {{}};
+  self.registration.showNotification(notification.title || "LYS Hub", {{
+    body: notification.body || "",
+    icon: "/static/logo-lys.jpg",
+    data: {{ click_path: data.click_path || "" }},
+  }});
+}});
+
+self.addEventListener("notificationclick", function (event) {{
+  event.notification.close();
+  var clickPath = (event.notification.data || {{}}).click_path || "";
+  var url = self.location.origin + clickPath;
+  event.waitUntil(
+    clients.matchAll({{ type: "window", includeUncontrolled: true }}).then(function (list) {{
+      for (var i = 0; i < list.length; i++) {{
+        if (list[i].url === url && "focus" in list[i]) return list[i].focus();
+      }}
+      if (clients.openWindow) return clients.openWindow(url);
+    }})
+  );
+}});
+"""
+    return Response(
+        content=body,
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 def main() -> None:

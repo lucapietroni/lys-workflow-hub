@@ -139,7 +139,7 @@
               fetch("/portale/fcm-token", {
                 method: "POST",
                 headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                body: new URLSearchParams({ fcm_token: token.value, csrf_token: csrf }),
+                body: new URLSearchParams({ fcm_token: token.value, platform: "android", csrf_token: csrf }),
               });
             });
             PushNotifications.addListener("registrationError", function (err) {
@@ -163,6 +163,103 @@
           }
         })();
       }
+    </script>
+    {% endif %}
+    {% if current_user and not current_user.is_admin and fcm_web_configured %}
+    <script type="module">
+      import {
+        initializeApp,
+      } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+      import {
+        getMessaging, getToken, onMessage,
+      } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging.js";
+
+      (function () {
+        // Web Push (notifiche col portale aperto in un browser, tab in
+        // background va bene) — mai dentro l'app Android, che usa già FCM
+        // nativo via Capacitor (blocco sopra). Richiede il permesso di
+        // notifica del browser: MAI chiesto automaticamente qui, solo su
+        // click esplicito da `/portale/impostazioni` (window.lysAttivaNotificheWeb).
+        if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
+          return;
+        }
+        if (!("serviceWorker" in navigator) || !("Notification" in window)) {
+          return;
+        }
+
+        var firebaseConfig = {{ fcm_web_config_json | safe }};
+        var vapidKey = {{ fcm_web_vapid_key_json | safe }};
+        var app = initializeApp(firebaseConfig);
+        var messaging = getMessaging(app);
+
+        function registraTokenWeb(token) {
+          var csrfEl = document.querySelector('meta[name="csrf-token"]');
+          var csrf = csrfEl ? csrfEl.content : "";
+          return fetch("/portale/fcm-token", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({ fcm_token: token, platform: "web", csrf_token: csrf }),
+          });
+        }
+
+        // In foreground Firebase NON mostra da sola una notifica di sistema
+        // (a differenza del service worker quando il tab non è a fuoco) —
+        // la mostriamo a mano per un comportamento uniforme in ogni caso.
+        onMessage(messaging, function (payload) {
+          var notification = payload.notification || {};
+          var data = payload.data || {};
+          navigator.serviceWorker.ready.then(function (reg) {
+            reg.showNotification(notification.title || "LYS Hub", {
+              body: notification.body || "",
+              icon: "/static/logo-lys.jpg",
+              data: { click_path: data.click_path || "" },
+            });
+          });
+        });
+
+        window.lysAttivaNotificheWeb = function () {
+          return navigator.serviceWorker
+            .register("/firebase-messaging-sw.js")
+            .then(function (registration) {
+              return Notification.requestPermission().then(function (perm) {
+                if (perm !== "granted") return false;
+                return getToken(messaging, {
+                  vapidKey: vapidKey,
+                  serviceWorkerRegistration: registration,
+                }).then(function (token) {
+                  if (!token) return false;
+                  return registraTokenWeb(token).then(function () {
+                    return true;
+                  });
+                });
+              });
+            })
+            .catch(function (e) {
+              console.error("Attivazione notifiche web fallita", e);
+              return false;
+            });
+        };
+
+        // Permesso già concesso in una visita precedente: rinnova in
+        // silenzio il token a ogni caricamento pagina (i token Web possono
+        // ruotare, stesso motivo del refresh lato app sopra).
+        if (Notification.permission === "granted") {
+          navigator.serviceWorker
+            .register("/firebase-messaging-sw.js")
+            .then(function (registration) {
+              return getToken(messaging, {
+                vapidKey: vapidKey,
+                serviceWorkerRegistration: registration,
+              });
+            })
+            .then(function (token) {
+              if (token) registraTokenWeb(token);
+            })
+            .catch(function (e) {
+              console.error("Refresh token web fallito", e);
+            });
+        }
+      })();
     </script>
     {% endif %}
   </body>

@@ -29,6 +29,7 @@ Approccio:
 """
 from __future__ import annotations
 
+import json
 import logging
 import secrets
 
@@ -36,6 +37,7 @@ from fastapi import HTTPException, Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse, RedirectResponse
 
+from lys_workflow_hub.config import get_settings
 from lys_workflow_hub.core.utenti_repository import Utente
 
 
@@ -44,7 +46,7 @@ logger = logging.getLogger(__name__)
 CSRF_SESSION_KEY = "csrf_token"
 
 # Percorsi raggiungibili senza sessione autenticata.
-PUBLIC_PATHS = {"/login", "/health"}
+PUBLIC_PATHS = {"/login", "/health", "/firebase-messaging-sw.js"}
 PUBLIC_PREFIXES = ("/static/",)
 
 # /login ha una verifica CSRF propria in routes_auth.py (mostra l'errore
@@ -168,11 +170,47 @@ def template_context_processor(request: Request) -> dict:
     senza dover modificare ogni singola vista — `csrf_token` è quello che
     ogni `<form method="post">` deve portare come campo hidden (verificato
     da `AuthMiddleware` su ogni POST, vedi sopra).
+
+    `fcm_web_*` sono la config pubblica (non segreta) dell'app Web Firebase,
+    servita a `base.html` per il Web Push del portale in browser — stesso
+    motivo per cui vive qui invece che in ogni singola vista: `get_settings()`
+    è cachata (`lru_cache`), costo trascurabile su ogni render. Il config
+    Firebase è preserializzato in JSON qui (non con un filtro `tojson`, non
+    garantito disponibile su Jinja2 puro come lo usa questo progetto) e
+    inserito nel template con `| safe`.
     """
+    settings = get_settings()
+    fcm_web_configured = bool(settings.fcm_web_api_key and settings.fcm_web_vapid_key)
     return {
         "current_user": getattr(request.state, "current_user", None),
         "csrf_token": new_csrf_token(request),
+        "fcm_web_configured": fcm_web_configured,
+        "fcm_web_config_json": _json_per_script(
+            {
+                "apiKey": settings.fcm_web_api_key,
+                "authDomain": settings.fcm_web_auth_domain,
+                "projectId": settings.fcm_web_project_id,
+                "storageBucket": settings.fcm_web_storage_bucket,
+                "messagingSenderId": settings.fcm_web_messaging_sender_id,
+                "appId": settings.fcm_web_app_id,
+            }
+        ),
+        "fcm_web_vapid_key_json": _json_per_script(settings.fcm_web_vapid_key),
     }
+
+
+def _json_per_script(value: object) -> str:
+    """`json.dumps` normale non fa escape di `<`/`>`/`&` — una stringa che
+    contenesse `</script>` romperebbe l'HTML in cui viene inserita con
+    `| safe`. Improbabile per i valori Firebase attuali (alfa-numerici),
+    ma è un pattern riusabile: stesso trucco del filtro `json_script` di
+    Django, difesa in profondità senza costo pratico."""
+    return (
+        json.dumps(value)
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("&", "\\u0026")
+    )
 
 
 def new_csrf_token(request: Request) -> str:
