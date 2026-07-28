@@ -2,6 +2,12 @@
 {% block title %}Calendario · LYS Workflow Hub{% endblock %}
 
 {% block content %}
+{% if current_user and not current_user.is_admin %}
+<nav class="breadcrumb">
+  <a href="/portale" class="btn btn-sm">← Torna alle tue pratiche</a>
+</nav>
+{% endif %}
+
 <header class="pratica-header">
   <div>
     <div class="hero-eyebrow">Calendario</div>
@@ -33,4 +39,10 @@
     {% endfor %}
   </div>
 </section>
+
+{% if current_user and not current_user.is_admin %}
+<nav class="breadcrumb">
+  <a href="/portale" class="btn btn-sm">← Torna alle tue pratiche</a>
+</nav>
+{% endif %}
 {% endblock %}

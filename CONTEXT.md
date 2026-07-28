@@ -1,6 +1,6 @@
 # LYS Workflow Hub — Contesto di sviluppo
 
-> Branch: **main** · Versione: **4.10.0** · In produzione su `hub.lysauto.it`
+> Branch: **main** · Versione: **4.10.1** · In produzione su `hub.lysauto.it`
 
 ---
 
@@ -877,7 +877,7 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 
 ## Stato attuale
 
-Versione **4.10.0**, tutto su branch `main`, in produzione su
+Versione **4.10.1**, tutto su branch `main`, in produzione su
 `https://hub.lysauto.it`. Changelog per-commit in `git log`; le decisioni
 tecniche non ovvie dal codice (formati, gotcha, cause di bug reali) restano
 documentate nelle sezioni sopra, per sottosistema.
