@@ -587,7 +587,7 @@ def _notifica_esterni_assegnati(
                     messaggio=body_text,
                     disabled=settings.notify_disabled,
                 )
-            if u.notify_push_enabled and u.fcm_token:
+            if u.fcm_token:
                 notify_fcm_nuova_attivita(
                     fcm_project_id=settings.fcm_project_id,
                     fcm_credentials_path=str(settings.fcm_credentials_path or ""),
@@ -740,7 +740,7 @@ def _notifica_esterno_assegnazione(
                 messaggio=body_text,
                 disabled=settings.notify_disabled,
             )
-        if u.notify_push_enabled and u.fcm_token:
+        if u.fcm_token:
             notify_fcm_nuova_attivita(
                 fcm_project_id=settings.fcm_project_id,
                 fcm_credentials_path=str(settings.fcm_credentials_path or ""),

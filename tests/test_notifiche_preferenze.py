@@ -378,15 +378,11 @@ def test_portale_fcm_token_salva_per_utente_loggato(authenticated_app) -> None:
 
 
 def test_admin_nota_manda_fcm_se_esterno_ha_token(admin_client, authenticated_app) -> None:
+    # notify_push_enabled resta False (default): FCM è un canale indipendente
+    # dalla preferenza ntfy, un token registrato dall'app è già opt-in.
     client, settings = admin_client
     esterno = authenticated_app.create(
         email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
-    )
-    authenticated_app.set_notifiche(
-        esterno.id,
-        notify_email_enabled=False,
-        notify_push_enabled=True,
-        ntfy_topic="lys-agenzia-9f3a",
     )
     authenticated_app.set_fcm_token(esterno.id, "device-token-xyz")
     assegnazioni_repo = PraticaAssegnazioniRepository(db_path=settings.app_db_path)
@@ -403,15 +399,10 @@ def test_admin_nota_manda_fcm_se_esterno_ha_token(admin_client, authenticated_ap
 
 
 def test_assegna_pratica_manda_fcm_se_esterno_ha_token(admin_client, authenticated_app) -> None:
+    # notify_push_enabled resta False (default): stesso motivo di sopra.
     client, settings = admin_client
     esterno = authenticated_app.create(
         email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
-    )
-    authenticated_app.set_notifiche(
-        esterno.id,
-        notify_email_enabled=False,
-        notify_push_enabled=True,
-        ntfy_topic="lys-agenzia-9f3a",
     )
     authenticated_app.set_fcm_token(esterno.id, "device-token-xyz")
 
