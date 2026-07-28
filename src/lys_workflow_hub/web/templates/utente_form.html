@@ -49,7 +49,10 @@
         <select id="f_ruolo" name="ruolo" required>
           {% for r in ruoli %}
             <option value="{{ r }}" {% if values.ruolo == r %}selected{% endif %}>
-              {{ "Admin (accesso completo)" if r == "admin" else "Esterno (solo pratiche assegnate)" }}
+              {% if r == "admin" %}Admin (accesso completo)
+              {% elif r == "supervisore" %}Supervisore (tutte le pratiche assegnate, sola lettura)
+              {% else %}Esterno (solo le proprie pratiche assegnate)
+              {% endif %}
             </option>
           {% endfor %}
         </select>

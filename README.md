@@ -5,7 +5,7 @@ con il gestionale **WinCar**. Legge le pratiche dal database WinCar in sola lett
 genera documenti precompilati, monitora le risposte delle compagnie assicurative
 via PEC/email, classifica le risposte con AI e genera alert mirati.
 
-> Branch: **main** · Versione: **4.10.1** · In produzione su `hub.lysauto.it`
+> Branch: **main** · Versione: **4.11.0** · In produzione su `hub.lysauto.it`
 
 ---
 
@@ -30,8 +30,9 @@ via PEC/email, classifica le risposte con AI e genera alert mirati.
   (admin) con pulizia coerente su disco e nel gestionale.
 
 **Collaborazione e accesso esterno**
-- Autenticazione con ruoli (`admin`/`esterno`), sessione cookie, anti-
-  bruteforce, gestione utenti via UI.
+- Autenticazione con ruoli (`admin`/`esterno`/`supervisore`), sessione
+  cookie, anti-bruteforce, gestione utenti via UI. Il supervisore vede
+  tutte le pratiche assegnate a chiunque, in sola lettura.
 - Portale esterno (`/portale`): agenzie pratiche auto e avvocati vedono solo
   le pratiche assegnate — dettaglio pratica, note e calendario condivisi,
   cambio stato, upload foto/documenti.

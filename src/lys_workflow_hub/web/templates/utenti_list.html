@@ -41,6 +41,8 @@
           <td>
             {% if u.is_admin %}
               <span class="tag" style="background:var(--lys-gold-light);color:var(--lys-gold);">Admin</span>
+            {% elif u.is_supervisore %}
+              <span class="tag">Supervisore</span>
             {% else %}
               <span class="tag">Esterno</span>
             {% endif %}

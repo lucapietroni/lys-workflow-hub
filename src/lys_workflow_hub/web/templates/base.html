@@ -53,7 +53,7 @@
           <a href="/impostazioni">Impostazioni</a>
           <a href="/docs" target="_blank" rel="noopener">API</a>
           {% elif current_user %}
-          <a href="/portale">Le mie pratiche</a>
+          <a href="/portale">{{ "Pratiche assegnate" if current_user.is_supervisore else "Le mie pratiche" }}</a>
           <a href="/portale/calendario">Calendario</a>
           <a href="/portale/impostazioni">Impostazioni</a>
           {% endif %}

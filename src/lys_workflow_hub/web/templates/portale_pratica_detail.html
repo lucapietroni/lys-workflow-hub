@@ -54,6 +54,7 @@
     {% endif %}
   </div>
 
+  {% if puo_scrivere %}
   <form method="post" action="/portale/pratiche/{{ pratica.numero }}/stato" class="form-inline-stato">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
     <select name="stato" class="select-inline">
@@ -66,6 +67,7 @@
     <input type="text" name="note" placeholder="Note (opzionale)" style="flex:1; padding:6px 10px;" />
     <button type="submit" class="btn">Aggiorna stato</button>
   </form>
+  {% endif %}
 
   {% if pratica_stato_storia and pratica_stato_storia|length > 1 %}
   <details style="margin-top:12px;">
@@ -123,16 +125,19 @@
         <li style="display:flex; align-items:center; gap:10px; padding:6px 0; border-bottom:1px solid var(--glass-border);">
           <span class="badge">{{ e.data_evento.strftime("%d/%m/%Y") if e.data_evento else "—" }}</span>
           <span style="flex:1;">{{ e.titolo }} <span class="meta">— {{ e.creato_da_nome }}</span></span>
+          {% if puo_scrivere %}
           <form method="post" action="/portale/pratiche/{{ pratica.numero }}/eventi/{{ e.id }}/elimina" style="display:inline">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
             <button type="submit" class="btn btn-sm btn-danger">Elimina</button>
           </form>
+          {% endif %}
         </li>
       {% endfor %}
     </ul>
   {% else %}
     <p class="meta">Nessun evento in calendario.</p>
   {% endif %}
+  {% if puo_scrivere %}
   <form method="post" action="/portale/pratiche/{{ pratica.numero }}/eventi" style="display:flex; gap:8px; align-items:flex-end;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
     <div class="form-field" style="margin:0;">
@@ -145,6 +150,7 @@
     </div>
     <button type="submit" class="btn btn-primary">Aggiungi</button>
   </form>
+  {% endif %}
 </section>
 
 <section class="card" id="note">
@@ -168,6 +174,7 @@
   {% else %}
     <p class="meta">Nessuna nota ancora.</p>
   {% endif %}
+  {% if puo_scrivere %}
   <form method="post" action="/portale/pratiche/{{ pratica.numero }}/note" style="display:flex; gap:8px; align-items:flex-end;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
     <div class="form-field" style="flex:1; margin:0;">
@@ -176,6 +183,7 @@
     </div>
     <button type="submit" class="btn btn-primary">Invia</button>
   </form>
+  {% endif %}
 </section>
 
 <section class="card">
@@ -285,11 +293,13 @@
   {% else %}
   <p class="meta" style="margin-top:-6px">Nessuna foto archiviata per questa pratica.</p>
   {% endif %}
+  {% if puo_scrivere %}
   <form method="post" action="/portale/pratiche/{{ pratica.numero }}/foto" enctype="multipart/form-data" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:12px;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
     <input type="file" id="foto-input" name="files" accept="image/*" multiple required />
     <button type="submit" class="btn btn-primary">Upload</button>
   </form>
+  {% endif %}
   <script>
     // Scatto foto diretto dalla fotocamera — solo dentro l'app Capacitor
     // (no-op da browser: window.Capacitor non esiste). L'input file esistente
@@ -351,11 +361,13 @@
   {% else %}
   <p class="meta" style="margin-top:-6px">Nessun documento archiviato per questa pratica.</p>
   {% endif %}
+  {% if puo_scrivere %}
   <form method="post" action="/portale/pratiche/{{ pratica.numero }}/documenti" enctype="multipart/form-data" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:12px;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
     <input type="file" name="files" accept=".pdf,.doc,.docx,.xls,.xlsx,.odt,.ods,.txt,.msg,.eml,image/*" multiple required />
     <button type="submit" class="btn btn-primary">Upload</button>
   </form>
+  {% endif %}
   <script>
     // Apertura documenti dentro l'app Capacitor: target="_blank" non fa nulla
     // nella WebView (nessun supporto multi-finestra), quindi i link restano

@@ -1,6 +1,6 @@
 # LYS Workflow Hub — Contesto di sviluppo
 
-> Branch: **main** · Versione: **4.10.1** · In produzione su `hub.lysauto.it`
+> Branch: **main** · Versione: **4.11.0** · In produzione su `hub.lysauto.it`
 
 ---
 
@@ -61,7 +61,7 @@ App Android (Capacitor, wrapper del portale esterno /portale)
 - `categoria_policy` — policy generazione bozze per categoria AI
 - `pec_sla_reminder` — tracking escalation SLA già inviati
 - `foto_lavorazioni` — log foto processate dal watcher
-- `utenti` — account applicativi: email, password_hash (bcrypt), ruolo (admin/esterno)
+- `utenti` — account applicativi: email, password_hash (bcrypt), ruolo (admin/esterno/supervisore)
 
 ---
 
@@ -321,10 +321,17 @@ condivise, calendario per pratica, notifiche di reminder.
 
 ### Modello utenti
 Tabella `utenti` (`core/utenti_repository.py`): email UNIQUE, `password_hash`
-(bcrypt), `ruolo` (`admin` | `esterno`), `attivo`, `failed_login_count` +
-`locked_until` per il blocco anti-bruteforce. Due ruoli fissi per ora (non
-tabella permessi granulare) — [[decisione utente]]: se in futuro serve più
-granularità si aggiunge senza toccare lo schema base.
+(bcrypt), `ruolo` (`admin` | `esterno` | `supervisore`), `attivo`,
+`failed_login_count` + `locked_until` per il blocco anti-bruteforce. Tre
+ruoli fissi per ora (non tabella permessi granulare) — se in futuro serve
+più granularità si aggiunge senza toccare lo schema base (`ruolo` è testo
+libero lato DB, validato solo in Python contro `RUOLI`).
+
+`supervisore` (aggiunto dopo, vedi sezione "Portale esterno" più sotto):
+stesso portale dell'esterno ma vede TUTTE le pratiche assegnate a
+qualunque utente (non solo le proprie) e in sola lettura — nessuna route
+di scrittura in `routes_portale.py` accetta un suo POST
+(`_richiedi_permesso_scrittura`).
 
 ### Sessione e protezione route
 - `SessionMiddleware` (Starlette, cookie firmato con `SECRET_KEY`) +
@@ -877,7 +884,7 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 
 ## Stato attuale
 
-Versione **4.10.1**, tutto su branch `main`, in produzione su
+Versione **4.11.0**, tutto su branch `main`, in produzione su
 `https://hub.lysauto.it`. Changelog per-commit in `git log`; le decisioni
 tecniche non ovvie dal codice (formati, gotcha, cause di bug reali) restano
 documentate nelle sezioni sopra, per sottosistema.

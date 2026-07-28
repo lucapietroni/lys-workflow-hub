@@ -129,3 +129,17 @@ class PraticaAssegnazioniRepository:
                 (int(utente_id),),
             ).fetchall()
         return [r["pratica_numero"] for r in rows]
+
+    def list_pratica_numeri_assegnate(self) -> list[int]:
+        """Ogni pratica con almeno un'assegnazione, a chiunque — usato dal
+        ruolo "supervisore" (vede tutto in sola lettura, non solo le proprie
+        come `list_pratica_numeri_per_utente`). Una pratica assegnata a più
+        utenti compare una sola volta, ordinata per l'assegnazione più
+        recente ricevuta."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT pratica_numero, MAX(assegnato_at) AS ultima "
+                "FROM pratica_assegnazioni "
+                "GROUP BY pratica_numero ORDER BY ultima DESC"
+            ).fetchall()
+        return [r["pratica_numero"] for r in rows]

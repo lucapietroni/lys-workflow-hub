@@ -5,11 +5,19 @@
 <header class="pratica-header">
   <div>
     <div class="hero-eyebrow">Portale collaborazione</div>
+    {% if current_user.is_supervisore %}
+    <h1>Pratiche assegnate</h1>
+    <p class="meta">
+      Tutte le pratiche assegnate a un collaboratore esterno, in sola lettura.
+      Apri una pratica per vedere foto, documenti, note e calendario condivisi.
+    </p>
+    {% else %}
     <h1>Le tue pratiche</h1>
     <p class="meta">
       Pratiche che ti sono state assegnate. Apri una pratica per vedere foto,
       documenti, note e calendario condivisi.
     </p>
+    {% endif %}
   </div>
 </header>
 

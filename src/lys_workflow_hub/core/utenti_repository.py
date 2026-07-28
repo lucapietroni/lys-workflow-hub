@@ -1,10 +1,15 @@
 """Anagrafica utenti applicativi e autenticazione (v3.0).
 
-Storage SQLite locale (`data/lys_hub.db`). Due ruoli:
+Storage SQLite locale (`data/lys_hub.db`). Tre ruoli:
   - "admin": accesso completo (operatori carrozzeria).
   - "esterno": accesso limitato alle sole pratiche assegnate (agenzie
     pratiche auto, avvocati) — pagine e permessi introdotti nelle fasi
     successive (assegnazione pratiche, collaborazione, calendario).
+  - "supervisore": vede TUTTE le pratiche che hanno almeno un'assegnazione
+    (a qualunque utente esterno, non solo a sé stesso), stesso portale
+    dell'esterno ma in sola lettura — nessuna route di scrittura lo accetta
+    (note, eventi, cambio stato, upload). Vedi `_richiedi_permesso_scrittura`
+    in `web/routes_portale.py`.
 
 Le password non sono mai salvate in chiaro: solo l'hash bcrypt
 (`password_hash`). Il blocco account dopo troppi tentativi falliti
@@ -27,7 +32,7 @@ import bcrypt
 
 logger = logging.getLogger(__name__)
 
-Ruolo = Literal["admin", "esterno"]
+Ruolo = Literal["admin", "esterno", "supervisore"]
 
 # Charset consigliato da ntfy.sh per i nomi dei topic. Un topic fuori da
 # questo pattern (spazi, accenti, "/") non farebbe fallire la richiesta HTTP
@@ -37,7 +42,7 @@ Ruolo = Literal["admin", "esterno"]
 # semplicemente a non ricevere mai nulla, senza capirne il motivo.
 _NTFY_TOPIC_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
-RUOLI = ("admin", "esterno")
+RUOLI = ("admin", "esterno", "supervisore")
 
 
 @dataclass(frozen=True)
@@ -61,6 +66,10 @@ class Utente:
     @property
     def is_admin(self) -> bool:
         return self.ruolo == "admin"
+
+    @property
+    def is_supervisore(self) -> bool:
+        return self.ruolo == "supervisore"
 
 
 class AuthError(Exception):

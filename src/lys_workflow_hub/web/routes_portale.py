@@ -84,18 +84,45 @@ def get_portale_settings() -> Settings:
     return get_settings()
 
 
+def _numeri_visibili(
+    current_user: Utente, assegnazioni_repo: PraticaAssegnazioniRepository
+) -> list[int]:
+    """Pratiche che l'utente può vedere sul portale: un esterno solo le
+    proprie, un supervisore TUTTE quelle assegnate a chiunque (sola
+    lettura)."""
+    if current_user.ruolo == "supervisore":
+        return assegnazioni_repo.list_pratica_numeri_assegnate()
+    return assegnazioni_repo.list_pratica_numeri_per_utente(current_user.id)
+
+
 def _verifica_accesso(
     current_user: Utente, numero: int, assegnazioni_repo: PraticaAssegnazioniRepository
 ) -> None:
     """404 (non 403: non riveliamo l'esistenza della pratica) se l'utente
-    esterno non è assegnatario. Gli admin passano sempre — utile per
+    non ha visibilità sulla pratica. Gli admin passano sempre — utile per
     verificare cosa vede un collaboratore, anche se normalmente usano
-    `/pratiche/{numero}`."""
+    `/pratiche/{numero}`.
+
+    La garanzia "non riveliamo l'esistenza" è piena per un esterno (404 sia
+    se la pratica non esiste sia se è assegnata ad altri), più debole per
+    un supervisore: un suo POST su una pratica assegnata a qualcun altro
+    passa questo controllo (la vede, in lettura) e riceve poi 403 da
+    `_richiedi_permesso_scrittura` sotto — un bit in più rispetto al 404,
+    ma non una fuga di informazioni reale: il supervisore vede già tutte le
+    pratiche assegnate elencate per intero su `GET /portale`."""
     if current_user.is_admin:
         return
-    numeri_assegnati = assegnazioni_repo.list_pratica_numeri_per_utente(current_user.id)
-    if numero not in numeri_assegnati:
+    if numero not in _numeri_visibili(current_user, assegnazioni_repo):
         raise HTTPException(404, "Pratica non trovata.")
+
+
+def _richiedi_permesso_scrittura(utente: Utente) -> None:
+    """Il supervisore vede tutte le pratiche assegnate in sola lettura —
+    `_verifica_accesso` sopra gli permette di aprire la pagina (la pratica
+    È assegnata, solo non a lui), ma nessuna route di scrittura deve mai
+    accettare un suo POST."""
+    if utente.ruolo == "supervisore":
+        raise HTTPException(403, "Il tuo account ha accesso in sola lettura.")
 
 
 @router.get("/portale", response_class=HTMLResponse)
@@ -106,11 +133,7 @@ def portale_list(
     wincar_repo: WinCarRepository = Depends(get_wincar_repo),
     settings: Settings = Depends(get_portale_settings),
 ) -> HTMLResponse:
-    numeri = (
-        assegnazioni_repo.list_pratica_numeri_per_utente(current_user.id)
-        if current_user
-        else []
-    )
+    numeri = _numeri_visibili(current_user, assegnazioni_repo) if current_user else []
     pratiche = []
     for numero in numeri:
         try:
@@ -185,7 +208,7 @@ def portale_calendario(
     if not (1 <= mese <= 12):
         raise HTTPException(400, "Mese non valido.")
 
-    numeri = assegnazioni_repo.list_pratica_numeri_per_utente(utente.id)
+    numeri = _numeri_visibili(utente, assegnazioni_repo)
 
     context: dict = {"version": __version__}
     context.update(_contesto_calendario(anno, mese))
@@ -232,6 +255,7 @@ def portale_pratica_detail(
         "numero": numero,
         "upload_ok": upload_ok,
         "upload_errori": errori,
+        "puo_scrivere": utente.ruolo != "supervisore",
     }
 
     try:
@@ -367,6 +391,7 @@ def _upload_pratica(
         raise HTTPException(403, "Token di sicurezza mancante o scaduto. Ricarica la pagina e riprova.")
     utente = _require_user(current_user)
     _verifica_accesso(utente, numero, assegnazioni_repo)
+    _richiedi_permesso_scrittura(utente)
 
     salvati, errori = _salva_file_pratica(numero, categoria, files, settings)
 
@@ -430,6 +455,7 @@ def portale_aggiungi_nota(
 ) -> RedirectResponse:
     utente = _require_user(current_user)
     _verifica_accesso(utente, numero, assegnazioni_repo)
+    _richiedi_permesso_scrittura(utente)
     repo = PraticaNoteRepository(db_path=settings.app_db_path)
     try:
         repo.add(numero, utente.id, utente.nome or utente.email, testo)
@@ -457,6 +483,7 @@ def portale_aggiungi_evento(
 ) -> RedirectResponse:
     utente = _require_user(current_user)
     _verifica_accesso(utente, numero, assegnazioni_repo)
+    _richiedi_permesso_scrittura(utente)
     data = _parse_date(data_evento)
     if data is None:
         raise HTTPException(400, "Data evento non valida.")
@@ -486,6 +513,7 @@ def portale_elimina_evento(
 ) -> RedirectResponse:
     utente = _require_user(current_user)
     _verifica_accesso(utente, numero, assegnazioni_repo)
+    _richiedi_permesso_scrittura(utente)
     repo = PraticaEventiRepository(db_path=settings.app_db_path)
     repo.delete(evento_id, numero)
     return RedirectResponse(url=f"/portale/pratiche/{numero}#calendario", status_code=303)
@@ -502,6 +530,7 @@ def portale_cambia_stato(
 ) -> RedirectResponse:
     utente = _require_user(current_user)
     _verifica_accesso(utente, numero, assegnazioni_repo)
+    _richiedi_permesso_scrittura(utente)
 
     stato = stato.strip()
     if stato not in STATI:
