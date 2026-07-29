@@ -884,10 +884,17 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 
 ## Stato attuale
 
-Versione **4.11.0**, tutto su branch `main`, in produzione su
+Versione **4.11.1**, tutto su branch `main`, in produzione su
 `https://hub.lysauto.it`. Changelog per-commit in `git log`; le decisioni
 tecniche non ovvie dal codice (formati, gotcha, cause di bug reali) restano
 documentate nelle sezioni sopra, per sottosistema.
+
+**Fix 4.11.1**: upload di cessione del credito firmata e verbali di
+uscita/rientro firmati non notificavano gli esterni assegnati alla pratica
+(a differenza dell'upload di foto/documenti generici, che già passava per
+`_notifica_esterni_assegnati`). I tre endpoint (`cessione_upload_signed` in
+`routes.py`, `verbale_uscita_firmata`/`verbale_rientro_firmata` in
+`routes_verbale.py`) ora chiamano la stessa funzione dopo il salvataggio.
 
 Candidate non ancora costruite (nessuna traccia nel codice, verificato via
 grep): matching ricevuta PEC InfoCert (accettazione/consegna), export

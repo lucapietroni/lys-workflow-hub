@@ -22,7 +22,9 @@ from fastapi.templating import Jinja2Templates
 from lys_workflow_hub import __version__
 from lys_workflow_hub.config import Settings, get_settings
 from lys_workflow_hub.core.auto_cortesia_repository import AutoCortesiaRepository
+from lys_workflow_hub.core.utenti_repository import Utente
 from lys_workflow_hub.core.wincar_repository import WinCarRepository
+from lys_workflow_hub.web.routes import _notifica_esterni_assegnati
 from lys_workflow_hub.workflows.verbale_cortesia import (
     PdfConversionError,
     VerbaleData,
@@ -215,6 +217,7 @@ async def verbale_uscita_firmata(
     request: Request,
     file: UploadFile = File(...),
     csrf_token: str = Form(""),
+    admin: Utente = Depends(require_admin),
     settings: Settings = Depends(_settings),
 ) -> RedirectResponse:
     # Verifica CSRF esplicita (non delegata al middleware, che salta i body
@@ -231,6 +234,17 @@ async def verbale_uscita_firmata(
         )
     except (ValueError, OSError) as exc:
         raise HTTPException(400, str(exc)) from exc
+    _notifica_esterni_assegnati(
+        request,
+        settings,
+        numero,
+        costruisci_messaggio=lambda: (
+            f"[LYS Hub] Verbale di uscita firmato caricato sulla pratica {numero}",
+            f"{admin.nome or admin.email} ha caricato il verbale di consegna firmato "
+            f"sulla pratica {numero}.\n\n"
+            f"Apri la pratica: {settings.public_url(f'/portale/pratiche/{numero}')}",
+        ),
+    )
     return RedirectResponse(
         url=f"/pratiche/{numero}/verbale/uscita?firmata=1",
         status_code=303,
@@ -323,6 +337,7 @@ async def verbale_rientro_firmata(
     request: Request,
     file: UploadFile = File(...),
     csrf_token: str = Form(""),
+    admin: Utente = Depends(require_admin),
     settings: Settings = Depends(_settings),
 ) -> RedirectResponse:
     if not verify_csrf(request, csrf_token):
@@ -337,6 +352,17 @@ async def verbale_rientro_firmata(
         )
     except (ValueError, OSError) as exc:
         raise HTTPException(400, str(exc)) from exc
+    _notifica_esterni_assegnati(
+        request,
+        settings,
+        numero,
+        costruisci_messaggio=lambda: (
+            f"[LYS Hub] Verbale di rientro firmato caricato sulla pratica {numero}",
+            f"{admin.nome or admin.email} ha caricato il verbale di riconsegna firmato "
+            f"sulla pratica {numero}.\n\n"
+            f"Apri la pratica: {settings.public_url(f'/portale/pratiche/{numero}')}",
+        ),
+    )
     return RedirectResponse(
         url=f"/pratiche/{numero}/verbale/rientro?firmata=1",
         status_code=303,

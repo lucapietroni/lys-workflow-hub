@@ -1180,9 +1180,10 @@ async def cessione_upload_signed(
     file: UploadFile = File(...),
     csrf_token: str = Form(""),
     repo: WinCarRepository = Depends(get_repository),
+    admin: Utente = Depends(require_admin),
     settings: Settings = Depends(get_app_settings),
 ) -> Response:
-    """Carica la scansione firmata e la salva in Pratiche/<n>/Privati/.
+    """Carica la scansione firmata e la salva in Pratiche/<n>/Pubblici/Allegati/.
 
     Verifica CSRF esplicita (non delegata al middleware): un body
     `multipart/form-data` letto da `AuthMiddleware` romperebbe l'upload —
@@ -1214,6 +1215,18 @@ async def cessione_upload_signed(
     except OSError as exc:
         logger.exception("Errore di filesystem nel salvataggio scansione")
         raise HTTPException(500, f"Errore di filesystem: {exc}") from exc
+
+    _notifica_esterni_assegnati(
+        request,
+        settings,
+        numero,
+        costruisci_messaggio=lambda: (
+            f"[LYS Hub] Cessione del credito firmata caricata sulla pratica {numero}",
+            f"{admin.nome or admin.email} ha caricato la cessione del credito firmata "
+            f"sulla pratica {numero}.\n\n"
+            f"Apri la pratica: {settings.public_url(f'/portale/pratiche/{numero}')}",
+        ),
+    )
 
     # Torniamo alla pagina dettaglio con un parametro che fa apparire il banner.
     return RedirectResponse(
