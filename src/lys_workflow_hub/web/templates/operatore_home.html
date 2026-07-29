@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Nuovo veicolo · LYS Workflow Hub{% endblock %}
+
+{% block content %}
+<header class="pratica-header">
+  <div>
+    <div class="hero-eyebrow">Officina</div>
+    <h1>Nuovo veicolo</h1>
+    <p class="meta">
+      Crea un ingresso per un veicolo appena arrivato e carica CID,
+      documento d'identità, libretto e foto del danno. Un admin creerà la
+      pratica in WinCar e collegherà questi documenti.
+    </p>
+  </div>
+</header>
+
+<section class="card">
+  <h2>Nuovo ingresso</h2>
+  <form method="post" action="/operatore/ingressi">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <div class="form-field">
+      <label for="f_cliente">Nominativo cliente <span class="req">*</span></label>
+      <input id="f_cliente" name="cliente_nominativo" type="text" required autocomplete="off" />
+    </div>
+    <div class="form-field">
+      <label for="f_targa">Targa</label>
+      <input id="f_targa" name="targa" type="text" autocomplete="off" placeholder="es. AB123CD" />
+    </div>
+    <div class="form-field">
+      <label for="f_note">Note</label>
+      <textarea id="f_note" name="note" rows="3" placeholder="es. urto posteriore, paraurti e faro"></textarea>
+    </div>
+    <button type="submit" class="btn btn-primary">Crea e carica documenti</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Ingressi in attesa <span class="tag">{{ ingressi|length }}</span></h2>
+  {% if ingressi %}
+  <ul class="files-list">
+    {% for i in ingressi %}
+    <li>
+      <a class="file-name" href="/operatore/ingressi/{{ i.id }}">{{ i.cliente_nominativo }}{% if i.targa %} — {{ i.targa }}{% endif %}</a>
+      <span class="file-meta">
+        {{ i.file|length }} document{% if i.file|length == 1 %}o{% else %}i{% endif %} ·
+        {{ i.creato_il.strftime("%d/%m/%Y %H:%M") if i.creato_il else "" }}
+      </span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="meta" style="margin-top:-6px">Nessun ingresso in attesa.</p>
+  {% endif %}
+</section>
+{% endblock %}

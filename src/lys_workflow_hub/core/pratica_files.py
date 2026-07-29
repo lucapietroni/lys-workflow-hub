@@ -287,6 +287,62 @@ def save_upload(
     return target
 
 
+def cartella_ingresso(archivio_root: Path, ingresso_id: int) -> Path:
+    """Cartella di staging di un ingresso officina — sorella di ``Pratiche/``,
+    mai scansionata da WinCar: la pratica non esiste ancora quando questi
+    file vengono caricati (vedi ``core/ingressi_officina_repository.py``)."""
+    return Path(archivio_root) / "IngressiOfficina" / str(ingresso_id)
+
+
+def save_ingresso_file(
+    *,
+    archivio_root: Path,
+    ingresso_id: int,
+    categoria: str,
+    filename: str,
+    raw: bytes,
+    max_bytes: int = 20 * 1024 * 1024,
+) -> Path:
+    """Salva un file caricato dall'operatore in staging, PRIMA che la
+    pratica esista in WinCar — stessa validazione di ``save_upload`` ma
+    nessun side-effect WinCar (niente thumb, niente ``marca_foto_presente``):
+    inutili qui, verranno rigenerati correttamente da ``save_upload`` quando
+    l'admin collega l'ingresso a un numero pratica reale
+    (``web/routes_ingressi.py``)."""
+    if not raw:
+        raise UploadRifiutato("File vuoto.")
+    if len(raw) > max_bytes:
+        raise UploadRifiutato("File troppo grande (max 20 MB).")
+
+    nome = _sanitize_filename(filename)
+    ext = Path(nome).suffix.lower()
+
+    if categoria == "foto":
+        if ext not in _FOTO_EXT:
+            raise UploadRifiutato(f"Formato immagine non supportato: {ext or 'sconosciuto'}.")
+    elif categoria == "documento":
+        if ext not in _ALLOWED_DOC_EXT:
+            raise UploadRifiutato(f"Formato file non supportato: {ext or 'sconosciuto'}.")
+    else:
+        raise ValueError(f"Categoria upload non valida: {categoria!r}")
+
+    target_dir = cartella_ingresso(archivio_root, ingresso_id)
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    stem = Path(nome).stem
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    target = target_dir / f"{stem}_{timestamp}{ext}"
+    while True:
+        try:
+            with target.open("xb") as fh:
+                fh.write(raw)
+            break
+        except FileExistsError:
+            target = target_dir / f"{stem}_{timestamp}-{uuid4().hex[:6]}{ext}"
+
+    return target
+
+
 def _classifica_documento(file_path: Path) -> str:
     ext = file_path.suffix.lower()
     name = file_path.name.lower()

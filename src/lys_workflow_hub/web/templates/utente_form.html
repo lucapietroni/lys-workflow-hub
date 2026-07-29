@@ -51,6 +51,7 @@
             <option value="{{ r }}" {% if values.ruolo == r %}selected{% endif %}>
               {% if r == "admin" %}Admin (accesso completo)
               {% elif r == "supervisore" %}Supervisore (tutte le pratiche assegnate, sola lettura)
+              {% elif r == "operatore" %}Operatore (crea ingressi officina, nessun'altra pratica)
               {% else %}Esterno (solo le proprie pratiche assegnate)
               {% endif %}
             </option>

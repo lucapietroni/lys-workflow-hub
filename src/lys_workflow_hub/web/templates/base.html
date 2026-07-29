@@ -51,7 +51,10 @@
           <a href="/calendario">Calendario</a>
           <a href="/utenti">Utenti</a>
           <a href="/impostazioni">Impostazioni</a>
+          <a href="/ingressi">Ingressi officina</a>
           <a href="/docs" target="_blank" rel="noopener">API</a>
+          {% elif current_user and current_user.is_operatore %}
+          <a href="/operatore">Nuovo veicolo</a>
           {% elif current_user %}
           <a href="/portale">{{ "Pratiche assegnate" if current_user.is_supervisore else "Le mie pratiche" }}</a>
           <a href="/portale/calendario">Calendario</a>

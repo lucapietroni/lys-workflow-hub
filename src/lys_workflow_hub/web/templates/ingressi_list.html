@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Ingressi officina · LYS Workflow Hub{% endblock %}
+
+{% block content %}
+<header class="pratica-header">
+  <div>
+    <div class="hero-eyebrow">Officina</div>
+    <h1>Ingressi in attesa</h1>
+    <p class="meta">
+      Veicoli registrati da un operatore, con i documenti già caricati,
+      in attesa che tu crei la pratica in WinCar e la colleghi qui.
+    </p>
+  </div>
+</header>
+
+<section class="card">
+  <h2>In attesa <span class="tag">{{ ingressi|length }}</span></h2>
+  {% if ingressi %}
+  <ul class="files-list">
+    {% for i in ingressi %}
+    <li>
+      <a class="file-name" href="/ingressi/{{ i.id }}">{{ i.cliente_nominativo }}{% if i.targa %} — {{ i.targa }}{% endif %}</a>
+      <span class="file-meta">
+        {{ i.file|length }} document{% if i.file|length == 1 %}o{% else %}i{% endif %} ·
+        {{ i.creato_il.strftime("%d/%m/%Y %H:%M") if i.creato_il else "" }}
+      </span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="meta" style="margin-top:-6px">Nessun ingresso in attesa.</p>
+  {% endif %}
+</section>
+{% endblock %}

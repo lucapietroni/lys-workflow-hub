@@ -5,7 +5,7 @@ con il gestionale **WinCar**. Legge le pratiche dal database WinCar in sola lett
 genera documenti precompilati, monitora le risposte delle compagnie assicurative
 via PEC/email, classifica le risposte con AI e genera alert mirati.
 
-> Branch: **main** · Versione: **4.12.0** · In produzione su `hub.lysauto.it`
+> Branch: **main** · Versione: **4.13.0** · In produzione su `hub.lysauto.it`
 
 ---
 
@@ -30,9 +30,13 @@ via PEC/email, classifica le risposte con AI e genera alert mirati.
   (admin) con pulizia coerente su disco e nel gestionale.
 
 **Collaborazione e accesso esterno**
-- Autenticazione con ruoli (`admin`/`esterno`/`supervisore`), sessione
-  cookie, anti-bruteforce, gestione utenti via UI. Il supervisore vede
-  tutte le pratiche assegnate a chiunque, in sola lettura.
+- Autenticazione con ruoli (`admin`/`esterno`/`supervisore`/`operatore`),
+  sessione cookie, anti-bruteforce, gestione utenti via UI. Il supervisore
+  vede tutte le pratiche assegnate a chiunque, in sola lettura. L'operatore
+  d'officina crea "ingressi" (bozza pratica con documenti scansionati —
+  CID, documento identità, libretto, foto danno) prima che la pratica
+  esista in WinCar: un admin li vede in coda, crea la pratica in WinCar a
+  mano e la collega, spostando i documenti nel posto giusto.
 - Portale esterno (`/portale`): agenzie pratiche auto e avvocati vedono solo
   le pratiche assegnate — dettaglio pratica, note e calendario condivisi,
   cambio stato, upload foto/documenti.
@@ -98,6 +102,8 @@ src/lys_workflow_hub/
     ├── routes_auth.py               GET/POST /login, POST /logout
     ├── routes_utenti.py             CRUD utenti /utenti (admin-only)
     ├── routes_portale.py            Portale esterno /portale + dettaglio + note/calendario
+    ├── routes_operatore.py          Operatore /operatore — crea ingressi officina (documenti pre-pratica)
+    ├── routes_ingressi.py           Ingressi officina /ingressi — admin collega a pratica WinCar (admin-only)
     ├── routes.py                    Pratica + Workflow A + assegnazione + note/calendario (admin-only)
     ├── routes_vandalismo.py         Workflow B (admin-only)
     ├── routes_risposte.py           Workflow C (admin-only)

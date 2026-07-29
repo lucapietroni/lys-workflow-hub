@@ -48,9 +48,15 @@ def _default_landing(utente: Utente) -> str:
     """Pagina di atterraggio quando non è stato richiesto un `next` esplicito.
 
     "/" è admin-only (routes.py monta require_admin a livello di router),
-    quindi gli utenti esterni vanno mandati su /portale.
+    quindi gli utenti esterni/supervisore vanno mandati su /portale.
+    L'operatore ha un'unica pagina, /operatore (crea ingressi officina) —
+    /portale gli mostrerebbe una lista pratiche vuota e fuori contesto.
     """
-    return "/" if utente.is_admin else "/portale"
+    if utente.is_admin:
+        return "/"
+    if utente.is_operatore:
+        return "/operatore"
+    return "/portale"
 
 
 @router.get("/login", response_class=HTMLResponse)

@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}{{ ingresso.cliente_nominativo }} · Nuovo veicolo · LYS Workflow Hub{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb">
+  <a href="/operatore" class="btn btn-sm">← Ingressi in attesa</a>
+</nav>
+
+<header class="pratica-header">
+  <div>
+    <div class="hero-eyebrow">Officina</div>
+    <h1>{{ ingresso.cliente_nominativo }}{% if ingresso.targa %} — {{ ingresso.targa }}{% endif %}</h1>
+    {% if ingresso.note %}<p class="meta">{{ ingresso.note }}</p>{% endif %}
+  </div>
+</header>
+
+{% if request.query_params.get("caricati") %}
+<div class="alert alert-success">File caricati.</div>
+{% endif %}
+{% if request.query_params.get("errori") %}
+<div class="alert alert-warn">{{ request.query_params.get("errori") }} file non caricati (formato o dimensione non validi).</div>
+{% endif %}
+
+{% for tipo in tipi_file %}
+<section class="card">
+  <h2>{{ tipo_file_labels[tipo] }}
+    <span class="tag">{{ ingresso.file|selectattr("tipo", "equalto", tipo)|list|length }}</span>
+  </h2>
+  {% set file_tipo = ingresso.file|selectattr("tipo", "equalto", tipo)|list %}
+  {% if file_tipo %}
+  <ul class="files-list">
+    {% for f in file_tipo %}
+    <li>
+      <span class="file-name">{{ f.nome_file_originale }}</span>
+      <form method="post" action="/operatore/ingressi/{{ ingresso.id }}/file/{{ f.id }}/elimina" style="display:inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <button type="submit" class="btn btn-sm btn-link">Elimina</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  <form method="post" action="/operatore/ingressi/{{ ingresso.id }}/upload" enctype="multipart/form-data"
+        style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:12px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <input type="hidden" name="tipo" value="{{ tipo }}" />
+    <input type="file" id="input-{{ tipo }}" name="files" accept="image/*,.pdf" multiple required data-camera="1" />
+    <button type="submit" class="btn btn-primary">Carica</button>
+  </form>
+</section>
+{% endfor %}
+
+<script>
+  // Scatto foto diretto dalla fotocamera — stesso pattern usato per le foto
+  // pratica in portale_pratica_detail.html: solo dentro l'app Capacitor,
+  // inietta il risultato nell'input file esistente via DataTransfer così
+  // submit/CSRF lato server non cambiano. Qui si ripete per ognuno dei 4
+  // slot documento (CID/identità/libretto/foto danno vengono tutti spesso
+  // fotografati col telefono, non solo il danno).
+  if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
+    document.addEventListener("DOMContentLoaded", function () {
+      document.querySelectorAll('input[data-camera="1"]').forEach(function (fileInput) {
+        var btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "btn";
+        btn.textContent = "Scatta foto";
+        fileInput.insertAdjacentElement("afterend", btn);
+        btn.addEventListener("click", async function () {
+          try {
+            var Camera = window.Capacitor.Plugins.Camera;
+            var photo = await Camera.getPhoto({
+              resultType: "base64",
+              source: "CAMERA",
+              quality: 85,
+            });
+            var byteChars = atob(photo.base64String);
+            var byteNumbers = new Array(byteChars.length);
+            for (var i = 0; i < byteChars.length; i++) {
+              byteNumbers[i] = byteChars.charCodeAt(i);
+            }
+            var blob = new Blob([new Uint8Array(byteNumbers)], { type: "image/jpeg" });
+            var file = new File([blob], "scatto-" + Date.now() + ".jpg", { type: "image/jpeg" });
+            var dt = new DataTransfer();
+            dt.items.add(file);
+            fileInput.files = dt.files;
+          } catch (e) {
+            console.error("Camera capture failed", e);
+          }
+        });
+      });
+    });
+  }
+</script>
+{% endblock %}

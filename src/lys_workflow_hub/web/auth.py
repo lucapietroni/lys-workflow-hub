@@ -129,7 +129,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # admin-only devono continuare a rispondere 403 a un esterno, è il
         # segnale di sicurezza corretto lì.
         if user is not None and not user.is_admin and path == "/":
-            return RedirectResponse(url="/portale", status_code=303)
+            return RedirectResponse(
+                url="/operatore" if user.is_operatore else "/portale", status_code=303
+            )
 
         if (
             request.method == "POST"

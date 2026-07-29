@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}{{ ingresso.cliente_nominativo }} · Ingressi officina · LYS Workflow Hub{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb">
+  <a href="/ingressi" class="btn btn-sm">← Ingressi in attesa</a>
+</nav>
+
+<header class="pratica-header">
+  <div>
+    <div class="hero-eyebrow">Officina</div>
+    <h1>{{ ingresso.cliente_nominativo }}{% if ingresso.targa %} — {{ ingresso.targa }}{% endif %}</h1>
+    {% if ingresso.note %}<p class="meta">{{ ingresso.note }}</p>{% endif %}
+    <p class="meta">Creato il {{ ingresso.creato_il.strftime("%d/%m/%Y %H:%M") if ingresso.creato_il else "—" }}</p>
+  </div>
+</header>
+
+<section class="card">
+  <h2>Documenti <span class="tag">{{ ingresso.file|length }}</span></h2>
+  {% if ingresso.file %}
+  <ul class="files-list">
+    {% for f in ingresso.file %}
+    <li>
+      <a class="file-name" href="/ingressi/{{ ingresso.id }}/file/{{ f.id }}" target="_blank" rel="noopener">
+        {{ f.tipo_label }} — {{ f.nome_file_originale }}
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="meta" style="margin-top:-6px">Nessun documento caricato.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Collega a una pratica WinCar</h2>
+  <p class="meta">
+    Crea prima la pratica in WinCar con i dati sopra, poi inserisci qui il
+    numero pratica: i documenti verranno spostati nella cartella WinCar
+    corretta con le stesse miniature/flag di un upload normale.
+  </p>
+  <form method="post" action="/ingressi/{{ ingresso.id }}/collega" style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <div class="form-field" style="margin:0;">
+      <label for="f_numero">Numero pratica WinCar <span class="req">*</span></label>
+      <input id="f_numero" name="numero_pratica" type="number" required autocomplete="off" />
+    </div>
+    <button type="submit" class="btn btn-primary">Collega</button>
+  </form>
+</section>
+
+<section class="card">
+  <form method="post" action="/ingressi/{{ ingresso.id }}/annulla" onsubmit="return confirm('Annullare questo ingresso? I documenti caricati verranno eliminati.');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <button type="submit" class="btn btn-link" style="color:var(--lys-warn);">Annulla ingresso</button>
+  </form>
+</section>
+{% endblock %}

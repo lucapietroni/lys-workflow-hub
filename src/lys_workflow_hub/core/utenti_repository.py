@@ -1,6 +1,6 @@
 """Anagrafica utenti applicativi e autenticazione (v3.0).
 
-Storage SQLite locale (`data/lys_hub.db`). Tre ruoli:
+Storage SQLite locale (`data/lys_hub.db`). Quattro ruoli:
   - "admin": accesso completo (operatori carrozzeria).
   - "esterno": accesso limitato alle sole pratiche assegnate (agenzie
     pratiche auto, avvocati) — pagine e permessi introdotti nelle fasi
@@ -10,6 +10,10 @@ Storage SQLite locale (`data/lys_hub.db`). Tre ruoli:
     dell'esterno ma in sola lettura — nessuna route di scrittura lo accetta
     (note, eventi, cambio stato, upload). Vedi `_richiedi_permesso_scrittura`
     in `web/routes_portale.py`.
+  - "operatore": accesso ristretto a `/operatore` (creazione "ingressi
+    officina" — pre-pratica con documenti scansionati, prima che la
+    pratica esista in WinCar). Non vede pratiche esistenti, non ha nessun
+    altro permesso. Vedi `web/routes_operatore.py`.
 
 Le password non sono mai salvate in chiaro: solo l'hash bcrypt
 (`password_hash`). Il blocco account dopo troppi tentativi falliti
@@ -32,7 +36,7 @@ import bcrypt
 
 logger = logging.getLogger(__name__)
 
-Ruolo = Literal["admin", "esterno", "supervisore"]
+Ruolo = Literal["admin", "esterno", "supervisore", "operatore"]
 
 # Charset consigliato da ntfy.sh per i nomi dei topic. Un topic fuori da
 # questo pattern (spazi, accenti, "/") non farebbe fallire la richiesta HTTP
@@ -42,7 +46,7 @@ Ruolo = Literal["admin", "esterno", "supervisore"]
 # semplicemente a non ricevere mai nulla, senza capirne il motivo.
 _NTFY_TOPIC_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
-RUOLI = ("admin", "esterno", "supervisore")
+RUOLI = ("admin", "esterno", "supervisore", "operatore")
 
 
 @dataclass(frozen=True)
@@ -70,6 +74,10 @@ class Utente:
     @property
     def is_supervisore(self) -> bool:
         return self.ruolo == "supervisore"
+
+    @property
+    def is_operatore(self) -> bool:
+        return self.ruolo == "operatore"
 
 
 class AuthError(Exception):

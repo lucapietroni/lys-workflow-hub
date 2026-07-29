@@ -884,10 +884,40 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 
 ## Stato attuale
 
-Versione **4.12.0**, tutto su branch `main`, in produzione su
+Versione **4.13.0**, tutto su branch `main`, in produzione su
 `https://hub.lysauto.it`. Changelog per-commit in `git log`; le decisioni
 tecniche non ovvie dal codice (formati, gotcha, cause di bug reali) restano
 documentate nelle sezioni sopra, per sottosistema.
+
+**4.13.0 — Ingressi officina (nuovo ruolo "operatore")**: quando entra un
+veicolo nuovo, un operatore d'officina crea dall'app un "ingresso" —
+cliente, targa, note + 4 documenti (CID, documento identità, libretto,
+foto danno) scattati/caricati — che vive SOLO nel nostro SQLite
+(`ingressi_officina`/`ingressi_officina_file`,
+`core/ingressi_officina_repository.py`), mai in WinCar. Decisione esplicita
+presa con l'utente: niente scrittura diretta della pratica in WinCar (il
+`.mdb` resta read-only per invariante di progetto, unica deroga isolata in
+`wincar_carvei_write.py` per un solo campo — creare pratiche intere
+richiederebbe conoscere lo schema completo di `CARVEI`, mai investigato).
+L'admin vede la coda in `/ingressi`, crea la pratica vera in WinCar A MANO
+(fuori dall'app, come oggi), poi "collega" l'ingresso inserendo il numero
+pratica: ogni file di staging (`IngressiOfficina/<id>/...`, cartella
+sorella di `Pratiche/`, mai scansionata da WinCar) viene riletto e salvato
+con `save_upload()` già esistente — thumb WinCar e flag `CARVEI.F_FOTO`
+per le foto arrivano gratis, stesso codice usato per gli upload normali.
+Nuove route `web/routes_operatore.py` (operatore, non admin-only, guard
+locale `_richiedi_operatore`) e `web/routes_ingressi.py` (admin-only).
+**Bug reale trovato da code-review prima del rilascio**: il loop di copia
+file in `ingresso_collega` girava PRIMA della transizione di stato
+atomica — un retry dopo un fallimento parziale o un doppio submit
+ravvicinato ricopiava gli stessi file con nome nuovo (`save_upload` non
+sovrascrive mai), duplicandoli silenziosamente nella cartella pubblica
+della pratica WinCar. Fix: `repo.collega()` (atomico, `WHERE
+stato='in_attesa'`) avviene PRIMA di toccare qualunque file — un secondo
+tentativo fallisce subito (400 se sequenziale, 409 se davvero concorrente)
+senza mai duplicare nulla, con test di regressione dedicato. Nessuna
+modifica alla APK Android: l'app è un wrapper live, `/operatore` è
+servita dallo stesso backend come `/portale`, nessun plugin nativo nuovo.
 
 **4.12.0 — LYSApp: canale notifiche, check aggiornamento, sblocco biometrico**
 (APK `versionCode 8` / `versionName 4.9.1`, numerazione separata dal repo):

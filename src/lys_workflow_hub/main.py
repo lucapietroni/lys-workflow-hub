@@ -60,6 +60,8 @@ from lys_workflow_hub.web.routes_auth import router as auth_router
 from lys_workflow_hub.web.routes_bozze import router as bozze_router
 from lys_workflow_hub.web.routes_compagnie import router as compagnie_router
 from lys_workflow_hub.web.routes_impostazioni import router as impostazioni_router
+from lys_workflow_hub.web.routes_ingressi import router as ingressi_router
+from lys_workflow_hub.web.routes_operatore import router as operatore_router
 from lys_workflow_hub.web.routes_pec_log import router as pec_log_router
 from lys_workflow_hub.web.routes_portale import router as portale_router
 from lys_workflow_hub.web.routes_risposte import router as risposte_router
@@ -264,6 +266,8 @@ app.include_router(verbale_router)
 app.include_router(foto_router)
 app.include_router(utenti_router)
 app.include_router(portale_router)
+app.include_router(operatore_router)
+app.include_router(ingressi_router)
 app.include_router(api_router)
 
 
