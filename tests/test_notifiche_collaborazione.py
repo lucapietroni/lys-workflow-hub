@@ -151,6 +151,11 @@ def test_send_fcm_push_richiede_priorita_alta_android() -> None:
     mock_post.assert_called_once()
     payload = mock_post.call_args.kwargs["json"]
     assert payload["message"]["android"]["priority"] == "high"
+    # channel_id deve combaciare col canale creato client-side via
+    # PushNotifications.createChannel() in base.html (importance HIGH) —
+    # senza questo campo Android userebbe il canale di default della lib
+    # FCM (importance DEFAULT, niente heads-up/popup, solo tendina).
+    assert payload["message"]["android"]["notification"]["channel_id"] == "lys_hub_activity"
 
 
 def test_notify_esterno_nuova_attivita_chiama_send_email_se_configurato() -> None:

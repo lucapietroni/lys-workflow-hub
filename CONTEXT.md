@@ -884,10 +884,53 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 
 ## Stato attuale
 
-Versione **4.11.1**, tutto su branch `main`, in produzione su
+Versione **4.12.0**, tutto su branch `main`, in produzione su
 `https://hub.lysauto.it`. Changelog per-commit in `git log`; le decisioni
 tecniche non ovvie dal codice (formati, gotcha, cause di bug reali) restano
 documentate nelle sezioni sopra, per sottosistema.
+
+**4.12.0 — LYSApp: canale notifiche, check aggiornamento, sblocco biometrico**
+(APK `versionCode 8` / `versionName 4.9.1`, numerazione separata dal repo):
+- **Canale FCM ad alta importanza**: `PushNotifications.createChannel()`
+  (importance `HIGH`, visibility `PRIVATE` — titolo/corpo possono contenere
+  nome cliente/targa, non vanno in chiaro su lockscreen) in `base.html`,
+  `channel_id: "lys_hub_activity"` nel payload di `send_fcm_push()`
+  (`notifier.py`) — senza questo Android usava il canale di default della lib
+  FCM (importance `DEFAULT`, niente heads-up/popup, solo tendina). Nessuna
+  rebuild APK richiesta per questa parte (JS lato server, live).
+- **Check aggiornamento in-app**: l'APK non è su Play Store (solo GitHub
+  Release, sideload), nessun auto-update. `base.html` confronta
+  `App.getInfo().build` (plugin `@capacitor/app`, nuovo) con un manifest
+  `latest.json` pubblicato come secondo asset sulla stessa release
+  `android-lysapp-v1` ad ogni build, scaricato dal CDN pubblico di GitHub
+  (mai `api.github.com`, rate-limit 60/h non autenticato). Banner dismissibile
+  con link download diretto dell'APK, throttle 1 check/giorno in `localStorage`
+  (timestamp aggiornato solo su fetch riuscita, non su errore/offline).
+- **Sblocco biometrico opt-in**: plugin `@capgo/capacitor-native-biometric`
+  (fork mantenuto, l'originale `capacitor-native-biometric` dichiara "solo
+  Capacitor 3/4" — scartato). Toggle in `/portale/impostazioni` (sezione
+  `app-only`), preferenza in `localStorage` (device, non account), default
+  OFF, attivata solo dopo una `verifyIdentity()` di conferma riuscita per
+  evitare lock-out (`useFallback: true`, passcode device come alternativa).
+  Overlay di blocco in `base.html` su cold start e su ripresa da background
+  (`App.addListener('appStateChange', ...)`), con pulsante "Esci" per non
+  restare bloccati se il sensore smette di funzionare. Non sostituisce il
+  login/sessione cookie, blocca solo l'accesso fisico all'app già autenticata.
+  **Due problemi reali trovati da code-review prima del rilascio**: (1) l'app
+  è una MPA senza router client-side — ogni link ricarica l'intera pagina,
+  quindi senza guardia il prompt biometrico sarebbe spuntato ad ogni tap
+  invece che solo a cold start/resume; fix con flag `sessionStorage`
+  (`lys_unlocked_session`, sopravvive alla navigazione full-page, azzerato
+  solo su vero backgrounding). (2) lo sblocco da solo non copriva
+  l'anteprima che Android cattura per il task-switcher (recent apps) nel
+  momento in cui l'app va in background — proprio lo scenario "telefono
+  sbloccato incustodito" dichiarato; fix con `FLAG_SECURE` sempre attivo in
+  `MainActivity.java` (app-wide, indipendente dal toggle, blocca anche
+  screenshot/registrazione schermo).
+- **Non testato su device reale** (nessun emulatore/telefono disponibile in
+  questo ambiente) — comportamento di heads-up notification, banner
+  aggiornamento, prompt biometrico e `FLAG_SECURE` da verificare sul
+  telefono dopo l'installazione della nuova APK.
 
 **Fix 4.11.1**: upload di cessione del credito firmata e verbali di
 uscita/rientro firmati non notificavano gli esterni assegnati alla pratica

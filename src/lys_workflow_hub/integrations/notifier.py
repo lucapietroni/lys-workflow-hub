@@ -136,7 +136,14 @@ def send_fcm_push(
             # modo imprevedibile invece di svegliare subito il device — "high"
             # richiede consegna immediata (osservato: notifica arrivata con
             # ~5 minuti di ritardo, in modo non riproducibile, senza errori).
-            "android": {"priority": "high"},
+            # channel_id deve combaciare con il canale creato client-side via
+            # PushNotifications.createChannel() in base.html (importance
+            # HIGH) — senza questo campo Android userebbe il canale di
+            # default della lib FCM (importance DEFAULT, niente heads-up).
+            "android": {
+                "priority": "high",
+                "notification": {"channel_id": "lys_hub_activity"},
+            },
         }
     }
     try:

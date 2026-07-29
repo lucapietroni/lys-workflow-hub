@@ -1777,6 +1777,9 @@ html.is-app .btn-azzera-filtri {
   font-size: 0.82rem;
 }
 
+/* -- Toggle sblocco biometrico (/portale/impostazioni), solo app -- */
+html.is-app .biometric-toggle-section { display: block; }
+
 /* -- Cambio stato pratica: colonna a piena larghezza invece di riga stretta -- */
 html.is-app .form-inline-stato { flex-direction: column; align-items: stretch; gap: 10px; }
 html.is-app .form-inline-stato .select-inline,

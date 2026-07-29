@@ -128,6 +128,24 @@
         (function () {
           try {
             var PushNotifications = window.Capacitor.Plugins.PushNotifications;
+            // Canale dedicato ad alta importanza (heads-up + suono), creato
+            // PRIMA di registrare il device: senza un channel_id esplicito
+            // nel payload FCM, Android usa il canale di default della lib
+            // (importance DEFAULT, niente popup, solo tendina). Idempotente,
+            // può essere richiamato ad ogni apertura pagina senza problemi.
+            PushNotifications.createChannel({
+              id: "lys_hub_activity",
+              name: "Attività pratiche",
+              description: "Note, eventi, upload e cambi stato sulle pratiche assegnate",
+              importance: 4,
+              // PRIVATE (0), non PUBLIC: titolo/corpo possono contenere nome
+              // cliente/targa — su lockscreen mostra solo "nuova notifica",
+              // non il contenuto.
+              visibility: 0,
+              vibration: true,
+            }).catch(function (e) {
+              console.error("createChannel failed", e);
+            });
             PushNotifications.requestPermissions().then(function (perm) {
               if (perm.receive === "granted") {
                 PushNotifications.register();
@@ -160,6 +178,220 @@
             });
           } catch (e) {
             console.error("Push notification setup failed", e);
+          }
+        })();
+      }
+    </script>
+    <script>
+      // Check aggiornamento in-app: l'APK non è su Play Store (solo GitHub
+      // Release, sideload), nessun auto-update — un utente può restare
+      // bloccato su una build vecchia senza saperlo. Confronta il
+      // versionCode installato con un manifest latest.json pubblicato sulla
+      // stessa GitHub Release ad ogni build (vedi mobile/README.md).
+      // Scarica l'asset via URL diretto di download (CDN pubblico), MAI
+      // api.github.com: quell'endpoint ha un rate-limit di 60 richieste/ora
+      // non autenticate condiviso per IP, rischioso con più utenti sulla
+      // stessa rete aziendale.
+      if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
+        (function () {
+          var LATEST_JSON_URL = "https://github.com/lucapietroni/lys-workflow-hub/releases/download/android-lysapp-v1/latest.json";
+          var APK_URL = "https://github.com/lucapietroni/lys-workflow-hub/releases/download/android-lysapp-v1/app-release.apk";
+          var THROTTLE_MS = 24 * 60 * 60 * 1000;
+
+          function mostraBannerAggiornamento(versionName) {
+            if (document.getElementById("lys-update-banner")) return;
+            var bar = document.createElement("div");
+            bar.id = "lys-update-banner";
+            bar.className = "alert alert-info";
+            bar.style.margin = "0 0 16px 0";
+            bar.innerHTML =
+              "<span>Nuova versione dell'app disponibile (v" + versionName + ").</span> " +
+              '<button type="button" class="btn btn-sm" id="lys-update-scarica" style="margin-left:8px;">Scarica</button> ' +
+              '<button type="button" class="btn btn-sm btn-link" id="lys-update-dismiss" style="margin-left:4px;">Non ora</button>';
+            var main = document.querySelector("main.container");
+            if (!main) return;
+            main.insertBefore(bar, main.firstChild);
+            document.getElementById("lys-update-scarica").addEventListener("click", function () {
+              window.Capacitor.Plugins.Browser.open({ url: APK_URL });
+            });
+            document.getElementById("lys-update-dismiss").addEventListener("click", function () {
+              try {
+                localStorage.setItem("lys_update_dismissed", versionName);
+              } catch (e) {}
+              bar.remove();
+            });
+          }
+
+          function verificaAggiornamento() {
+            var App = window.Capacitor.Plugins.App;
+            if (!App) return;
+            var now = Date.now();
+            var last = 0;
+            try {
+              last = parseInt(localStorage.getItem("lys_update_check_ts") || "0", 10);
+            } catch (e) {}
+            if (now - last < THROTTLE_MS) return;
+
+            App.getInfo()
+              .then(function (info) {
+                var localBuild = parseInt(info.build, 10);
+                return fetch(LATEST_JSON_URL, { cache: "no-store" })
+                  .then(function (r) { return r.json(); })
+                  .then(function (remote) {
+                    // Timestamp aggiornato SOLO su fetch riuscita: se il
+                    // check cade (offline, GitHub irraggiungibile), un
+                    // utente che torna online un minuto dopo non deve
+                    // aspettare fino a 24h per un vero nuovo tentativo.
+                    try {
+                      localStorage.setItem("lys_update_check_ts", String(now));
+                    } catch (e) {}
+                    if (!remote || typeof remote.versionCode !== "number") return;
+                    if (remote.versionCode <= localBuild) return;
+                    var scartata = null;
+                    try {
+                      scartata = localStorage.getItem("lys_update_dismissed");
+                    } catch (e) {}
+                    if (scartata === remote.versionName) return;
+                    mostraBannerAggiornamento(remote.versionName);
+                  });
+              })
+              .catch(function () {
+                // Offline o GitHub irraggiungibile: nessun errore visibile,
+                // stesso pattern best-effort delle altre integrazioni push.
+              });
+          }
+
+          verificaAggiornamento();
+          var App = window.Capacitor.Plugins.App;
+          if (App && App.addListener) {
+            App.addListener("appStateChange", function (state) {
+              if (state.isActive) verificaAggiornamento();
+            });
+          }
+        })();
+      }
+    </script>
+    <script>
+      // Sblocco biometrico opt-in (impronta/Face) all'apertura/ripresa
+      // dell'app — gate a livello di app, NON sostituisce il login/sessione
+      // cookie già attiva: blocca solo l'accesso fisico all'app già
+      // autenticata (telefono sbloccato lasciato incustodito). Preferenza
+      // salvata in localStorage (device, non account) da
+      // /portale/impostazioni, default OFF. Attivata SOLO dopo una verifica
+      // riuscita (vedi portale_impostazioni.html) per evitare lock-out.
+      if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
+        (function () {
+          // App senza router client-side: OGNI link interno ricarica l'intera
+          // pagina, quindi riesegue questo script da capo ad ogni
+          // navigazione. Senza un flag di sessione, il prompt biometrico
+          // spunterebbe ad ogni singolo tap (lista → dettaglio → calendario…)
+          // invece che solo a cold start/ripresa da background come inteso.
+          // sessionStorage sopravvive alla navigazione full-page nella stessa
+          // WebView e si azzera solo quando il contesto viene distrutto (o
+          // esplicitamente qui sotto quando l'app va davvero in background).
+          function sbloccatoInQuestaSessione() {
+            try {
+              return sessionStorage.getItem("lys_unlocked_session") === "1";
+            } catch (e) {
+              return false;
+            }
+          }
+          function segnaSbloccato() {
+            try {
+              sessionStorage.setItem("lys_unlocked_session", "1");
+            } catch (e) {}
+          }
+          function segnaBloccato() {
+            try {
+              sessionStorage.removeItem("lys_unlocked_session");
+            } catch (e) {}
+          }
+
+          function biometriaAttiva() {
+            try {
+              return localStorage.getItem("lys_biometric_lock") === "1";
+            } catch (e) {
+              return false;
+            }
+          }
+
+          function mostraOverlay() {
+            if (document.getElementById("lys-lock-overlay")) return;
+            var overlay = document.createElement("div");
+            overlay.id = "lys-lock-overlay";
+            overlay.style.cssText =
+              "position:fixed;inset:0;z-index:9999;background:#0B1525;" +
+              "display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;";
+            overlay.innerHTML =
+              '<span style="color:#fff;font-size:16px;">Sblocca per continuare</span>' +
+              '<button type="button" class="btn btn-primary" id="lys-lock-retry">Sblocca</button>' +
+              '<button type="button" class="btn btn-link" id="lys-lock-logout" style="color:#93C5FD;">Esci</button>';
+            document.body.appendChild(overlay);
+            document.getElementById("lys-lock-retry").addEventListener("click", tentaSblocco);
+            document.getElementById("lys-lock-logout").addEventListener("click", function () {
+              // Stesso pattern del form di logout nell'header (riga ~62):
+              // POST con CSRF, nessuna via d'uscita diversa se la biometria
+              // smette di funzionare (device senza più impronte enrollate,
+              // guasto sensore) — senza questo pulsante l'unica via sarebbe
+              // cancellare i dati app da Impostazioni Android.
+              var csrfEl = document.querySelector('meta[name="csrf-token"]');
+              var form = document.createElement("form");
+              form.method = "post";
+              form.action = "/logout";
+              var input = document.createElement("input");
+              input.type = "hidden";
+              input.name = "csrf_token";
+              input.value = csrfEl ? csrfEl.content : "";
+              form.appendChild(input);
+              document.body.appendChild(form);
+              form.submit();
+            });
+          }
+
+          function nascondiOverlay() {
+            var overlay = document.getElementById("lys-lock-overlay");
+            if (overlay) overlay.remove();
+          }
+
+          function tentaSblocco() {
+            var NativeBiometric = window.Capacitor.Plugins.NativeBiometric;
+            if (!NativeBiometric) {
+              nascondiOverlay();
+              segnaSbloccato();
+              return;
+            }
+            NativeBiometric.verifyIdentity({
+              reason: "Sblocca LYS Hub",
+              title: "LYS Hub",
+              useFallback: true,
+            })
+              .then(function () {
+                segnaSbloccato();
+                nascondiOverlay();
+              })
+              .catch(function () {
+                mostraOverlay();
+              });
+          }
+
+          function controllaLock() {
+            if (!biometriaAttiva() || sbloccatoInQuestaSessione()) return;
+            mostraOverlay();
+            tentaSblocco();
+          }
+
+          controllaLock();
+          var App = window.Capacitor.Plugins.App;
+          if (App && App.addListener) {
+            App.addListener("appStateChange", function (state) {
+              if (state.isActive) {
+                controllaLock();
+              } else {
+                // Backgrounding reale (non un normale reload di pagina):
+                // richiede una nuova verifica al prossimo resume.
+                segnaBloccato();
+              }
+            });
           }
         })();
       }
