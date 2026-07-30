@@ -43,6 +43,33 @@
   {% endif %}
 </section>
 
+{% if reminder_pendenti %}
+  <section class="card">
+    <h2>Notifiche in attesa <span class="tag">{{ reminder_pendenti|length }}</span></h2>
+    <p class="meta" style="margin-top:-6px">
+      Attività di un collaboratore su cui non hai ancora agito (nota o upload
+      foto/documenti). Se non le gestisci né le silenzi, torna a ricordartele
+      ogni 24h.
+    </p>
+    <ul class="files-list">
+      {% for r in reminder_pendenti %}
+      <li>
+        <span style="display:flex; flex-direction:column; gap:2px; min-width:0;">
+          <a class="file-name" href="/pratiche/{{ r.pratica_numero }}">{{ r.titolo }}</a>
+          <span class="file-meta">
+            {{ r.creato_il.strftime("%d/%m/%Y %H:%M") if r.creato_il else "—" }}
+          </span>
+        </span>
+        <form method="post" action="/pratiche/{{ r.pratica_numero }}/reminder/silenzia">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <button type="submit" class="btn btn-sm">Segna come vista</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+{% endif %}
+
 {% if prossimi_eventi %}
   <section class="card">
     <h2>Prossimi appuntamenti <span class="tag">{{ prossimi_eventi|length }}</span></h2>
@@ -90,6 +117,7 @@
       <span class="badge">{{ results|length }} risultat{% if results|length == 1 %}o{% else %}i{% endif %}</span>
     </header>
 
+    <section class="card">
     {% if results %}
       <table class="results-table pratiche-table">
         <thead>
@@ -100,6 +128,7 @@
             <th>Veicolo</th>
             <th>Data sinistro</th>
             <th>Stato</th>
+            <th>Collaboratore</th>
             <th class="actions"></th>
           </tr>
         </thead>
@@ -118,6 +147,7 @@
             </td>
             <td data-label="Data sinistro">{{ r.data_sinistro.strftime("%d/%m/%Y") if r.data_sinistro else "—" }}</td>
             <td data-label="Stato"><span class="badge badge-stato badge-{{ stato_corrente }}">{{ stato_labels.get(stato_corrente, stato_corrente) }}</span></td>
+            <td data-label="Collaboratore">{{ collaboratori_pratiche.get(r.numero) or "—" }}</td>
             <td class="actions" data-label=""><a class="btn-link" href="/pratiche/{{ r.numero }}">Apri →</a></td>
           </tr>
           {% endfor %}
@@ -130,6 +160,7 @@
         lettere del cognome / le prime cifre della targa.
       </div>
     {% endif %}
+    </section>
   </section>
 {% else %}
   <section class="results">
@@ -137,6 +168,7 @@
       <h2>Ultime pratiche</h2>
       <span class="badge">{{ ultime_pratiche|length }}</span>
     </header>
+    <section class="card">
     {% if ultime_pratiche %}
       <table class="results-table pratiche-table">
         <thead>
@@ -147,6 +179,7 @@
             <th>Veicolo</th>
             <th>Data sinistro</th>
             <th>Stato</th>
+            <th>Collaboratore</th>
             <th class="actions"></th>
           </tr>
         </thead>
@@ -165,6 +198,7 @@
             </td>
             <td data-label="Data sinistro">{{ r.data_sinistro.strftime("%d/%m/%Y") if r.data_sinistro else "—" }}</td>
             <td data-label="Stato"><span class="badge badge-stato badge-{{ stato_corrente }}">{{ stato_labels.get(stato_corrente, stato_corrente) }}</span></td>
+            <td data-label="Collaboratore">{{ collaboratori_pratiche.get(r.numero) or "—" }}</td>
             <td class="actions" data-label=""><a class="btn-link" href="/pratiche/{{ r.numero }}">Apri →</a></td>
           </tr>
           {% endfor %}
@@ -173,6 +207,7 @@
     {% else %}
       <div class="empty">Nessuna pratica trovata.</div>
     {% endif %}
+    </section>
   </section>
 {% endif %}
 <script>

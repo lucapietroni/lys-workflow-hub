@@ -884,10 +884,55 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 
 ## Stato attuale
 
-Versione **4.15.0**, tutto su branch `main`, in produzione su
+Versione **4.16.0**, tutto su branch `main`, in produzione su
 `https://hub.lysauto.it`. Changelog per-commit in `git log`; le decisioni
 tecniche non ovvie dal codice (formati, gotcha, cause di bug reali) restano
 documentate nelle sezioni sopra, per sottosistema.
+
+**4.16.0 — Reminder ricorrente per notifiche admin non gestite**: se un
+collaboratore agisce su una pratica (nota/upload/stato) l'admin riceve una
+notifica (`_notifica_admin`, `web/routes_portale.py`), ma prima non c'era
+modo di ricordarsela — l'utente faceva uno screenshot della tendina
+notifiche per non perdere pratiche multiple aggiornate insieme. Nuovo
+repository `core/admin_pratica_reminder_repository.py`
+(`AdminPraticaReminderRepository`, tabella `admin_pratica_reminder`, un
+reminder "attivo" per pratica alla volta): `_notifica_admin` ne crea/
+aggiorna uno ad ogni notifica (`upsert_attivo`, aggiorna solo il testo se
+già attivo, NON resetta il timer — altrimenti un collaboratore che tocca
+la pratica ogni ora bloccherebbe per sempre il resend). Si risolve in due
+modi:
+- **Automaticamente**: quando l'admin agisce sulla stessa pratica — nota
+  (`pratica_aggiungi_nota`) o upload foto/documenti
+  (`_upload_pratica_admin`), entrambe in `routes.py`. L'admin non ha
+  un'azione di cambio-stato propria (`/pratiche/{n}/stato` esiste solo
+  lato `/portale`, per i collaboratori) quindi non è tra i trigger.
+- **Manualmente**: bottone "Segna come vista" nel nuovo widget "Notifiche
+  in attesa" in home admin (`index.html`, sopra "Prossimi appuntamenti"),
+  POST a `/pratiche/{numero}/reminder/silenzia`.
+
+Resend ogni 24h agganciato a `scripts/run_polling.py` (già schedulato 2
+volte/giorno in Task Scheduler — decisione esplicita con l'utente: niente
+nuovo script/Task Scheduler dedicato) — nuovo blocco a fine
+`run_once()`, stesso punto/stile del blocco SLA escalation già presente:
+`list_scaduti(soglia_ore=24)`, resend ntfy + FCM a tutti gli admin con
+token registrato, `segna_rimandato()`. Cadenza reale legata al polling
+(non 24h esatte), stesso compromesso già accettato per SLA escalation e
+`send_event_reminders.py`. Nessun test end-to-end su `run_polling.py`
+(zero test pre-esistenti su questo script, troppe dipendenze esterne
+IMAP/AI/WinCar da mockare) — coperto solo a livello di repository
+(`list_scaduti`/`segna_rimandato`/`upsert_attivo`/`risolvi_per_pratica`).
+
+**Fix da code-review prima del rilascio**: `upsert_attivo()` era in origine
+un SELECT-then-INSERT/UPDATE separato (unico repository in `core/` a farlo
+invece di un indice `UNIQUE` — convenzione reale del progetto, vedi
+`sollecito_repository.py`/`pratica_assegnazioni_repository.py`/ecc.): due
+azioni quasi-simultanee sulla stessa pratica potevano creare due reminder
+"attivi" per lo stesso numero. Fix: indice parziale
+`uq_admin_pratica_reminder_attivo` (`WHERE stato='attivo'`) + UPSERT
+atomico (`INSERT ... ON CONFLICT(pratica_numero) WHERE stato='attivo' DO
+UPDATE`), con test di regressione che verifica l'`IntegrityError` su un
+secondo INSERT diretto. Aggiunto anche l'hook di auto-risoluzione mancante
+su `pratica_aggiungi_evento` (admin) — c'era solo su nota e upload.
 
 **4.15.0 — Giro 2 su admin-in-app + FCM all'admin**: test reale su device
 dopo il 4.14.0 ha trovato altri gap, tutti risolti nello stesso giro:

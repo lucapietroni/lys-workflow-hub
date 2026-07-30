@@ -7,6 +7,13 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
+from lys_workflow_hub.config import Settings
+from lys_workflow_hub.core.admin_pratica_reminder_repository import (
+    AdminPraticaReminderRepository,
+)
+from lys_workflow_hub.core.pratica_assegnazioni_repository import (
+    PraticaAssegnazioniRepository,
+)
 from lys_workflow_hub.core.wincar_repository import (
     Cliente,
     CompagniaCliente,
@@ -17,7 +24,7 @@ from lys_workflow_hub.core.wincar_repository import (
     Veicolo,
 )
 from lys_workflow_hub.main import app
-from lys_workflow_hub.web.routes import get_repository
+from lys_workflow_hub.web.routes import get_app_settings, get_repository
 from tests.conftest import login_as_admin
 
 
@@ -130,6 +137,64 @@ def test_home_targa_query_triggers_targa_search(client_with_mock_repo):
     repo.search_pratiche.return_value = []
     client.get("/?q=AB123CD")
     repo.search_pratiche.assert_called_once_with(targa="AB123CD", limit=20)
+
+
+def test_home_mostra_iniziali_collaboratore_assegnato(
+    client_with_mock_repo, authenticated_app, tmp_path
+) -> None:
+    """Colonna "Collaboratore" in lista pratiche admin: solo iniziali,
+    solo se il collaboratore assegnato ha un nome impostato."""
+    client, repo = client_with_mock_repo
+    repo.search_pratiche.return_value = [_sample_summary()]  # numero=766
+
+    assegnazioni_repo = PraticaAssegnazioniRepository(db_path=tmp_path / "app.db")
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Mario Rossi", ruolo="esterno"
+    )
+    assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
+    settings = Settings(wincar_archivio=tmp_path, app_db_path=tmp_path / "app.db")
+
+    app.dependency_overrides[get_app_settings] = lambda: settings
+    try:
+        response = client.get("/")
+        assert response.status_code == 200
+        assert "MR" in response.text
+    finally:
+        app.dependency_overrides.pop(get_app_settings, None)
+
+
+def test_home_senza_collaboratore_assegnato_mostra_trattino(client_with_mock_repo) -> None:
+    client, repo = client_with_mock_repo
+    repo.search_pratiche.return_value = [_sample_summary()]
+    response = client.get("/")
+    assert response.status_code == 200
+    assert 'data-label="Collaboratore">—<' in response.text
+
+
+def test_home_senza_reminder_non_mostra_widget(client_with_mock_repo) -> None:
+    client, repo = client_with_mock_repo
+    repo.search_pratiche.return_value = [_sample_summary()]
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "Notifiche in attesa" not in response.text
+
+
+def test_home_con_reminder_attivo_mostra_widget(client_with_mock_repo, tmp_path) -> None:
+    client, repo = client_with_mock_repo
+    repo.search_pratiche.return_value = [_sample_summary()]
+    settings = Settings(wincar_archivio=tmp_path, app_db_path=tmp_path / "app.db")
+    AdminPraticaReminderRepository(db_path=settings.app_db_path).upsert_attivo(
+        766, titolo="Nuova nota", messaggio="Agenzia: preso app.to"
+    )
+
+    app.dependency_overrides[get_app_settings] = lambda: settings
+    try:
+        response = client.get("/")
+        assert response.status_code == 200
+        assert "Notifiche in attesa" in response.text
+        assert "Nuova nota" in response.text
+    finally:
+        app.dependency_overrides.pop(get_app_settings, None)
 
 
 def test_pratica_detail_renders_all_sections(client_with_mock_repo):

@@ -17,6 +17,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from lys_workflow_hub.config import Settings
+from lys_workflow_hub.core.admin_pratica_reminder_repository import (
+    AdminPraticaReminderRepository,
+)
 from lys_workflow_hub.core.pratica_assegnazioni_repository import (
     PraticaAssegnazioniRepository,
 )
@@ -389,6 +392,83 @@ def test_esterno_aggiunge_nota_notifica_admin_via_fcm_se_loggato_in_app(
         mock_fcm.assert_called_once()
         assert mock_fcm.call_args.kwargs["fcm_token"] == "admin-device-token"
         assert mock_fcm.call_args.kwargs["click_path"] == "/pratiche/766"
+
+
+def test_esterno_aggiunge_nota_crea_reminder_pendente(authenticated_app, portale_setup) -> None:
+    """Feature "ricordamelo dopo 24h": ogni attività notificata all'admin
+    lascia un reminder attivo per quella pratica (AdminPraticaReminderRepository),
+    finché l'admin non agisce o lo silenzia."""
+    assegnazioni_repo, settings = portale_setup
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
+
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, "agenzia@esempio.it", "password1234")
+    token = get_csrf(client, "/portale/pratiche/766")
+
+    with patch("lys_workflow_hub.web.routes_portale.notify_push_nuova_attivita"):
+        resp = client.post(
+            "/portale/pratiche/766/note",
+            data={"testo": "preso app.to con perito", "csrf_token": token},
+        )
+        assert resp.status_code == 303
+
+    reminder_repo = AdminPraticaReminderRepository(db_path=settings.app_db_path)
+    attivi = reminder_repo.list_attivi()
+    assert len(attivi) == 1
+    assert attivi[0].pratica_numero == 766
+
+
+def test_admin_aggiunge_nota_risolve_reminder_pendente(admin_client) -> None:
+    client, settings = admin_client
+    reminder_repo = AdminPraticaReminderRepository(db_path=settings.app_db_path)
+    reminder_repo.upsert_attivo(766, titolo="Nuova nota", messaggio="Agenzia: preso app.to")
+    assert len(reminder_repo.list_attivi()) == 1
+
+    with patch("lys_workflow_hub.web.routes.notify_esterno_nuova_attivita"):
+        resp = client.post(
+            "/pratiche/766/note",
+            data={"testo": "gestito", "csrf_token": get_csrf(client, "/pratiche/766")},
+        )
+        assert resp.status_code == 303
+
+    assert reminder_repo.list_attivi() == []
+
+
+def test_admin_carica_foto_risolve_reminder_pendente(admin_client) -> None:
+    client, settings = admin_client
+    reminder_repo = AdminPraticaReminderRepository(db_path=settings.app_db_path)
+    reminder_repo.upsert_attivo(766, titolo="Nuovi file", messaggio="Agenzia: 2 foto")
+    assert len(reminder_repo.list_attivi()) == 1
+
+    with (
+        patch("lys_workflow_hub.web.routes._salva_file_pratica", return_value=(["a.jpg"], [])),
+        patch("lys_workflow_hub.web.routes.notify_esterno_nuova_attivita"),
+    ):
+        resp = client.post(
+            "/pratiche/766/foto",
+            data={"csrf_token": get_csrf(client, "/pratiche/766")},
+            files={"files": ("a.jpg", b"fake", "image/jpeg")},
+        )
+        assert resp.status_code == 303
+
+    assert reminder_repo.list_attivi() == []
+
+
+def test_admin_silenzia_reminder_manualmente(admin_client) -> None:
+    client, settings = admin_client
+    reminder_repo = AdminPraticaReminderRepository(db_path=settings.app_db_path)
+    reminder_repo.upsert_attivo(766, titolo="Nuova nota", messaggio="m")
+    assert len(reminder_repo.list_attivi()) == 1
+
+    resp = client.post(
+        "/pratiche/766/reminder/silenzia",
+        data={"csrf_token": get_csrf(client, "/pratiche/766")},
+    )
+    assert resp.status_code == 303
+    assert reminder_repo.list_attivi() == []
 
 
 def test_esterno_aggiunge_evento_notifica_admin(authenticated_app, portale_setup) -> None:

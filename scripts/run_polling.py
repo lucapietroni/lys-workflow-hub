@@ -37,6 +37,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from lys_workflow_hub.config import get_settings  # noqa: E402
+from lys_workflow_hub.core.admin_pratica_reminder_repository import (  # noqa: E402
+    AdminPraticaReminderRepository,
+)
 from lys_workflow_hub.core.compagnie_repository import CompagnieRepository  # noqa: E402
 from lys_workflow_hub.core.draft_repository import DraftRepository  # noqa: E402
 from lys_workflow_hub.core.mail_in_repository import (  # noqa: E402
@@ -57,6 +60,7 @@ from lys_workflow_hub.core.pratica_stato_repository import (  # noqa: E402
 from lys_workflow_hub.core.sollecito_repository import (  # noqa: E402
     SollecitoRepository,
 )
+from lys_workflow_hub.core.utenti_repository import UtentiRepository  # noqa: E402
 from lys_workflow_hub.workflows.risposte.sollecito_generator import (  # noqa: E402
     LIVELLO_LABELS,
     genera_sollecito,
@@ -64,7 +68,11 @@ from lys_workflow_hub.workflows.risposte.sollecito_generator import (  # noqa: E
 from lys_workflow_hub.core.wincar_repository import WinCarRepository  # noqa: E402
 from lys_workflow_hub.integrations.ai_classifier import classify  # noqa: E402
 from lys_workflow_hub.integrations.imap_fetcher import ImapFetcher  # noqa: E402
-from lys_workflow_hub.integrations.notifier import notify_batch  # noqa: E402
+from lys_workflow_hub.integrations.notifier import (  # noqa: E402
+    notify_batch,
+    notify_fcm_nuova_attivita,
+    notify_push_nuova_attivita,
+)
 from lys_workflow_hub.workflows.risposte.context_builder import (  # noqa: E402
     build_scaffold_context,
 )
@@ -701,6 +709,53 @@ def run_once() -> int:
                             )
                 except Exception as exc:  # noqa: BLE001
                     log.warning("SLA escalation check fallito (non blocca): %s", exc)
+
+            # 6) Reminder pratiche non gestite da 24h+ (v4.16.0): attività di
+            # un collaboratore su cui l'admin non ha ancora agito né
+            # silenziato manualmente — vedi AdminPraticaReminderRepository,
+            # popolato da _notifica_admin in web/routes_portale.py.
+            try:
+                reminder_repo = AdminPraticaReminderRepository(db_path=settings.app_db_path)
+                utenti_repo_reminder = UtentiRepository(db_path=settings.app_db_path)
+                scaduti = reminder_repo.list_scaduti(soglia_ore=24)
+                log.info("Reminder pratiche scaduti da rimandare: %d", len(scaduti))
+                for rem in scaduti:
+                    try:
+                        if not settings.notify_disabled and settings.ntfy_topic:
+                            notify_push_nuova_attivita(
+                                ntfy_server=settings.ntfy_server,
+                                ntfy_topic=settings.ntfy_topic,
+                                titolo=rem.titolo,
+                                messaggio=rem.messaggio,
+                                click_url=settings.public_url(f"/pratiche/{rem.pratica_numero}"),
+                                disabled=settings.notify_disabled,
+                            )
+                        for u in utenti_repo_reminder.list_all():
+                            if not (u.is_admin and u.attivo):
+                                continue
+                            for token in (u.fcm_token, u.fcm_token_web):
+                                if token:
+                                    notify_fcm_nuova_attivita(
+                                        fcm_project_id=settings.fcm_project_id,
+                                        fcm_credentials_path=str(settings.fcm_credentials_path or ""),
+                                        fcm_token=token,
+                                        titolo=rem.titolo,
+                                        messaggio=rem.messaggio,
+                                        click_path=f"/pratiche/{rem.pratica_numero}",
+                                        disabled=settings.notify_disabled,
+                                    )
+                        reminder_repo.segna_rimandato(rem.id)
+                        log.info(
+                            "Reminder rimandato: pratica=%s (id=%s)",
+                            rem.pratica_numero, rem.id,
+                        )
+                    except Exception as _exc:  # noqa: BLE001
+                        log.warning(
+                            "Resend reminder pratica %s fallito: %s",
+                            rem.pratica_numero, _exc,
+                        )
+            except Exception as exc:  # noqa: BLE001
+                log.warning("Controllo reminder pratiche fallito (non blocca): %s", exc)
 
             log.info("=== Fine ciclo polling ===")
             return 0

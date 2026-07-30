@@ -1780,6 +1780,11 @@ html.is-app .btn-azzera-filtri {
 /* -- Toggle sblocco biometrico (/portale/impostazioni), solo app -- */
 html.is-app .biometric-toggle-section { display: block; }
 
+/* -- "Torna alla ricerca" in fondo alla pratica admin, solo app: da
+   browser desktop il link in cima basta, ma in app dopo aver scrollato
+   tutta la pratica serve anche in fondo (come richiesto dall'utente). -- */
+html.is-app .breadcrumb-bottom { display: block; }
+
 /* -- Cambio stato pratica: colonna a piena larghezza invece di riga stretta -- */
 html.is-app .form-inline-stato { flex-direction: column; align-items: stretch; gap: 10px; }
 html.is-app .form-inline-stato .select-inline,

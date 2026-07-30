@@ -25,6 +25,9 @@ from fastapi.templating import Jinja2Templates
 
 from lys_workflow_hub import __version__
 from lys_workflow_hub.config import Settings, get_settings
+from lys_workflow_hub.core.admin_pratica_reminder_repository import (
+    AdminPraticaReminderRepository,
+)
 from lys_workflow_hub.core.pratica_assegnazioni_repository import (
     PraticaAssegnazioniRepository,
 )
@@ -380,16 +383,35 @@ def _notifica_admin(
             disabled=settings.notify_disabled,
         )
         utenti_repo: UtentiRepository = request.app.state.utenti_repo
-        for u in utenti_repo.list_all():
-            if u.is_admin and u.attivo:
-                _notifica_fcm_tutti_i_canali(
-                    u,
-                    settings,
-                    subject=push_titolo,
-                    body_text=messaggio,
-                    numero=numero,
-                    click_path=f"/pratiche/{numero}",
-                )
+        admin_con_token = [
+            u for u in utenti_repo.list_all()
+            if u.is_admin and u.attivo and (u.fcm_token or u.fcm_token_web)
+        ]
+        # Log esplicito: "Notifica FCM fallita" (in notify_fcm_nuova_attivita)
+        # copre solo il caso di invio fallito, non distingue da "nessun admin
+        # ha un token registrato" — questo log serve a diagnosticare quel
+        # secondo caso (es. permesso notifiche negato sul device, mai
+        # arrivato a registrare un token) senza dover ispezionare il DB.
+        logger.info(
+            "Notifica admin pratica %s: %d admin con token FCM registrato",
+            numero, len(admin_con_token),
+        )
+        for u in admin_con_token:
+            _notifica_fcm_tutti_i_canali(
+                u,
+                settings,
+                subject=push_titolo,
+                body_text=messaggio,
+                numero=numero,
+                click_path=f"/pratiche/{numero}",
+            )
+        # Reminder ricorrente (v4.16.0): se l'admin non agisce sulla
+        # pratica (nota/upload, vedi routes.py) entro 24h, run_polling.py
+        # rimanda questa stessa notifica finché non viene risolta o
+        # silenziata manualmente — vedi AdminPraticaReminderRepository.
+        AdminPraticaReminderRepository(db_path=settings.app_db_path).upsert_attivo(
+            numero, titolo=push_titolo, messaggio=messaggio
+        )
     except Exception as exc:  # noqa: BLE001
         logger.warning("Impossibile notificare admin: %s", exc)
 

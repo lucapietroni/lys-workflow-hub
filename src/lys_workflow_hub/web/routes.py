@@ -25,6 +25,9 @@ from fastapi.templating import Jinja2Templates
 
 from lys_workflow_hub import __version__
 from lys_workflow_hub.config import Settings, get_settings
+from lys_workflow_hub.core.admin_pratica_reminder_repository import (
+    AdminPraticaReminderRepository,
+)
 from lys_workflow_hub.core.draft_repository import (
     DraftRepository,
     STATUS_PENDING,
@@ -215,6 +218,18 @@ def _costruisci_feed_attivita(
     return voci[:limit]
 
 
+def _iniziali_nome(nome: str) -> str:
+    """Iniziali per la colonna "Collaboratore" della lista pratiche admin:
+    prima lettera del primo e dell'ultimo termine (es. "Mario Rossi" → "MR"),
+    primi due caratteri se il nome è una singola parola (es. "Agenzia")."""
+    parole = nome.split()
+    if not parole:
+        return ""
+    if len(parole) == 1:
+        return parole[0][:2].upper()
+    return (parole[0][0] + parole[-1][0]).upper()
+
+
 # --------------------------------------------------------------------------- #
 #  Home & dettaglio pratica
 # --------------------------------------------------------------------------- #
@@ -235,6 +250,7 @@ def home(
     context = _common_context()
     context["query"] = q or ""
     context["results"] = []
+    context["ultime_pratiche"] = []
     context["search_kind"] = None
 
     # KPI per la hero strip — silenzioso in caso di errore DB
@@ -304,13 +320,43 @@ def home(
     # già usato in portale_list.html, mai applicato qui finora. Solo le
     # righe effettivamente in pagina (max 20), niente query bulk.
     context["stato_labels"] = STATO_LABELS
+    righe = context["results"] or context["ultime_pratiche"]
     try:
         stato_repo_lista = PraticaStatoRepository(db_path=settings.app_db_path)
-        righe = context["results"] or context["ultime_pratiche"]
         context["stati_pratiche"] = {r.numero: stato_repo_lista.get_stato(r.numero) for r in righe}
     except Exception as exc:  # noqa: BLE001
         logger.warning("Impossibile leggere lo stato delle pratiche in lista: %s", exc)
         context["stati_pratiche"] = {}
+
+    # Iniziali dei collaboratori esterni assegnati a ciascuna pratica in
+    # lista — solo se il collaboratore ha un nome impostato (niente
+    # fallback sull'email, "iniziali se presente" è esplicito).
+    try:
+        assegnazioni_repo_lista = PraticaAssegnazioniRepository(db_path=settings.app_db_path)
+        utenti_by_id = {u.id: u for u in request.app.state.utenti_repo.list_all()}
+        collaboratori: dict[int, str] = {}
+        for r in righe:
+            assegnati_ids = assegnazioni_repo_lista.list_utente_ids_per_pratica(r.numero)
+            iniziali = [
+                _iniziali_nome(utenti_by_id[uid].nome)
+                for uid in assegnati_ids
+                if uid in utenti_by_id and utenti_by_id[uid].nome
+            ]
+            collaboratori[r.numero] = ", ".join(iniziali)
+        context["collaboratori_pratiche"] = collaboratori
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Impossibile leggere i collaboratori assegnati in lista: %s", exc)
+        context["collaboratori_pratiche"] = {}
+
+    # Reminder pratiche non gestite (v4.16.0): attività di un collaboratore
+    # su cui l'admin non ha ancora agito né silenziato manualmente — vedi
+    # AdminPraticaReminderRepository, popolato da _notifica_admin.
+    try:
+        reminder_repo = AdminPraticaReminderRepository(db_path=settings.app_db_path)
+        context["reminder_pendenti"] = reminder_repo.list_attivi()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Impossibile leggere i reminder pratiche pendenti: %s", exc)
+        context["reminder_pendenti"] = []
 
     return templates.TemplateResponse(request, "index.html", context)
 
@@ -650,6 +696,12 @@ def pratica_aggiungi_nota(
         repo.add(numero, admin.id, admin.nome or admin.email, testo)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+    try:
+        AdminPraticaReminderRepository(db_path=settings.app_db_path).risolvi_per_pratica(
+            numero, risolto_da="azione"
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Impossibile risolvere reminder pratica %s: %s", numero, exc)
     _notifica_esterni_assegnati(
         request,
         settings,
@@ -662,6 +714,21 @@ def pratica_aggiungi_nota(
         ),
     )
     return RedirectResponse(url=f"/pratiche/{numero}#note", status_code=303)
+
+
+@router.post("/pratiche/{numero}/reminder/silenzia")
+def pratica_reminder_silenzia(
+    numero: int,
+    admin: Utente = Depends(require_admin),
+    settings: Settings = Depends(get_app_settings),
+) -> RedirectResponse:
+    """Silenzia manualmente il reminder ricorrente di questa pratica (widget
+    "Notifiche in attesa" in home) senza richiedere una nota/upload —
+    l'admin può averla già gestita altrove (telefono, di persona)."""
+    AdminPraticaReminderRepository(db_path=settings.app_db_path).risolvi_per_pratica(
+        numero, risolto_da="manuale"
+    )
+    return RedirectResponse(url="/", status_code=303)
 
 
 @router.post("/pratiche/{numero}/eventi")
@@ -681,6 +748,12 @@ def pratica_aggiungi_evento(
         repo.add(numero, titolo, data, admin.id, admin.nome or admin.email)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+    try:
+        AdminPraticaReminderRepository(db_path=settings.app_db_path).risolvi_per_pratica(
+            numero, risolto_da="azione"
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Impossibile risolvere reminder pratica %s: %s", numero, exc)
     _notifica_esterni_assegnati(
         request,
         settings,
@@ -970,6 +1043,12 @@ def _upload_pratica_admin(
     salvati, errori = _salva_file_pratica(numero, categoria, files, settings)
 
     if salvati:
+        try:
+            AdminPraticaReminderRepository(db_path=settings.app_db_path).risolvi_per_pratica(
+                numero, risolto_da="azione"
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Impossibile risolvere reminder pratica %s: %s", numero, exc)
         _notifica_esterni_assegnati(
             request,
             settings,
