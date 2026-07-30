@@ -357,6 +357,40 @@ def test_esterno_aggiunge_nota_notifica_admin(authenticated_app, portale_setup) 
         assert "Agenzia" in mock_notify.call_args.kwargs["messaggio"]
 
 
+def test_esterno_aggiunge_nota_notifica_admin_via_fcm_se_loggato_in_app(
+    authenticated_app, portale_setup
+) -> None:
+    """L'admin che ha fatto login in LYSApp (fcm_token popolato dallo stesso
+    script di registrazione usato dagli esterni) deve ricevere una push FCM
+    nativa, non solo il vecchio canale ntfy — bug reale segnalato dall'utente
+    ("se sono loggato come admin sull'app devo ricevere tutte le notifiche"),
+    `_notifica_admin` non inviava mai FCM prima di questa fix."""
+    assegnazioni_repo, _ = portale_setup
+    admin = authenticated_app.get_by_email("admin@test.local")
+    authenticated_app.set_fcm_token(admin.id, "admin-device-token")
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
+
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, "agenzia@esempio.it", "password1234")
+
+    token = get_csrf(client, "/portale/pratiche/766")
+    with (
+        patch("lys_workflow_hub.web.routes_portale.notify_push_nuova_attivita"),
+        patch("lys_workflow_hub.web.routes.notify_fcm_nuova_attivita") as mock_fcm,
+    ):
+        resp = client.post(
+            "/portale/pratiche/766/note",
+            data={"testo": "preso app.to con perito", "csrf_token": token},
+        )
+        assert resp.status_code == 303
+        mock_fcm.assert_called_once()
+        assert mock_fcm.call_args.kwargs["fcm_token"] == "admin-device-token"
+        assert mock_fcm.call_args.kwargs["click_path"] == "/pratiche/766"
+
+
 def test_esterno_aggiunge_evento_notifica_admin(authenticated_app, portale_setup) -> None:
     assegnazioni_repo, _ = portale_setup
     esterno = authenticated_app.create(

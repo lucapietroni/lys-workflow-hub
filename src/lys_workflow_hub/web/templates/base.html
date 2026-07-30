@@ -497,35 +497,22 @@
       })();
     </script>
     <script>
-      // target="_blank" non fa nulla nella WebView Capacitor (nessun supporto
-      // multi-finestra): senza questo, ogni link doc/allegato/anteprima
-      // sembra morto al tap. Delega globale su tutti i link _blank del body,
-      // così copre anche le pagine admin (mai testate in app finora) senza
-      // dover toccare ogni singolo template. Sostituisce l'handler locale
-      // ".documento-link" di portale_pratica_detail.html (rimosso, ora
-      // ridondante).
-      if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
-        document.addEventListener("click", function (e) {
-          var link = e.target.closest('a[target="_blank"]');
-          if (!link || !link.href) return;
-          e.preventDefault();
-          window.Capacitor.Plugins.Browser.open({ url: link.href });
-        });
-      }
-    </script>
-    <script>
-      // Pulsanti "Scarica .docx"/"Genera PDF" (cessione, verbali, bozza
-      // vandalismo): POST che risponde con Content-Disposition: attachment.
-      // Nella WebView Capacitor non c'e' nessun DownloadListener, quindi la
-      // navigazione normale del form finisce su una pagina bianca e il file
-      // si perde. Intercetta solo i bottoni marcati ".js-app-download"
-      // (non l'intero form: alcuni form hanno anche bottoni che portano a
-      // pagine normali, es. "Rigenera anteprima"/"Procedi all'invio" in
-      // vandalismo_preview.html), rifà la POST via fetch mantenendo
-      // l'encoding url-encoded originale (cosi' il CSRF check automatico di
-      // AuthMiddleware, che si aspetta form non-multipart, resta invariato),
-      // salva il blob in cache e apre lo share sheet Android: e' l'unico
-      // modo affidabile di consegnare un file generato al volo in WebView.
+      // Apertura/download file dentro la WebView Capacitor: due problemi
+      // distinti, una sola soluzione.
+      // 1. target="_blank" non fa nulla (nessun supporto multi-finestra).
+      // 2. Anche routing con Browser.open() (Chrome Custom Tabs) non basta
+      //    per le risorse autenticate: le Custom Tabs girano nel processo
+      //    Chrome di sistema, con un cookie jar SEPARATO da quello della
+      //    WebView dell'app — la sessione di login non viene condivisa,
+      //    quindi l'utente vedeva la pagina di login al posto del file
+      //    (bug reale: "clicco su documenti e non vedo l'anteprima").
+      // Soluzione unica: fetch() dalla WebView stessa (stessi cookie di
+      // sessione della pagina, nessun problema di auth) + salvataggio in
+      // cache con @capacitor/filesystem + apertura con lo share sheet
+      // Android (@capacitor/share) — stesso meccanismo già necessario per
+      // i download da form POST (Scarica .docx/PDF), qui riusato per i
+      // link GET. Browser.open() resta solo per link VERAMENTE esterni
+      // (altra origin, es. GitHub) dove non serve la sessione dell'app.
       if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
         function lysBlobToBase64(blob) {
           return new Promise(function (resolve, reject) {
@@ -536,19 +523,8 @@
           });
         }
 
-        document.addEventListener("click", function (e) {
-          var btn = e.target.closest(".js-app-download");
-          if (!btn || !btn.form) return;
-          e.preventDefault();
-          var form = btn.form;
-          var action = btn.getAttribute("formaction") || form.action;
-          var method = (btn.getAttribute("formmethod") || form.method || "GET").toUpperCase();
-          var body = method === "GET" ? undefined : new URLSearchParams(new FormData(form));
-          var originalLabel = btn.textContent;
-          btn.disabled = true;
-          btn.textContent = "Generazione…";
-
-          fetch(action, { method: method, body: body })
+        function lysFetchAndOpen(url, options, fallbackName, onDone) {
+          fetch(url, options)
             .then(function (resp) {
               if (!resp.ok) {
                 return resp
@@ -560,7 +536,7 @@
               }
               var cd = resp.headers.get("Content-Disposition") || "";
               var match = /filename="?([^";]+)"?/.exec(cd);
-              var fname = match ? match[1] : "documento";
+              var fname = match ? match[1] : fallbackName;
               return resp.blob().then(function (blob) { return { blob: blob, fname: fname }; });
             })
             .then(function (r) {
@@ -577,16 +553,49 @@
             })
             .catch(function (err) {
               // Utente ha chiuso lo share sheet senza scegliere un'app: il
-              // documento e' stato generato e scritto correttamente, non e'
-              // un errore da segnalare.
+              // file e' stato scaricato/generato correttamente, non e' un
+              // errore da segnalare.
               if (err && err.message === "Share canceled") return;
-              console.error("Download documento fallito", err);
-              alert("Generazione documento fallita: " + err.message);
+              console.error("Apertura file fallita", err);
+              alert("Apertura file fallita: " + err.message);
             })
-            .finally(function () {
-              btn.disabled = false;
-              btn.textContent = originalLabel;
-            });
+            .finally(onDone);
+        }
+
+        // -- 1. Link target="_blank" -------------------------------------
+        document.addEventListener("click", function (e) {
+          var link = e.target.closest('a[target="_blank"]');
+          if (!link || !link.href) return;
+          e.preventDefault();
+          if (link.origin !== window.location.origin) {
+            window.Capacitor.Plugins.Browser.open({ url: link.href });
+            return;
+          }
+          lysFetchAndOpen(link.href, { method: "GET" }, link.textContent.trim() || "documento", function () {});
+        });
+
+        // -- 2. Bottoni "Scarica .docx"/"Genera PDF" (POST) --------------
+        // Marcati ".js-app-download" e non l'intero form: alcuni form
+        // hanno anche bottoni che portano a pagine normali, es. "Procedi
+        // all'invio" in vandalismo_preview.html. La POST viene rifatta via
+        // fetch mantenendo l'encoding url-encoded originale (cosi' il CSRF
+        // check automatico di AuthMiddleware, che si aspetta form
+        // non-multipart, resta invariato — FormData forzerebbe multipart).
+        document.addEventListener("click", function (e) {
+          var btn = e.target.closest(".js-app-download");
+          if (!btn || !btn.form) return;
+          e.preventDefault();
+          var form = btn.form;
+          var action = btn.getAttribute("formaction") || form.action;
+          var method = (btn.getAttribute("formmethod") || form.method || "GET").toUpperCase();
+          var body = method === "GET" ? undefined : new URLSearchParams(new FormData(form));
+          var originalLabel = btn.textContent;
+          btn.disabled = true;
+          btn.textContent = "Generazione…";
+          lysFetchAndOpen(action, { method: method, body: body }, "documento", function () {
+            btn.disabled = false;
+            btn.textContent = originalLabel;
+          });
         });
       }
     </script>

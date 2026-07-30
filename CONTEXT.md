@@ -884,10 +884,52 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 
 ## Stato attuale
 
-Versione **4.14.0**, tutto su branch `main`, in produzione su
+Versione **4.15.0**, tutto su branch `main`, in produzione su
 `https://hub.lysauto.it`. Changelog per-commit in `git log`; le decisioni
 tecniche non ovvie dal codice (formati, gotcha, cause di bug reali) restano
 documentate nelle sezioni sopra, per sottosistema.
+
+**4.15.0 — Giro 2 su admin-in-app + FCM all'admin**: test reale su device
+dopo il 4.14.0 ha trovato altri gap, tutti risolti nello stesso giro:
+- **Bug architetturale trovato nel 4.14.0**: `Browser.open()` (Chrome
+  Custom Tabs) usato per `target="_blank"` gira in un processo Chrome
+  separato con cookie jar proprio, isolato da quello della WebView
+  dell'app — la sessione di login non passa, quindi ogni link autenticato
+  (documenti, .eml, allegati) apriva la pagina di login invece del file
+  ("non vedo l'anteprima"). Fix in `base.html`: stesso link ora fa
+  `fetch()` dentro la WebView (cookie della pagina, niente problemi di
+  auth) → `Filesystem` (cache) → `Share` — stesso meccanismo già
+  necessario per i download da form POST, unificato in un solo helper
+  `lysFetchAndOpen`. `Browser.open()` resta solo per link di altra origin
+  (es. GitHub, non serve la sessione dell'app).
+- **"dal" nella colonna Veicolo**: non era sui dati della pratica singola,
+  era nella lista pratiche — `portale_list.html` già tronca
+  `.split(" dal ")[0]` sul modello, `index.html` (admin) no. Applicato
+  identico, anche colonna **Stato** con badge aggiunta alla lista admin
+  per parità di layout con `/portale` (sia in app che da browser).
+- **Zoom pinch + scatta foto**: portati in `pratica_detail.html` (admin),
+  stesso codice di `portale_pratica_detail.html`, gating
+  `isNativePlatform()` invariato (solo in app, la selezione multipla con
+  pressione prolungata di `/portale` non è stata riproposta, non
+  richiesta).
+- **"Torna alla ricerca"**: ora pulsante (`btn btn-sm`) come l'esterno.
+- **`/foto` non scorrimento orizzontale**: la tabella usava una classe
+  (`data-table`) mai stilata, fuori dalla strategia responsive generica
+  (`.table`/`.results-table`, `overflow-x:auto` sotto i 900px) di tutte le
+  altre tabelle admin. Cambiata classe, nessun'altra modifica.
+- **Notifiche FCM all'admin loggato in LYSApp**: `_notifica_admin`
+  (`routes_portale.py`, attività di un esterno su nota/evento/stato/
+  upload) mandava solo ntfy (topic globale, richiede setup separato) — mai
+  una push FCM nativa al token dell'app, anche se l'admin registra il
+  token esattamente come un esterno (stesso script in `base.html`). Ora
+  manda FCM a ogni admin attivo con token registrato
+  (`_notifica_fcm_tutti_i_canali`, già esistente per gli esterni, esteso
+  con un parametro `click_path` opzionale: il default `/portale/...`
+  darebbe 403 a un admin, serve `/pratiche/{numero}`).
+
+Nessuna modifica nativa Android in questo giro (solo template/CSS/JS
+server-side + route Python) — **nessun rebuild APK necessario**, tutto
+live via wrapper.
 
 **4.14.0 — Admin funzionante dentro l'app Android**: finora nessuno aveva
 mai testato il login admin dentro LYSApp — le pagine admin non erano state

@@ -300,6 +300,18 @@ def home(
             logger.warning("Impossibile leggere le ultime pratiche: %s", exc)
             context["ultime_pratiche"] = []
 
+    # Stato di ciascuna pratica mostrata in tabella — stesso layout/badge
+    # già usato in portale_list.html, mai applicato qui finora. Solo le
+    # righe effettivamente in pagina (max 20), niente query bulk.
+    context["stato_labels"] = STATO_LABELS
+    try:
+        stato_repo_lista = PraticaStatoRepository(db_path=settings.app_db_path)
+        righe = context["results"] or context["ultime_pratiche"]
+        context["stati_pratiche"] = {r.numero: stato_repo_lista.get_stato(r.numero) for r in righe}
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Impossibile leggere lo stato delle pratiche in lista: %s", exc)
+        context["stati_pratiche"] = {}
+
     return templates.TemplateResponse(request, "index.html", context)
 
 
@@ -547,10 +559,17 @@ def _notifica_fcm_tutti_i_canali(
     subject: str,
     body_text: str,
     numero: int,
+    click_path: str | None = None,
 ) -> None:
     """Invia FCM su ogni canale con un token registrato — un utente può avere
     l'app Android E il portale in browser aperti contemporaneamente
-    (`fcm_token`/`fcm_token_web`, colonne indipendenti), entrambi ricevono."""
+    (`fcm_token`/`fcm_token_web`, colonne indipendenti), entrambi ricevono.
+
+    `click_path` di default punta al dettaglio pratica lato portale esterno
+    (`/portale/pratiche/{numero}`) — per notificare un admin (che non ha
+    accesso a quel path, vedi `_notifica_admin` in routes_portale.py) va
+    passato esplicitamente `/pratiche/{numero}`.
+    """
     for token in (u.fcm_token, u.fcm_token_web):
         if token:
             notify_fcm_nuova_attivita(
@@ -559,7 +578,7 @@ def _notifica_fcm_tutti_i_canali(
                 fcm_token=token,
                 titolo=subject,
                 messaggio=body_text,
-                click_path=f"/portale/pratiche/{numero}",
+                click_path=click_path or f"/portale/pratiche/{numero}",
                 disabled=settings.notify_disabled,
             )
 

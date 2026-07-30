@@ -99,20 +99,25 @@
             <th>Targa</th>
             <th>Veicolo</th>
             <th>Data sinistro</th>
+            <th>Stato</th>
             <th class="actions"></th>
           </tr>
         </thead>
         <tbody>
           {% for r in results %}
+          {% set stato_obj = stati_pratiche.get(r.numero) %}
+          {% set stato_corrente = stato_obj.stato if stato_obj else "aperta" %}
           <tr data-href="/pratiche/{{ r.numero }}">
             <td class="num" data-label="Pratica"><a href="/pratiche/{{ r.numero }}">{{ r.numero }}</a></td>
             <td data-label="Cliente">{{ r.cliente_nominativo or "—" }}</td>
             <td data-label="Targa"><code>{{ r.targa or "—" }}</code></td>
             <td data-label="Veicolo">
-              {%- set marca_modello = [(r.marca or ""), (r.modello or "")]|join(" ")|trim -%}
+              {%- set modello_corto = (r.modello or "").split(" dal ")[0] -%}
+              {%- set marca_modello = [(r.marca or ""), modello_corto]|join(" ")|trim -%}
               {{ marca_modello or "—" }}
             </td>
             <td data-label="Data sinistro">{{ r.data_sinistro.strftime("%d/%m/%Y") if r.data_sinistro else "—" }}</td>
+            <td data-label="Stato"><span class="badge badge-stato badge-{{ stato_corrente }}">{{ stato_labels.get(stato_corrente, stato_corrente) }}</span></td>
             <td class="actions" data-label=""><a class="btn-link" href="/pratiche/{{ r.numero }}">Apri →</a></td>
           </tr>
           {% endfor %}
@@ -141,20 +146,25 @@
             <th>Targa</th>
             <th>Veicolo</th>
             <th>Data sinistro</th>
+            <th>Stato</th>
             <th class="actions"></th>
           </tr>
         </thead>
         <tbody>
           {% for r in ultime_pratiche %}
+          {% set stato_obj = stati_pratiche.get(r.numero) %}
+          {% set stato_corrente = stato_obj.stato if stato_obj else "aperta" %}
           <tr data-href="/pratiche/{{ r.numero }}">
             <td class="num" data-label="Pratica"><a href="/pratiche/{{ r.numero }}">{{ r.numero }}</a></td>
             <td data-label="Cliente">{{ r.cliente_nominativo or "—" }}</td>
             <td data-label="Targa"><code>{{ r.targa or "—" }}</code></td>
             <td data-label="Veicolo">
-              {%- set marca_modello = [(r.marca or ""), (r.modello or "")]|join(" ")|trim -%}
+              {%- set modello_corto = (r.modello or "").split(" dal ")[0] -%}
+              {%- set marca_modello = [(r.marca or ""), modello_corto]|join(" ")|trim -%}
               {{ marca_modello or "—" }}
             </td>
             <td data-label="Data sinistro">{{ r.data_sinistro.strftime("%d/%m/%Y") if r.data_sinistro else "—" }}</td>
+            <td data-label="Stato"><span class="badge badge-stato badge-{{ stato_corrente }}">{{ stato_labels.get(stato_corrente, stato_corrente) }}</span></td>
             <td class="actions" data-label=""><a class="btn-link" href="/pratiche/{{ r.numero }}">Apri →</a></td>
           </tr>
           {% endfor %}

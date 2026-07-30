@@ -48,6 +48,7 @@ from lys_workflow_hub.web.routes import (
     _costruisci_feed_attivita,
     _FEED_LIMIT,
     _NON_RENDERIZZABILI,
+    _notifica_fcm_tutti_i_canali,
     _parse_date,
     _raggruppa_per_giorno,
     _salva_file_pratica,
@@ -346,15 +347,27 @@ def portale_pratica_foto_zip(
 
 
 def _notifica_admin(
-    settings: Settings, costruisci_messaggio: Callable[[], tuple[str, str, str]]
+    request: Request,
+    settings: Settings,
+    numero: int,
+    costruisci_messaggio: Callable[[], tuple[str, str, str]],
 ) -> None:
-    """Push all'admin (v3.0 fase 5).
+    """Push all'admin (v3.0 fase 5) + FCM a ogni admin loggato in LYSApp.
 
     `costruisci_messaggio` (titolo, messaggio, click_url) è chiamato QUI
     DENTRO: così anche un errore nella costruzione del testo (f-string,
     `settings.public_url`, `strftime`, ecc.) resta contenuto in questo
     try/except e non può far fallire la request — la nota/evento è già
     salvato quando questa funzione gira, la notifica è best-effort.
+
+    L'ntfy topic globale (`settings.ntfy_topic`) resta il canale storico
+    (v3.0), ma non arriva come push nativa nell'app se l'admin non ha
+    configurato ntfy separatamente. FCM va invece a chiunque abbia fatto
+    login admin in LYSApp almeno una volta (stesso `fcm_token`/
+    `fcm_token_web` degli esterni, popolato dallo stesso script di
+    registrazione in base.html — non è mai stato inviato agli admin fino a
+    questa fix). `click_path` punta a `/pratiche/{numero}` (admin), non
+    `/portale/pratiche/{numero}` (esterno, 403 per un admin).
     """
     try:
         push_titolo, messaggio, click_url = costruisci_messaggio()
@@ -366,6 +379,17 @@ def _notifica_admin(
             click_url=click_url,
             disabled=settings.notify_disabled,
         )
+        utenti_repo: UtentiRepository = request.app.state.utenti_repo
+        for u in utenti_repo.list_all():
+            if u.is_admin and u.attivo:
+                _notifica_fcm_tutti_i_canali(
+                    u,
+                    settings,
+                    subject=push_titolo,
+                    body_text=messaggio,
+                    numero=numero,
+                    click_path=f"/pratiche/{numero}",
+                )
     except Exception as exc:  # noqa: BLE001
         logger.warning("Impossibile notificare admin: %s", exc)
 
@@ -397,7 +421,9 @@ def _upload_pratica(
 
     if salvati:
         _notifica_admin(
+            request,
             settings,
+            numero,
             costruisci_messaggio=lambda: (
                 f"Nuovi file · Pratica {numero}",
                 f"{utente.nome or utente.email} ha caricato {len(salvati)} file "
@@ -448,6 +474,7 @@ def portale_upload_documento(
 @router.post("/portale/pratiche/{numero}/note")
 def portale_aggiungi_nota(
     numero: int,
+    request: Request,
     testo: str = Form(...),
     current_user: Utente | None = Depends(get_current_user),
     assegnazioni_repo: PraticaAssegnazioniRepository = Depends(get_assegnazioni_repo),
@@ -462,7 +489,9 @@ def portale_aggiungi_nota(
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     _notifica_admin(
+        request,
         settings,
+        numero,
         costruisci_messaggio=lambda: (
             f"Nuova nota · Pratica {numero}",
             f"{utente.nome or utente.email}: {testo}",
@@ -475,6 +504,7 @@ def portale_aggiungi_nota(
 @router.post("/portale/pratiche/{numero}/eventi")
 def portale_aggiungi_evento(
     numero: int,
+    request: Request,
     titolo: str = Form(...),
     data_evento: str = Form(...),
     current_user: Utente | None = Depends(get_current_user),
@@ -493,7 +523,9 @@ def portale_aggiungi_evento(
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     _notifica_admin(
+        request,
         settings,
+        numero,
         costruisci_messaggio=lambda: (
             f"Nuovo evento · Pratica {numero}",
             f"{utente.nome or utente.email}: {titolo} — {data.strftime('%d/%m/%Y')}",
@@ -522,6 +554,7 @@ def portale_elimina_evento(
 @router.post("/portale/pratiche/{numero}/stato")
 def portale_cambia_stato(
     numero: int,
+    request: Request,
     stato: str = Form(...),
     note: str = Form(""),
     current_user: Utente | None = Depends(get_current_user),
@@ -541,7 +574,9 @@ def portale_cambia_stato(
         numero, stato, changed_by=utente.nome or utente.email, note=note.strip()
     )
     _notifica_admin(
+        request,
         settings,
+        numero,
         costruisci_messaggio=lambda: (
             f"Stato aggiornato · Pratica {numero}",
             f"{utente.nome or utente.email} ha impostato lo stato "
