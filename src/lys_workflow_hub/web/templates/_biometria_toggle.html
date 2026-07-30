@@ -8,10 +8,9 @@
       Accesso biometrico
     </label>
     <small class="hint">
-      Apri l'app con impronta o riconoscimento facciale invece di lasciarla
-      sempre visibile a chi prende in mano il telefono sbloccato. Non
-      sostituisce il login: la sessione resta quella già attiva, questo è
-      solo un blocco in più sull'app.
+      Chiede l'impronta o il riconoscimento facciale ogni volta che apri
+      l'app, così chi prende in mano il telefono sbloccato non entra
+      direttamente nelle tue pratiche.
     </small>
     <p id="biometria-stato" class="hint"></p>
   </div>
@@ -56,8 +55,10 @@
       if (!check.checked) {
         try {
           localStorage.removeItem("lys_biometric_lock");
+          localStorage.removeItem("lys_last_unlock_ts");
+          localStorage.removeItem("lys_last_background_ts");
         } catch (e) {}
-        stato.textContent = "";
+        stato.textContent = "Disattivato.";
         return;
       }
       // Verifica SUBITO prima di salvare la preferenza: se fallisce non
@@ -69,6 +70,7 @@
         .then(function () {
           try {
             localStorage.setItem("lys_biometric_lock", "1");
+            localStorage.setItem("lys_last_unlock_ts", String(Date.now()));
           } catch (e) {}
           stato.textContent = "Attivo.";
           check.disabled = false;
@@ -76,7 +78,7 @@
         .catch(function () {
           check.checked = false;
           check.disabled = false;
-          stato.textContent = "Verifica non riuscita, sblocco non attivato.";
+          stato.textContent = "Verifica non riuscita, non attivato.";
         });
     });
   });
