@@ -17,33 +17,29 @@
       // sola — questa logica decide se serve COMUNQUE un nuovo sblocco
       // locale, indipendentemente da quanto la sessione sia ancora valida.
       //
-      // Un solo confronto fra due istanti, entrambi in localStorage
-      // (mai sessionStorage — vedi sotto il perché): l'ultimo sblocco
-      // riuscito e l'ultimo passaggio in background. Se l'app non è mai
-      // andata in background DOPO l'ultimo sblocco, non serve richiederne
-      // uno nuovo, qualunque cosa succeda nel frattempo (navigazione
-      // normale, quanto tempo passa in foreground). Se invece è tornata in
-      // background dopo l'ultimo sblocco, conta solo da quanto tempo:
-      // entro soglia nessuna richiesta, oltre soglia sì.
+      // Cold start (processo Android appena avviato/riavviato) → SEMPRE
+      // biometria, senza eccezioni. Rilevato da ColdStartPlugin.java (vedi
+      // mobile/), non da sessionStorage: uno static field Java viene
+      // ricreato una volta sola per avvio reale del processo — una
+      // navigazione interna (link cliccato, pagina ricaricata nella stessa
+      // WebView) non lo tocca, sessionStorage invece non garantisce con
+      // certezza di azzerarsi esattamente e solo alla vera morte del
+      // processo (bug reale della revisione precedente: entro la soglia
+      // di inattività un riavvio vero passava per "rientro normale").
       //
-      // Perché non sessionStorage per il rilevamento "riavvio app": in
-      // precedenza si usava un flag in sessionStorage per capire se il
-      // processo era "nuovo" (cold start). Assunzione fragile — Android/
-      // Chromium non garantisce che sessionStorage si azzeri esattamente
-      // e solo quando il processo muore, ci sono scenari di ripristino
-      // WebView dove il comportamento non è specificato con certezza.
-      // Con SOLO localStorage e un confronto di timestamp non serve
-      // sapere SE il processo è cambiato: se l'ultimo background risale
-      // a più della soglia fa (che sia successo nel processo attuale o
-      // in uno precedente, non importa) la biometria scatta comunque —
-      // corretto in entrambi i casi, senza dover distinguere i due.
-      //
+      // Se non è cold start, un solo confronto fra due istanti in
+      // localStorage: l'ultimo sblocco riuscito e l'ultimo passaggio in
+      // background. Se l'app non è mai andata in background DOPO l'ultimo
+      // sblocco, non serve richiederne uno nuovo qualunque cosa succeda
+      // nel frattempo (navigazione normale, tempo passato in foreground).
+      // Se invece è tornata in background dopo l'ultimo sblocco, conta
+      // solo da quanto tempo: entro soglia nessuna richiesta, oltre sì.
       // Android garantisce che onPause/onStop (quindi appStateChange con
       // isActive=false) scattino SEMPRE prima che il sistema possa
-      // terminare il processo per motivi di memoria — un processo in
-      // foreground non viene mai ucciso direttamente. Quindi il
-      // timestamp di background viene sempre scritto prima di un
-      // eventuale riavvio, anche quando l'utente non se ne accorge.
+      // terminare il processo per motivi di memoria, quindi questo
+      // timestamp è scritto anche prima di un riavvio che l'utente non
+      // nota — ma qui non serve più: lo static field nativo copre già
+      // quel caso in modo esatto, indipendentemente da quanto tempo passa.
       //
       // LYS_LOCK_INACTIVITY_MS è l'UNICO punto dove cambiare la soglia.
       var LYS_LOCK_INACTIVITY_MS = 2 * 60 * 1000; // 2 minuti
@@ -54,8 +50,19 @@
           return false;
         }
       }
-      function lysServeBiometria() {
+      function lysAutosetupFatto() {
+        try {
+          return localStorage.getItem("lys_biometric_autosetup_done") === "1";
+        } catch (e) {
+          return true;
+        }
+      }
+      // wasColdStart arriva da ColdStartPlugin (asincrono, vedi body) —
+      // qui viene passato esplicitamente invece di richiamare di nuovo il
+      // plugin, che consumerebbe il flag una seconda volta.
+      function lysServeBiometria(wasColdStart) {
         if (!lysBiometriaAttiva()) return false;
+        if (wasColdStart) return true;
         var unlockTs, bgTs;
         try {
           unlockTs = parseInt(localStorage.getItem("lys_last_unlock_ts") || "0", 10);
@@ -67,13 +74,17 @@
         if (bgTs <= unlockTs) return false; // nessun background dopo l'ultimo sblocco
         return (Date.now() - bgTs) > LYS_LOCK_INACTIVITY_MS;
       }
-      // Nasconde il contenuto PRIMA del primo paint se serve biometria —
-      // altrimenti la lista pratiche lampeggerebbe visibile per una
-      // frazione di secondo prima dell'overlay (script a fine pagina, dopo
-      // che il DOM è già stato disegnato). Stessa funzione lysServeBiometria()
-      // richiamata più sotto per l'overlay vero e proprio: un'unica fonte
-      // di verità, nessun disallineamento possibile fra le due decisioni.
-      if (lysIsApp && lysServeBiometria()) {
+      // Nasconde il contenuto PRIMA del primo paint, in modo sincrono e
+      // conservativo, ogni volta che la decisione finale non è ancora
+      // certa: se la biometria è attiva (potrebbe servire un nuovo
+      // sblocco, lo decide il codice a fine pagina che PUÒ fare la
+      // chiamata nativa asincrona al plugin) o se l'attivazione
+      // automatica dopo il primo login non è ancora stata tentata
+      // (potrebbe scattare un prompt biometrico). Altrimenti la pagina
+      // lampeggerebbe visibile per una frazione di secondo prima
+      // dell'overlay o del prompt di attivazione. Rivelato dallo stesso
+      // script più sotto una volta risolta la decisione asincrona.
+      if (lysIsApp && (lysBiometriaAttiva() || !lysAutosetupFatto())) {
         document.documentElement.style.visibility = "hidden";
       }
     </script>
@@ -435,8 +446,8 @@
       // NON sostituisce login/sessione: la sessione (cookie 14gg) resta
       // quella già attiva, qui si decide solo se il contenuto va nascosto
       // finché l'utente non prova la sua identità sul device. Le funzioni
-      // lysBiometriaAttiva()/lysServeBiometria() vivono in <head> (unica
-      // fonte di verità sulla soglia di inattività, vedi lì il perché).
+      // lysBiometriaAttiva()/lysAutosetupFatto()/lysServeBiometria() vivono
+      // in <head> (unica fonte di verità, vedi lì il perché).
       if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
         (function () {
           function segnaSbloccato() {
@@ -445,29 +456,35 @@
           function segnaBackground() {
             try { localStorage.setItem("lys_last_background_ts", String(Date.now())); } catch (e) {}
           }
+          function segnaAutosetupFatto() {
+            try { localStorage.setItem("lys_biometric_autosetup_done", "1"); } catch (e) {}
+          }
 
-          // Logout: azzera SOLO lo stato di fiducia corrente (il prossimo
-          // accesso su questo device richiederà un nuovo sblocco), non la
-          // preferenza "biometria attiva" — è un'impostazione del device,
-          // non dell'account, e la verifica biometrica stessa autentica
-          // sempre "chi controlla questo telefono adesso", non un
-          // account specifico: cancellarla ad ogni logout obbligherebbe a
-          // riconfigurarla ad ogni cambio account sullo stesso telefono
-          // personale, senza aggiungere protezione reale (vedi report).
-          function azzeraFiduciaLocale() {
+          // Logout: azzera TUTTO lo stato biometrico locale, preferenza
+          // compresa. La verifica biometrica autentica "chi ha in mano il
+          // telefono adesso", non un account — su un device condiviso fra
+          // colleghi lasciare la preferenza attiva permetterebbe al
+          // prossimo che fa login di sfruttare l'impronta registrata dal
+          // proprietario del device. Scelta prudente: si riconfigura al
+          // login successivo (un solo prompt, vedi attivazione automatica
+          // più sotto), invece di rischiare di lasciarla attiva per
+          // l'account sbagliato.
+          function azzeraTuttoLocale() {
             try {
+              localStorage.removeItem("lys_biometric_lock");
               localStorage.removeItem("lys_last_unlock_ts");
               localStorage.removeItem("lys_last_background_ts");
+              localStorage.removeItem("lys_biometric_autosetup_done");
             } catch (e) {}
           }
           var logoutForm = document.getElementById("logout-form");
-          if (logoutForm) logoutForm.addEventListener("submit", azzeraFiduciaLocale);
+          if (logoutForm) logoutForm.addEventListener("submit", azzeraTuttoLocale);
 
           function ripristinaVisibilita() {
             document.documentElement.style.visibility = "";
           }
           function eseguiLogout() {
-            azzeraFiduciaLocale();
+            azzeraTuttoLocale();
             var csrfEl = document.querySelector('meta[name="csrf-token"]');
             var form = document.createElement("form");
             form.method = "post";
@@ -500,9 +517,9 @@
           }
 
           // Overlay "riprova": usato sia al primo blocco sia dopo una
-          // verifica fallita — un solo bottone "Sblocca" che richiama di
-          // nuovo il sensore, "Esci" sempre disponibile come via d'uscita
-          // sicura, mai un ciclo automatico.
+          // verifica fallita ma con sensore ancora utilizzabile — un solo
+          // bottone "Sblocca" che richiama il sensore, "Esci" sempre
+          // disponibile come via d'uscita, mai un ciclo automatico.
           function mostraOverlaySblocco(messaggio) {
             var overlay = overlayLock();
             overlay.innerHTML =
@@ -518,9 +535,13 @@
           }
           // Overlay "biometria non disponibile": plugin assente o device
           // senza più credenziali biometriche valide (impronte cancellate,
-          // sensore guasto). Niente bottone "Sblocca" che fallirebbe
-          // sempre — l'unica via davvero utile è disattivare il blocco (la
-          // sessione resta comunque valida) o uscire.
+          // sensore guasto). NIENTE opzione per disattivare il blocco e
+          // continuare: farlo aprirebbe la sessione già autenticata senza
+          // nessuna verifica, vanificando lo scopo del blocco. L'unica via
+          // è uscire e rientrare con email e password — il logout
+          // (eseguiLogout → azzeraTuttoLocale) pulisce comunque la
+          // preferenza, quindi al login successivo non si ripresenta lo
+          // stesso vicolo cieco.
           function mostraOverlaySenzaBiometria() {
             var overlay = overlayLock();
             overlay.innerHTML =
@@ -528,13 +549,8 @@
               '<span style="color:#fff;font-size:16px;max-width:280px;">' +
                 "Impronta o riconoscimento facciale non disponibili su questo telefono." +
               '</span>' +
-              '<button type="button" class="btn btn-primary" id="lys-lock-disable">Disattiva e continua</button>' +
-              '<button type="button" class="btn btn-link" id="lys-lock-logout" style="color:#93C5FD;">Esci</button>';
+              '<button type="button" class="btn btn-primary" id="lys-lock-logout">Esci e accedi con password</button>';
             ripristinaVisibilita();
-            document.getElementById("lys-lock-disable").addEventListener("click", function () {
-              try { localStorage.removeItem("lys_biometric_lock"); } catch (e) {}
-              nascondiOverlay();
-            });
             document.getElementById("lys-lock-logout").addEventListener("click", eseguiLogout);
           }
 
@@ -546,6 +562,11 @@
               mostraOverlaySenzaBiometria();
               return;
             }
+            // useFallback:true chiede ad Android anche il PIN/pattern/
+            // password del dispositivo come alternativa nativa
+            // all'impronta/volto (BiometricPrompt con DEVICE_CREDENTIAL):
+            // è già il "fallback sicuro del device" richiesto, gestito dal
+            // plugin/sistema operativo, non da reinventare qui.
             NativeBiometric.verifyIdentity({ reason: "Sblocca LYS Hub", title: "LYS Hub", useFallback: true })
               .then(function () {
                 segnaSbloccato();
@@ -553,8 +574,10 @@
               })
               .catch(function () {
                 // Annullato dall'utente, fallito, o il sensore/le impronte
-                // non sono più disponibili: capiamo quale dei due casi è
-                // per mostrare l'overlay giusto, mai un retry che fallirà
+                // non sono più disponibili (e senza nemmeno un PIN/pattern
+                // di sistema configurato, altrimenti useFallback l'avrebbe
+                // già gestito sopra): capiamo quale dei due casi è per
+                // mostrare l'overlay giusto, mai un retry che fallirà
                 // sempre allo stesso modo.
                 NativeBiometric.isAvailable()
                   .then(function (r) {
@@ -568,45 +591,20 @@
               });
           }
 
-          function controllaLock() {
-            if (!lysServeBiometria()) {
-              ripristinaVisibilita();
-              return;
-            }
-            mostraOverlaySblocco();
-            tentaSblocco();
+          // Chiede al plugin nativo se questo è il primo caricamento di
+          // pagina dall'avvio del processo — vedi ColdStartPlugin.java.
+          // Se il plugin non c'è ancora (APK non ancora aggiornata a
+          // questa versione), fail-closed: trattalo come cold start.
+          function determinaColdStart() {
+            var ColdStart = window.Capacitor.Plugins.ColdStart;
+            if (!ColdStart) return Promise.resolve(true);
+            return ColdStart.consume()
+              .then(function (r) { return !!(r && r.wasColdStart); })
+              .catch(function () { return true; });
           }
 
-          controllaLock();
-          var App = window.Capacitor.Plugins.App;
-          if (App && App.addListener) {
-            App.addListener("appStateChange", function (state) {
-              if (state.isActive) {
-                controllaLock();
-              } else {
-                segnaBackground();
-              }
-            });
-          }
-
-          // -- Attivazione automatica dopo il primo login ------------------
-          // Niente dialog "Attiva/Non ora": se il device supporta la
-          // biometria e non è ancora configurata su questo account/device,
-          // la verifica parte subito da sola; se riesce l'attiviamo e
-          // mostriamo solo una conferma che sparisce da sola — l'utente non
-          // deve scoprirla né decidere di attivarla dentro Impostazioni.
-          // Un solo tentativo automatico: se fallisce/viene annullato non
-          // insistiamo ad ogni apertura, resta comunque attivabile a mano
-          // da Impostazioni in qualsiasi momento.
-          function autosetupFatto() {
-            try {
-              return localStorage.getItem("lys_biometric_autosetup_done") === "1";
-            } catch (e) {
-              return true;
-            }
-          }
-          function segnaAutosetupFatto() {
-            try { localStorage.setItem("lys_biometric_autosetup_done", "1"); } catch (e) {}
+          function autosetupPuoPartire() {
+            return !!window.Capacitor.Plugins.NativeBiometric && !lysBiometriaAttiva() && !lysAutosetupFatto();
           }
           function mostraConfermaBreve(testo) {
             var t = document.createElement("div");
@@ -616,9 +614,20 @@
             document.body.appendChild(t);
             setTimeout(function () { t.remove(); }, 2600);
           }
-          var NativeBiometricSetup = window.Capacitor.Plugins.NativeBiometric;
-          if (NativeBiometricSetup && !lysBiometriaAttiva() && !autosetupFatto()) {
-            NativeBiometricSetup.isAvailable()
+          // -- Attivazione automatica dopo il primo login ------------------
+          // Niente dialog "Attiva/Non ora": se il device supporta la
+          // biometria e non è ancora configurata, la verifica parte subito
+          // da sola; se riesce si attiva senza altre conferme, con solo un
+          // messaggio che sparisce da solo — l'utente non deve scoprirla
+          // né decidere se attivarla dentro Impostazioni. Un solo
+          // tentativo automatico: se fallisce/viene annullato non
+          // insistiamo ad ogni apertura, resta comunque attivabile a mano
+          // da Impostazioni. Restituisce sempre una promise risolta (mai
+          // rifiutata): chi la chiama deve poter rivelare il contenuto
+          // qualunque sia l'esito.
+          function avviaAutosetup() {
+            var NativeBiometricSetup = window.Capacitor.Plugins.NativeBiometric;
+            return NativeBiometricSetup.isAvailable()
               .then(function (result) {
                 if (!result || !result.isAvailable) {
                   segnaAutosetupFatto();
@@ -635,11 +644,42 @@
                     segnaAutosetupFatto();
                     mostraConfermaBreve("Protezione con impronta/Face attivata.");
                   })
-                  .catch(function () {
-                    segnaAutosetupFatto();
-                  });
+                  .catch(function () { segnaAutosetupFatto(); });
               })
               .catch(function () { segnaAutosetupFatto(); });
+          }
+
+          // Punto d'ingresso unico: chiamato al caricamento della pagina e
+          // ad ogni ripresa in foreground. Il contenuto resta nascosto
+          // (impostato in <head>, sincrono) finché questa catena asincrona
+          // non decide se serve un nuovo sblocco, se parte l'attivazione
+          // automatica, o se non c'è nulla da fare — mai un frame visibile
+          // prima che la decisione sia presa.
+          function controllaLock() {
+            determinaColdStart().then(function (wasColdStart) {
+              if (lysServeBiometria(wasColdStart)) {
+                mostraOverlaySblocco();
+                tentaSblocco();
+                return;
+              }
+              if (autosetupPuoPartire()) {
+                avviaAutosetup().then(ripristinaVisibilita);
+              } else {
+                ripristinaVisibilita();
+              }
+            });
+          }
+
+          controllaLock();
+          var App = window.Capacitor.Plugins.App;
+          if (App && App.addListener) {
+            App.addListener("appStateChange", function (state) {
+              if (state.isActive) {
+                controllaLock();
+              } else {
+                segnaBackground();
+              }
+            });
           }
         })();
       }

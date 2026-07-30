@@ -52,33 +52,35 @@
       });
 
     check.addEventListener("change", function () {
-      if (!check.checked) {
-        try {
-          localStorage.removeItem("lys_biometric_lock");
-          localStorage.removeItem("lys_last_unlock_ts");
-          localStorage.removeItem("lys_last_background_ts");
-        } catch (e) {}
-        stato.textContent = "Disattivato.";
-        return;
-      }
-      // Verifica SUBITO prima di salvare la preferenza: se fallisce non
-      // attiviamo, per evitare che l'utente si blocchi fuori dall'app con
-      // un sensore che non funziona sul suo device.
+      // Sia attivare che DISATTIVARE richiedono una verifica biometrica
+      // riuscita — altrimenti chi trova il telefono con l'app già aperta
+      // potrebbe entrare in Impostazioni e spegnere la protezione senza
+      // dover provare nulla. Il checkbox si aggiorna solo dopo la verifica.
+      var vogliAttivare = check.checked;
+      check.checked = !vogliAttivare; // stato visivo invariato finché non si conferma
       check.disabled = true;
       stato.textContent = "Verifica in corso...";
-      NativeBiometric.verifyIdentity({ reason: "Conferma per attivare lo sblocco", title: "LYS Hub", useFallback: true })
+      var motivo = vogliAttivare ? "Conferma per attivare lo sblocco" : "Conferma per disattivare lo sblocco";
+      NativeBiometric.verifyIdentity({ reason: motivo, title: "LYS Hub", useFallback: true })
         .then(function () {
           try {
-            localStorage.setItem("lys_biometric_lock", "1");
-            localStorage.setItem("lys_last_unlock_ts", String(Date.now()));
+            if (vogliAttivare) {
+              localStorage.setItem("lys_biometric_lock", "1");
+              localStorage.setItem("lys_last_unlock_ts", String(Date.now()));
+            } else {
+              localStorage.removeItem("lys_biometric_lock");
+              localStorage.removeItem("lys_last_unlock_ts");
+              localStorage.removeItem("lys_last_background_ts");
+            }
           } catch (e) {}
-          stato.textContent = "Attivo.";
+          check.checked = vogliAttivare;
+          stato.textContent = vogliAttivare ? "Attivo." : "Disattivato.";
           check.disabled = false;
         })
         .catch(function () {
-          check.checked = false;
+          check.checked = !vogliAttivare; // nessun cambiamento, verifica non riuscita
           check.disabled = false;
-          stato.textContent = "Verifica non riuscita, non attivato.";
+          stato.textContent = "Verifica non riuscita, nessuna modifica.";
         });
     });
   });

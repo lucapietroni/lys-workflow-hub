@@ -7,6 +7,9 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Va registrato PRIMA di super.onCreate() (che inizializza il
+        // bridge/WebView) — vedi ColdStartPlugin.java per il motivo.
+        registerPlugin(ColdStartPlugin.class);
         super.onCreate(savedInstanceState);
         // Impedisce screenshot/registrazione schermo e nasconde l'anteprima
         // nel task-switcher (recent apps): l'app mostra dati cliente/foto
