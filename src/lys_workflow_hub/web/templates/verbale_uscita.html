@@ -183,12 +183,12 @@
   <div class="form-actions">
     <a href="/pratiche/{{ pratica.numero }}" class="btn">Annulla</a>
     <button type="submit"
-            class="btn"
+            class="btn js-app-download"
             formaction="/pratiche/{{ pratica.numero }}/verbale/uscita/docx">
       Scarica .docx
     </button>
     <button type="submit"
-            class="btn btn-primary"
+            class="btn btn-primary js-app-download"
             formaction="/pratiche/{{ pratica.numero }}/verbale/uscita/pdf">
       Genera PDF per stampa
     </button>

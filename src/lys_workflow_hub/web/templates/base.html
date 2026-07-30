@@ -496,6 +496,100 @@
         }
       })();
     </script>
+    <script>
+      // target="_blank" non fa nulla nella WebView Capacitor (nessun supporto
+      // multi-finestra): senza questo, ogni link doc/allegato/anteprima
+      // sembra morto al tap. Delega globale su tutti i link _blank del body,
+      // così copre anche le pagine admin (mai testate in app finora) senza
+      // dover toccare ogni singolo template. Sostituisce l'handler locale
+      // ".documento-link" di portale_pratica_detail.html (rimosso, ora
+      // ridondante).
+      if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
+        document.addEventListener("click", function (e) {
+          var link = e.target.closest('a[target="_blank"]');
+          if (!link || !link.href) return;
+          e.preventDefault();
+          window.Capacitor.Plugins.Browser.open({ url: link.href });
+        });
+      }
+    </script>
+    <script>
+      // Pulsanti "Scarica .docx"/"Genera PDF" (cessione, verbali, bozza
+      // vandalismo): POST che risponde con Content-Disposition: attachment.
+      // Nella WebView Capacitor non c'e' nessun DownloadListener, quindi la
+      // navigazione normale del form finisce su una pagina bianca e il file
+      // si perde. Intercetta solo i bottoni marcati ".js-app-download"
+      // (non l'intero form: alcuni form hanno anche bottoni che portano a
+      // pagine normali, es. "Rigenera anteprima"/"Procedi all'invio" in
+      // vandalismo_preview.html), rifà la POST via fetch mantenendo
+      // l'encoding url-encoded originale (cosi' il CSRF check automatico di
+      // AuthMiddleware, che si aspetta form non-multipart, resta invariato),
+      // salva il blob in cache e apre lo share sheet Android: e' l'unico
+      // modo affidabile di consegnare un file generato al volo in WebView.
+      if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
+        function lysBlobToBase64(blob) {
+          return new Promise(function (resolve, reject) {
+            var reader = new FileReader();
+            reader.onloadend = function () { resolve(reader.result.split(",")[1]); };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+        }
+
+        document.addEventListener("click", function (e) {
+          var btn = e.target.closest(".js-app-download");
+          if (!btn || !btn.form) return;
+          e.preventDefault();
+          var form = btn.form;
+          var action = btn.getAttribute("formaction") || form.action;
+          var method = (btn.getAttribute("formmethod") || form.method || "GET").toUpperCase();
+          var body = method === "GET" ? undefined : new URLSearchParams(new FormData(form));
+          var originalLabel = btn.textContent;
+          btn.disabled = true;
+          btn.textContent = "Generazione…";
+
+          fetch(action, { method: method, body: body })
+            .then(function (resp) {
+              if (!resp.ok) {
+                return resp
+                  .json()
+                  .catch(function () { return {}; })
+                  .then(function (data) {
+                    throw new Error(data.detail || ("HTTP " + resp.status));
+                  });
+              }
+              var cd = resp.headers.get("Content-Disposition") || "";
+              var match = /filename="?([^";]+)"?/.exec(cd);
+              var fname = match ? match[1] : "documento";
+              return resp.blob().then(function (blob) { return { blob: blob, fname: fname }; });
+            })
+            .then(function (r) {
+              return lysBlobToBase64(r.blob).then(function (base64) {
+                var Filesystem = window.Capacitor.Plugins.Filesystem;
+                return Filesystem.writeFile({ path: r.fname, data: base64, directory: "CACHE" })
+                  .then(function () {
+                    return Filesystem.getUri({ path: r.fname, directory: "CACHE" });
+                  })
+                  .then(function (uriResult) {
+                    return window.Capacitor.Plugins.Share.share({ url: uriResult.uri, title: r.fname });
+                  });
+              });
+            })
+            .catch(function (err) {
+              // Utente ha chiuso lo share sheet senza scegliere un'app: il
+              // documento e' stato generato e scritto correttamente, non e'
+              // un errore da segnalare.
+              if (err && err.message === "Share canceled") return;
+              console.error("Download documento fallito", err);
+              alert("Generazione documento fallita: " + err.message);
+            })
+            .finally(function () {
+              btn.disabled = false;
+              btn.textContent = originalLabel;
+            });
+        });
+      }
+    </script>
     {% endif %}
   </body>
 </html>

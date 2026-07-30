@@ -17,7 +17,7 @@
   </div>
   <div class="pratica-actions">
     {% if record.path_eml %}
-      <a class="btn" href="/pec-inviate/{{ record.id }}/scarica">Scarica .eml</a>
+      <a class="btn" href="/pec-inviate/{{ record.id }}/scarica" target="_blank" rel="noopener">Scarica .eml</a>
     {% endif %}
     {% if compagnia and compagnia.email and record.esito == 'OK' and not record.email_esito %}
       <a class="btn" href="/pec-inviate/{{ record.id }}/invia-email">Invia via email</a>

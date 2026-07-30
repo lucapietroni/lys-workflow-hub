@@ -884,10 +884,56 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 
 ## Stato attuale
 
-Versione **4.13.0**, tutto su branch `main`, in produzione su
+Versione **4.14.0**, tutto su branch `main`, in produzione su
 `https://hub.lysauto.it`. Changelog per-commit in `git log`; le decisioni
 tecniche non ovvie dal codice (formati, gotcha, cause di bug reali) restano
 documentate nelle sezioni sopra, per sottosistema.
+
+**4.14.0 — Admin funzionante dentro l'app Android**: finora nessuno aveva
+mai testato il login admin dentro LYSApp — le pagine admin non erano state
+pensate per la WebView Capacitor, solo `/portale`/`/operatore` lo erano.
+Login admin nell'app ha esposto due gotcha reali della WebView (nessun
+supporto multi-finestra, nessun `DownloadListener`), entrambi già noti e
+risolti SOLO per il portale esterno (`Browser.open()` su
+`.documento-link`) ma mai generalizzati:
+1. **`target="_blank"` morto in WebView**: qualunque link con `target=
+   "_blank"` (documenti pratica, allegati bozza/vandalismo/risposte, .eml
+   PEC, ingresso officina, link "API") non apriva nulla al tap. Fix in
+   `base.html`: un solo listener globale a livello di `document` (delega,
+   non serve toccare ogni template) che intercetta il click su qualunque
+   `a[target="_blank"]` e lo apre con `Browser.open()` (Chrome Custom
+   Tabs). Sostituisce/rimuove l'handler locale `.documento-link` di
+   `portale_pratica_detail.html`, ora ridondante. Aggiunto `target=
+   "_blank"` anche a due link che non lo avevano (`.eml` PEC in
+   `pec_inviata_detail.html` e `risposta_detail.html`).
+2. **Download da form POST morto in WebView** (bug più serio: erano le
+   funzioni principali admin — genera cessione, verbali, bozza
+   vandalismo): i bottoni "Scarica .docx"/"Genera PDF"/"Scarica bozza
+   .txt" fanno POST e la risposta ha `Content-Disposition: attachment`.
+   Senza `DownloadListener` nella WebView la navigazione normale del form
+   finisce su una pagina bianca e il file sparisce. Fix: bottoni marcati
+   con classe `.js-app-download` (non l'intero form — alcuni form hanno
+   anche bottoni che portano a pagine normali, es. "Procedi all'invio" in
+   vandalismo) vengono intercettati in `base.html`, la POST viene rifatta
+   via `fetch()` mantenendo l'encoding `application/x-www-form-urlencoded`
+   originale (fondamentale: `FormData` nativo forzerebbe `multipart/
+   form-data`, che farebbe saltare il controllo CSRF automatico di
+   `AuthMiddleware` — quello scatta solo sui POST non-multipart), il blob
+   risultante viene scritto in cache con `@capacitor/filesystem` e
+   condiviso con `@capacitor/share` (share sheet Android: l'utente salva o
+   apre con Word/Adobe/Drive). Entrambi i plugin erano già installati e
+   già compilati nell'APK `versionCode 8` per la feature biometrica/
+   update-check — **zero rebuild APK richiesto**, tutto JS lato server
+   (wrapper live). Il download zip foto (`/pratiche/{n}/foto/zip`) resta
+   deliberatamente nascosto in app (già così da prima, `html.is-app
+   .foto-download-bar { display: none }`): stesso problema di
+   `DownloadListener`, ma un bulk-zip su mobile ha poco senso, non
+   riproposto col pattern share-sheet.
+
+Nessuna modifica al CSS di layout: il redesign mobile-first sotto
+`html.is-app` (già esteso, non solo `/portale`) e l'`overflow-x: auto`
+generico su `.table`/`.results-table` coprivano già le pagine admin senza
+rotture — il problema era solo funzionale (download), non grafico.
 
 **4.13.0 — Ingressi officina (nuovo ruolo "operatore")**: quando entra un
 veicolo nuovo, un operatore d'officina crea dall'app un "ingresso" —

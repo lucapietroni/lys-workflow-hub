@@ -18,7 +18,7 @@
     </p>
   </div>
   <div class="pratica-actions">
-    <a class="btn" href="/risposte/{{ mail.id }}/scarica">Scarica .eml</a>
+    <a class="btn" href="/risposte/{{ mail.id }}/scarica" target="_blank" rel="noopener">Scarica .eml</a>
     {% if classificazione %}
       <form method="post" action="/risposte/{{ mail.id }}/genera-bozza" style="display:inline;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
