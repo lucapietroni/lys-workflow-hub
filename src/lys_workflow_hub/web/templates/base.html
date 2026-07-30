@@ -12,21 +12,58 @@
       if (lysIsApp) {
         document.documentElement.classList.add("is-app");
       }
-      // Sblocco biometrico: nasconde il contenuto PRIMA del primo paint se
-      // lo sblocco è attivo e questa sessione (sessionStorage, sopravvive
-      // alla navigazione full-page ma non a un vero restart) non è ancora
-      // stata sbloccata — altrimenti la lista pratiche lampeggerebbe
-      // visibile per una frazione di secondo prima dell'overlay (script a
-      // fine pagina, dopo che il DOM è già stato disegnato). Ripristinato
-      // da quello stesso script dopo una verifica riuscita o se la
-      // biometria non è attiva.
+      // Sblocco biometrico: protegge l'ACCESSO ALL'APP, non solo il login.
+      // La sessione (cookie 14gg, rolling) resta valida per settimane senza
+      // richiedere biometria da sola — qui decidiamo se serve comunque uno
+      // sblocco locale, indipendentemente da quanto la sessione sia ancora
+      // valida. Tre segnali, un'unica soglia configurabile:
+      //   1. "cold start" vero (processo app appena avviato/riavviato):
+      //      sessionStorage esiste solo per la vita del processo — se il
+      //      flag "lys_app_session_active" non c'è ancora, questa è la
+      //      prima pagina caricata da quando l'app è partita (o è stata
+      //      terminata e riaperta) → serve sempre biometria.
+      //   2. Rientro da background entro la soglia: nessuna nuova verifica
+      //      (uso normale, tab-switch/notifica non deve interrompere).
+      //   3. Rientro da background oltre la soglia: richiedi di nuovo.
+      // LYS_LOCK_INACTIVITY_MS è l'UNICO punto dove cambiare la soglia.
+      var LYS_LOCK_INACTIVITY_MS = 2 * 60 * 1000; // 2 minuti
+      var lysColdStart = true;
       if (lysIsApp) {
         try {
-          if (localStorage.getItem("lys_biometric_lock") === "1"
-              && sessionStorage.getItem("lys_unlocked_session") !== "1") {
-            document.documentElement.style.visibility = "hidden";
-          }
+          lysColdStart = sessionStorage.getItem("lys_app_session_active") !== "1";
+          sessionStorage.setItem("lys_app_session_active", "1");
         } catch (e) {}
+      }
+      function lysInattivitaSuperata() {
+        try {
+          // Mai andato in background in questo processo: niente da
+          // valutare, altrimenti un timestamp vecchio di giorni (rimasto
+          // in localStorage da una sessione precedente) farebbe scattare
+          // la biometria ad ogni singola navigazione interna — esattamente
+          // il comportamento "continuo" da evitare durante l'uso normale.
+          if (sessionStorage.getItem("lys_was_backgrounded") !== "1") return false;
+          var ts = parseInt(localStorage.getItem("lys_last_background_ts") || "0", 10);
+          if (!ts) return true;
+          return (Date.now() - ts) > LYS_LOCK_INACTIVITY_MS;
+        } catch (e) {
+          return false;
+        }
+      }
+      function lysServeBiometria() {
+        try {
+          if (localStorage.getItem("lys_biometric_lock") !== "1") return false;
+        } catch (e) {
+          return false;
+        }
+        return lysColdStart || lysInattivitaSuperata();
+      }
+      // Nasconde il contenuto PRIMA del primo paint se serve biometria —
+      // altrimenti la lista pratiche lampeggerebbe visibile per una
+      // frazione di secondo prima dell'overlay (script a fine pagina, dopo
+      // che il DOM è già stato disegnato). Ripristinato dallo stesso
+      // script dopo una verifica riuscita o se la biometria non serve.
+      if (lysIsApp && lysServeBiometria()) {
+        document.documentElement.style.visibility = "hidden";
       }
     </script>
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -392,38 +429,30 @@
       // riuscita (vedi portale_impostazioni.html) per evitare lock-out.
       if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
         (function () {
-          // App senza router client-side: OGNI link interno ricarica l'intera
-          // pagina, quindi riesegue questo script da capo ad ogni
-          // navigazione. Senza un flag di sessione, il prompt biometrico
-          // spunterebbe ad ogni singolo tap (lista → dettaglio → calendario…)
-          // invece che solo a cold start/ripresa da background come inteso.
-          // sessionStorage sopravvive alla navigazione full-page nella stessa
-          // WebView e si azzera solo quando il contesto viene distrutto (o
-          // esplicitamente qui sotto quando l'app va davvero in background).
-          function sbloccatoInQuestaSessione() {
-            try {
-              return sessionStorage.getItem("lys_unlocked_session") === "1";
-            } catch (e) {
-              return false;
-            }
-          }
-          function segnaSbloccato() {
-            try {
-              sessionStorage.setItem("lys_unlocked_session", "1");
-            } catch (e) {}
-          }
-          function segnaBloccato() {
-            try {
-              sessionStorage.removeItem("lys_unlocked_session");
-            } catch (e) {}
-          }
-
+          // biometriaAttiva/lysServeBiometria/lysColdStart/lysInattivitaSuperata
+          // sono definite nello script in <head> (unica fonte di verità per
+          // la soglia LYS_LOCK_INACTIVITY_MS) — qui solo l'alias locale per
+          // leggibilità.
           function biometriaAttiva() {
             try {
               return localStorage.getItem("lys_biometric_lock") === "1";
             } catch (e) {
               return false;
             }
+          }
+          function segnaSbloccato() {
+            // Consuma il requisito "cold start" per il resto della vita di
+            // questa pagina/processo: senza questo, un rientro da
+            // background entro soglia dopo uno sblocco riuscito
+            // richiederebbe di nuovo la biometria solo perché la pagina è
+            // stata caricata da un cold start più indietro nel tempo.
+            lysColdStart = false;
+          }
+          function segnaBackground() {
+            try {
+              localStorage.setItem("lys_last_background_ts", String(Date.now()));
+              sessionStorage.setItem("lys_was_backgrounded", "1");
+            } catch (e) {}
           }
 
           // Esce da un vero pulsante logout dentro l'overlay o dal form
@@ -433,7 +462,9 @@
           // lasciare la biometria di uno attiva per l'account del prossimo.
           function pulisciFlagLocali() {
             try {
-              sessionStorage.removeItem("lys_unlocked_session");
+              sessionStorage.removeItem("lys_app_session_active");
+              sessionStorage.removeItem("lys_was_backgrounded");
+              localStorage.removeItem("lys_last_background_ts");
               localStorage.removeItem("lys_biometric_lock");
               localStorage.removeItem("lys_biometric_onboarding_seen");
             } catch (e) {}
@@ -514,7 +545,7 @@
           }
 
           function controllaLock() {
-            if (!biometriaAttiva() || sbloccatoInQuestaSessione()) {
+            if (!lysServeBiometria()) {
               ripristinaVisibilita();
               return;
             }
@@ -527,11 +558,13 @@
           if (App && App.addListener) {
             App.addListener("appStateChange", function (state) {
               if (state.isActive) {
+                // Rientro in foreground: lysInattivitaSuperata() confronta
+                // Date.now() col timestamp segnato qui sotto all'ultimo
+                // backgrounding — entro LYS_LOCK_INACTIVITY_MS non richiede
+                // nulla, oltre richiede di nuovo lo sblocco.
                 controllaLock();
               } else {
-                // Backgrounding reale (non un normale reload di pagina):
-                // richiede una nuova verifica al prossimo resume.
-                segnaBloccato();
+                segnaBackground();
               }
             });
           }
