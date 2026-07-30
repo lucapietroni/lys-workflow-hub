@@ -884,10 +884,17 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 
 ## Stato attuale
 
-Versione **4.16.0**, tutto su branch `main`, in produzione su
+Versione **4.16.1**, tutto su branch `main`, in produzione su
 `https://hub.lysauto.it`. Changelog per-commit in `git log`; le decisioni
 tecniche non ovvie dal codice (formati, gotcha, cause di bug reali) restano
 documentate nelle sezioni sopra, per sottosistema.
+
+**4.16.1**: badge stato ("IN TRATTATIVA" ecc.) andavano a capo su due
+righe nella lista pratiche admin quando la colonna era stretta —
+`.badge` non aveva `white-space: nowrap`. Aggiunto globalmente (tutti i
+badge, non solo stato): con table layout auto il browser allarga da solo
+la colonna quando il contenuto non può più andare a capo, niente
+larghezze fisse da gestire a mano.
 
 **4.16.0 — Reminder ricorrente per notifiche admin non gestite**: se un
 collaboratore agisce su una pratica (nota/upload/stato) l'admin riceve una
