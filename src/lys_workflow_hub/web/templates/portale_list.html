@@ -62,15 +62,15 @@
     <div class="table-filters">
       <input type="search" id="portale-filtro-testo" class="filtro-testo"
              placeholder="Cerca per numero, cliente o targa…" aria-label="Cerca pratica" />
-      <select id="portale-filtro-stato" class="select-inline" aria-label="Filtra per stato">
-        <option value="">Tutti gli stati</option>
+      <div class="chip-filter" id="portale-filtro-stato" role="group" aria-label="Filtra per stato">
+        <button type="button" class="chip active" data-value="">Tutti</button>
         {% for s in stati_disponibili %}
-        <option value="{{ s }}">{{ stato_labels.get(s, s) }}</option>
+        <button type="button" class="chip" data-value="{{ s }}">{{ stato_labels.get(s, s) }}</button>
         {% endfor %}
-      </select>
+      </div>
       <div class="filtro-count-row">
         <span class="meta" id="portale-filtro-count"></span>
-        <button type="button" id="portale-filtro-reset" class="btn app-only btn-azzera-filtri">Azzera filtri</button>
+        <button type="button" id="portale-filtro-reset" class="btn btn-azzera-filtri">Azzera filtri</button>
       </div>
     </div>
     <table class="results-table pratiche-table" id="portale-tabella-pratiche">
@@ -122,37 +122,49 @@
     <script>
       (function () {
         var input = document.getElementById("portale-filtro-testo");
-        var select = document.getElementById("portale-filtro-stato");
+        var chipGroup = document.getElementById("portale-filtro-stato");
         var resetBtn = document.getElementById("portale-filtro-reset");
         var countEl = document.getElementById("portale-filtro-count");
         var emptyMsg = document.getElementById("portale-filtro-vuoto");
         var rows = document.querySelectorAll("#portale-tabella-pratiche tbody tr");
-        if (!input || !select || !rows.length) return;
+        if (!input || !chipGroup || !rows.length) return;
+        var chips = chipGroup.querySelectorAll(".chip");
+        var statoCorrente = "";
 
         function applica() {
           var testo = input.value.trim().toLowerCase();
-          var stato = select.value;
           var visibili = 0;
           rows.forEach(function (row) {
             var matchTesto = !testo
               || row.dataset.numero.indexOf(testo) !== -1
               || row.dataset.cliente.indexOf(testo) !== -1
               || row.dataset.targa.indexOf(testo) !== -1;
-            var matchStato = !stato || row.dataset.stato === stato;
+            var matchStato = !statoCorrente || row.dataset.stato === statoCorrente;
             var visibile = matchTesto && matchStato;
             row.hidden = !visibile;
             if (visibile) visibili++;
           });
-          countEl.textContent = visibili + " di " + rows.length;
+          countEl.textContent = visibili === rows.length
+            ? (visibili + (visibili === 1 ? " pratica" : " pratiche"))
+            : (visibili + " di " + rows.length);
           emptyMsg.hidden = visibili !== 0;
         }
 
         input.addEventListener("input", applica);
-        select.addEventListener("change", applica);
+        chips.forEach(function (chip) {
+          chip.addEventListener("click", function () {
+            chips.forEach(function (c) { c.classList.remove("active"); });
+            chip.classList.add("active");
+            statoCorrente = chip.dataset.value || "";
+            applica();
+          });
+        });
         if (resetBtn) {
           resetBtn.addEventListener("click", function () {
             input.value = "";
-            select.value = "";
+            chips.forEach(function (c) { c.classList.remove("active"); });
+            chips[0].classList.add("active");
+            statoCorrente = "";
             applica();
           });
         }
@@ -164,11 +176,12 @@
 
 {% if current_user %}
 <script>
-  // Card intera cliccabile (riga pratica + appuntamento): solo dentro
-  // l'app, dove la tabella diventa una lista di card e l'azione "Apri →"
-  // è nascosta. Nel browser questo script non fa nulla di visibile: gli
-  // elementi hanno comunque i loro link/azioni originali invariati.
-  if (document.documentElement.classList.contains("is-app")) {
+  // Card intera cliccabile (riga pratica + appuntamento): sotto 640px,
+  // dove la tabella diventa una lista di card e l'azione "Apri →" è
+  // nascosta (stessa soglia di style.css). A viewport largo lo script
+  // non fa nulla di visibile: gli elementi hanno comunque i loro
+  // link/azioni originali invariati.
+  if (window.matchMedia("(max-width: 640px)").matches) {
     document.querySelectorAll("[data-href]").forEach(function (el) {
       el.addEventListener("click", function (e) {
         if (e.target.closest("a, button")) return;

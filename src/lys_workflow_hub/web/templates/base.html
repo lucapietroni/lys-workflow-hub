@@ -5,20 +5,34 @@
     <script>
       // Marca <html> come "is-app" SOLO dentro il wrapper Capacitor (mai in
       // un browser normale, anche da smartphone): window.Capacitor esiste
-      // solo lì. Il redesign mobile-first (style.css, tutto sotto
-      // `html.is-app`) è quindi visibile esclusivamente nell'app Android,
-      // la visualizzazione da browser resta invariata per scelta esplicita.
-      // Sincrono e prima del CSS: niente flash del layout sbagliato.
-      if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
+      // solo lì. Usata SOLO per funzionalità native (biometria, notifiche,
+      // fotocamera, check aggiornamento APK) — il layout non dipende più da
+      // questa classe, solo dal viewport (style.css).
+      var lysIsApp = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+      if (lysIsApp) {
         document.documentElement.classList.add("is-app");
+      }
+      // Sblocco biometrico: nasconde il contenuto PRIMA del primo paint se
+      // lo sblocco è attivo e questa sessione (sessionStorage, sopravvive
+      // alla navigazione full-page ma non a un vero restart) non è ancora
+      // stata sbloccata — altrimenti la lista pratiche lampeggerebbe
+      // visibile per una frazione di secondo prima dell'overlay (script a
+      // fine pagina, dopo che il DOM è già stato disegnato). Ripristinato
+      // da quello stesso script dopo una verifica riuscita o se la
+      // biometria non è attiva.
+      if (lysIsApp) {
+        try {
+          if (localStorage.getItem("lys_biometric_lock") === "1"
+              && sessionStorage.getItem("lys_unlocked_session") !== "1") {
+            document.documentElement.style.visibility = "hidden";
+          }
+        } catch (e) {}
       }
     </script>
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#0B1525" />
     {% if csrf_token %}<meta name="csrf-token" content="{{ csrf_token }}" />{% endif %}
     <title>{% block title %}LYS Workflow Hub{% endblock %}</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="/static/style.css?v={{ version }}" />
   </head>
   <body>
@@ -32,27 +46,47 @@
       </a>
 
       {% if current_user %}
-      <input type="checkbox" id="nav-toggle" class="nav-toggle-input" />
-      <label for="nav-toggle" class="nav-toggle-btn" aria-label="Apri menu" aria-controls="topbar-panel">
+      <button type="button" class="nav-toggle-btn" id="nav-toggle-btn"
+              aria-label="Apri menu" aria-expanded="false" aria-controls="topbar-panel">
         <span></span>
-      </label>
+      </button>
       {% endif %}
 
-      <div class="topbar-panel" id="topbar-panel">
+      <div class="topbar-panel" id="topbar-panel"{% if current_user %} hidden{% endif %}>
         <nav class="topnav" id="topnav">
           {% if current_user and current_user.is_admin %}
           <a href="/">Pratiche</a>
-          <a href="/compagnie">Compagnie</a>
-          <a href="/pec-inviate">PEC inviate</a>
-          <a href="/risposte">Risposte</a>
-          <a href="/bozze">Bozze</a>
-          <a href="/statistiche">Statistiche</a>
-          <a href="/foto">Foto</a>
-          <a href="/calendario">Calendario</a>
-          <a href="/utenti">Utenti</a>
-          <a href="/impostazioni">Impostazioni</a>
-          <a href="/ingressi">Ingressi officina</a>
-          <a href="/docs" target="_blank" rel="noopener">API</a>
+          <details class="nav-group">
+            <summary>Operatività</summary>
+            <div class="nav-group-menu">
+              <a href="/ingressi">Ingressi officina</a>
+              <a href="/calendario">Calendario</a>
+              <a href="/foto">Foto</a>
+            </div>
+          </details>
+          <details class="nav-group">
+            <summary>Comunicazioni</summary>
+            <div class="nav-group-menu">
+              <a href="/pec-inviate">PEC inviate</a>
+              <a href="/risposte">Risposte</a>
+              <a href="/bozze">Bozze</a>
+            </div>
+          </details>
+          <details class="nav-group">
+            <summary>Amministrazione</summary>
+            <div class="nav-group-menu">
+              <a href="/compagnie">Compagnie</a>
+              <a href="/utenti">Utenti</a>
+              <a href="/statistiche">Statistiche</a>
+            </div>
+          </details>
+          <details class="nav-group">
+            <summary>Sistema</summary>
+            <div class="nav-group-menu">
+              <a href="/impostazioni">Impostazioni</a>
+              <a href="/docs" target="_blank" rel="noopener">API</a>
+            </div>
+          </details>
           {% elif current_user and current_user.is_operatore %}
           <a href="/operatore">Nuovo veicolo</a>
           {% elif current_user %}
@@ -62,7 +96,7 @@
           {% endif %}
         </nav>
         {% if current_user %}
-        <form method="post" action="/logout" class="user-box">
+        <form method="post" action="/logout" class="user-box" id="logout-form">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
           <span class="user-box-name">{{ current_user.nome or current_user.email }}</span>
           <button type="submit" class="btn-link user-box-logout">Esci</button>
@@ -77,38 +111,112 @@
 
     <footer class="footbar">
       <span>Carrozzeria LYS Auto srl</span>
+      {% if not current_user or current_user.is_admin %}
       <span class="dot">·</span>
       <span>v{{ version }}</span>
       <span class="dot">·</span>
       <span>WinCar in sola lettura</span>
       <span class="dot">·</span>
       <span>Developed by Luca Pietroni</span>
+      {% endif %}
     </footer>
 
     <script>
-      // Marca il link attivo nella nav in base al path corrente
+      // Marca il link attivo nella nav in base al path corrente. Prima
+      // versione (v3) usava "path.startsWith(href)" per ogni link: su
+      // /portale/calendario risultavano attivi SIA "Le mie pratiche"
+      // (href=/portale) SIA "Calendario" (href=/portale/calendario) —
+      // bug reale, due voci evidenziate insieme. Fix: tra tutti gli href
+      // che matchano il path corrente, vince solo il più lungo (match più
+      // specifico). Se il link attivo è dentro un gruppo <details>, il
+      // gruppo stesso prende la classe "has-active" (evidenziato anche
+      // chiuso, così l'utente sa in che sezione si trova).
       (function () {
         var path = location.pathname.replace(/\/$/, '') || '/';
-        document.querySelectorAll('#topnav a').forEach(function (a) {
+        var link = document.getElementById('topnav');
+        if (!link) return;
+        var migliore = null, migliorLen = -1;
+        link.querySelectorAll('a[href]').forEach(function (a) {
           var href = a.getAttribute('href').replace(/\/$/, '') || '/';
-          if (href === '/' ? path === '/' : path.startsWith(href)) {
-            a.classList.add('active');
+          var matcha = href === '/' ? path === '/' : path.startsWith(href);
+          if (matcha && href.length > migliorLen) {
+            migliore = a;
+            migliorLen = href.length;
           }
         });
+        if (migliore) {
+          migliore.classList.add('active');
+          var gruppo = migliore.closest('.nav-group');
+          if (gruppo) gruppo.classList.add('has-active');
+        }
       })();
-      // Chiude il pannello mobile (checkbox hamburger) quando si tocca un
-      // link o si invia il form di logout — altrimenti resta aperto sopra
-      // la pagina successiva. No-op su desktop (checkbox non visibile lì).
+
+      // Drawer mobile (hamburger) + gruppi dropdown (<details class=
+      // "nav-group">): stessa logica di apertura/chiusura per entrambi,
+      // per non duplicare codice — ESC, click fuori, click su un link
+      // dentro chiudono tutto. Il drawer blocca anche lo scroll del body
+      // mentre è aperto.
       (function () {
-        var toggle = document.getElementById('nav-toggle');
+        var toggleBtn = document.getElementById('nav-toggle-btn');
         var panel = document.getElementById('topbar-panel');
-        if (!toggle || !panel) return;
-        panel.addEventListener('click', function (e) {
-          if (e.target.closest('a') || e.target.closest('button[type="submit"]')) {
-            toggle.checked = false;
+        var gruppi = document.querySelectorAll('.nav-group');
+
+        function drawerAperto() {
+          return toggleBtn && toggleBtn.getAttribute('aria-expanded') === 'true';
+        }
+        function apriDrawer() {
+          if (!toggleBtn || !panel) return;
+          panel.hidden = false;
+          toggleBtn.setAttribute('aria-expanded', 'true');
+          document.body.classList.add('nav-open');
+        }
+        function chiudiDrawer() {
+          if (!toggleBtn || !panel) return;
+          panel.hidden = true;
+          toggleBtn.setAttribute('aria-expanded', 'false');
+          document.body.classList.remove('nav-open');
+        }
+        function chiudiGruppi(tranneQuesto) {
+          gruppi.forEach(function (g) {
+            if (g !== tranneQuesto) g.removeAttribute('open');
+          });
+        }
+
+        if (toggleBtn && panel) {
+          toggleBtn.addEventListener('click', function () {
+            if (drawerAperto()) { chiudiDrawer(); } else { apriDrawer(); }
+          });
+          // Click su un link o sul submit di logout dentro il pannello:
+          // chiude il drawer prima che parta la navigazione/il POST.
+          panel.addEventListener('click', function (e) {
+            if (e.target.closest('a') || e.target.closest('button[type="submit"]')) {
+              chiudiDrawer();
+            }
+          });
+        }
+
+        // Un solo gruppo aperto alla volta (comportamento da menu-bar).
+        gruppi.forEach(function (g) {
+          g.addEventListener('toggle', function () {
+            if (g.open) chiudiGruppi(g);
+          });
+        });
+
+        document.addEventListener('keydown', function (e) {
+          if (e.key !== 'Escape') return;
+          if (drawerAperto()) { chiudiDrawer(); toggleBtn.focus(); }
+          chiudiGruppi(null);
+        });
+        document.addEventListener('click', function (e) {
+          if (drawerAperto() && !panel.contains(e.target) && e.target !== toggleBtn && !toggleBtn.contains(e.target)) {
+            chiudiDrawer();
           }
+          gruppi.forEach(function (g) {
+            if (g.open && !g.contains(e.target)) g.removeAttribute('open');
+          });
         });
       })();
+
       document.querySelectorAll(".password-toggle").forEach(function (btn) {
         btn.addEventListener("click", function () {
           var input = document.getElementById(btn.getAttribute("data-target"));
@@ -318,6 +426,25 @@
             }
           }
 
+          // Esce da un vero pulsante logout dentro l'overlay o dal form
+          // nell'header (id="logout-form", vedi header sopra): stesso POST
+          // con CSRF, e in entrambi i casi ripulisce i flag locali —
+          // login/logout su un device condiviso tra colleghi non deve
+          // lasciare la biometria di uno attiva per l'account del prossimo.
+          function pulisciFlagLocali() {
+            try {
+              sessionStorage.removeItem("lys_unlocked_session");
+              localStorage.removeItem("lys_biometric_lock");
+              localStorage.removeItem("lys_biometric_onboarding_seen");
+            } catch (e) {}
+          }
+          var logoutForm = document.getElementById("logout-form");
+          if (logoutForm) logoutForm.addEventListener("submit", pulisciFlagLocali);
+
+          function ripristinaVisibilita() {
+            document.documentElement.style.visibility = "";
+          }
+
           function mostraOverlay() {
             if (document.getElementById("lys-lock-overlay")) return;
             var overlay = document.createElement("div");
@@ -326,17 +453,20 @@
               "position:fixed;inset:0;z-index:9999;background:#0B1525;" +
               "display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;";
             overlay.innerHTML =
+              '<img src="/static/logo-lys.jpg" alt="" style="height:44px;opacity:0.9;" />' +
               '<span style="color:#fff;font-size:16px;">Sblocca per continuare</span>' +
               '<button type="button" class="btn btn-primary" id="lys-lock-retry">Sblocca</button>' +
               '<button type="button" class="btn btn-link" id="lys-lock-logout" style="color:#93C5FD;">Esci</button>';
             document.body.appendChild(overlay);
+            ripristinaVisibilita();
             document.getElementById("lys-lock-retry").addEventListener("click", tentaSblocco);
             document.getElementById("lys-lock-logout").addEventListener("click", function () {
-              // Stesso pattern del form di logout nell'header (riga ~62):
-              // POST con CSRF, nessuna via d'uscita diversa se la biometria
-              // smette di funzionare (device senza più impronte enrollate,
-              // guasto sensore) — senza questo pulsante l'unica via sarebbe
+              // Stesso pattern del form di logout nell'header: POST con
+              // CSRF, nessuna via d'uscita diversa se la biometria smette
+              // di funzionare (device senza più impronte enrollate, guasto
+              // sensore) — senza questo pulsante l'unica via sarebbe
               // cancellare i dati app da Impostazioni Android.
+              pulisciFlagLocali();
               var csrfEl = document.querySelector('meta[name="csrf-token"]');
               var form = document.createElement("form");
               form.method = "post";
@@ -354,6 +484,7 @@
           function nascondiOverlay() {
             var overlay = document.getElementById("lys-lock-overlay");
             if (overlay) overlay.remove();
+            ripristinaVisibilita();
           }
 
           function tentaSblocco() {
@@ -373,12 +504,20 @@
                 nascondiOverlay();
               })
               .catch(function () {
+                // Annullato dall'utente o fallito (impronta non
+                // riconosciuta, sensore non disponibile, ecc.): mostra di
+                // nuovo l'overlay con "Sblocca"/"Esci", mai un loop e mai
+                // l'app bloccata senza via d'uscita — l'utente sceglie se
+                // riprovare o uscire (fallback al login classico).
                 mostraOverlay();
               });
           }
 
           function controllaLock() {
-            if (!biometriaAttiva() || sbloccatoInQuestaSessione()) return;
+            if (!biometriaAttiva() || sbloccatoInQuestaSessione()) {
+              ripristinaVisibilita();
+              return;
+            }
             mostraOverlay();
             tentaSblocco();
           }
@@ -395,6 +534,80 @@
                 segnaBloccato();
               }
             });
+          }
+
+          // -- "Accesso rapido": onboarding biometria dopo il login -------
+          // Non fa mai scoprire la biometria dentro Impostazioni: se il
+          // device la supporta e non è ancora configurata, la propone da
+          // sola al primo caricamento autenticato (praticamente equivalente
+          // a "subito dopo il login", senza bisogno di un segnale dedicato
+          // dal server — nessuna modifica all'autenticazione). Un solo
+          // tap per attivarla, "Non ora" non richiede più nulla su questo
+          // device (non riproposta ad ogni apertura).
+          function onboardingVisto() {
+            try {
+              return localStorage.getItem("lys_biometric_onboarding_seen") === "1";
+            } catch (e) {
+              return true;
+            }
+          }
+          function segnaOnboardingVisto() {
+            try {
+              localStorage.setItem("lys_biometric_onboarding_seen", "1");
+            } catch (e) {}
+          }
+          function mostraOnboarding() {
+            if (document.getElementById("lys-onboarding-overlay")) return;
+            var overlay = document.createElement("div");
+            overlay.id = "lys-onboarding-overlay";
+            overlay.style.cssText =
+              "position:fixed;inset:0;z-index:9998;background:rgba(11,21,37,0.92);" +
+              "backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:24px;";
+            overlay.innerHTML =
+              '<div class="card" style="max-width:340px;text-align:center;">' +
+              '<h2 style="justify-content:center;border:none;padding:0;">Accesso rapido</h2>' +
+              '<p class="meta" style="margin:10px 0 20px;">' +
+              'Da ora puoi entrare nell\'app usando l\'impronta digitale o il ' +
+              'riconoscimento facciale, senza reinserire email e password.</p>' +
+              '<div style="display:flex;gap:8px;flex-direction:column;">' +
+              '<button type="button" class="btn btn-primary" id="lys-onboard-attiva">Attiva</button>' +
+              '<button type="button" class="btn btn-link" id="lys-onboard-dopo">Non ora</button>' +
+              '</div></div>';
+            document.body.appendChild(overlay);
+            document.getElementById("lys-onboard-dopo").addEventListener("click", function () {
+              segnaOnboardingVisto();
+              overlay.remove();
+            });
+            document.getElementById("lys-onboard-attiva").addEventListener("click", function () {
+              var NativeBiometric = window.Capacitor.Plugins.NativeBiometric;
+              if (!NativeBiometric) { segnaOnboardingVisto(); overlay.remove(); return; }
+              NativeBiometric.verifyIdentity({
+                reason: "Conferma per attivare l'accesso rapido",
+                title: "LYS Hub",
+                useFallback: true,
+              })
+                .then(function () {
+                  try { localStorage.setItem("lys_biometric_lock", "1"); } catch (e) {}
+                  segnaSbloccato(); // già verificato ora, non richiederlo di nuovo in questa sessione
+                  segnaOnboardingVisto();
+                  overlay.remove();
+                })
+                .catch(function () {
+                  // Verifica fallita/annullata: non attiviamo nulla, ma non
+                  // consideriamo l'onboarding "rifiutato per sempre" — un
+                  // fallimento momentaneo (dito bagnato, luce scarsa) non
+                  // deve nascondere per sempre la proposta.
+                  overlay.remove();
+                });
+            });
+          }
+          var NativeBiometricOnboarding = window.Capacitor.Plugins.NativeBiometric;
+          if (NativeBiometricOnboarding && !biometriaAttiva() && !onboardingVisto()) {
+            NativeBiometricOnboarding.isAvailable()
+              .then(function (result) {
+                if (result && result.isAvailable) mostraOnboarding();
+              })
+              .catch(function () {});
           }
         })();
       }

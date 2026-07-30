@@ -13,6 +13,15 @@
   <a href="/portale" class="btn btn-sm">← Torna alle tue pratiche</a>
 </nav>
 
+{% if puo_scrivere %}
+<nav class="mobile-action-bar" aria-label="Azioni rapide pratica">
+  <a href="#foto"><span class="icon" aria-hidden="true">📷</span>Foto</a>
+  <a href="#note"><span class="icon" aria-hidden="true">📝</span>Nota</a>
+  <a href="#calendario"><span class="icon" aria-hidden="true">📅</span>Evento</a>
+  <a href="#documenti"><span class="icon" aria-hidden="true">⋯</span>Altro</a>
+</nav>
+{% endif %}
+
 {% if upload_ok %}
   <div class="alert alert-success">
     <strong>{{ upload_ok }} file caricat{% if upload_ok == 1 %}o{% else %}i{% endif %} con successo.</strong>
@@ -389,7 +398,10 @@
 
     var isApp = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
 
-    // -- Zoom/pan a due dita nel lightbox (solo app) ----------------------
+    // -- Zoom/pan a due dita nel lightbox --------------------------------
+    // Solo Touch Events standard (nessuna API Capacitor): funziona identico
+    // in un browser mobile e nell'app, niente gate isApp — un mouse
+    // desktop non genera mai touchstart, zero effetti collaterali.
     var scale = 1, panX = 0, panY = 0, startDist = 0, startScale = 1, panStart = null;
     function applyTransform() {
       lbImg.style.transform = "translate(" + panX + "px," + panY + "px) scale(" + scale + ")";
@@ -403,7 +415,7 @@
       var dy = touches[0].clientY - touches[1].clientY;
       return Math.sqrt(dx * dx + dy * dy);
     }
-    if (isApp) {
+    {
       lbImg.addEventListener("touchstart", function (e) {
         if (e.touches.length === 2) {
           startDist = distanza(e.touches);

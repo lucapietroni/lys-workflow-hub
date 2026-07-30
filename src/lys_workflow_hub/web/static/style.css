@@ -1,9 +1,7 @@
-/* LYS Workflow Hub — design system v3 — Dark Glass
+/* LYS Workflow Hub — design system v4 (redesign 2026-07, branch ui-ux-redesign)
    Palette: #0B1525 (bg) · #1F3A5F (blu LYS) · #C9981A (oro LYS)
-   Font: Inter (Google Fonts) */
-
-/* ====== Google Fonts ====== */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+   Font: stack di sistema (niente Google Fonts — zero richieste esterne
+   prima del render, niente FOUC, look quasi identico a Inter). */
 
 :root {
   /* Brand */
@@ -20,7 +18,11 @@
   --lys-grey-900: #E8EDF5;
   --lys-grey-700: #A0B5CC;
   --lys-grey-600: #8A9DB8;
-  --lys-grey-500: #6A80A0;
+  /* Alzato da #6A80A0 (4.13:1 sulle card — sotto la soglia AA 4.5:1) a
+     #7E96B8 (5.5:1 su card, 6.0:1 su sfondo pagina): stesso ruolo di testo
+     secondario/meta, ora conforme WCAG AA. Verificato con la formula di
+     luminanza relativa WCAG, non solo a occhio. */
+  --lys-grey-500: #7E96B8;
   --lys-grey-400: #4A6080;
   --lys-grey-300: rgba(255,255,255,0.10);
   --lys-grey-100: rgba(255,255,255,0.05);
@@ -32,32 +34,66 @@
   --lys-warn:    #FBBF24;
   --lys-danger:  #F87171;
 
-  /* Glass surfaces */
-  --glass:        rgba(255,255,255,0.04);
-  --glass-hover:  rgba(255,255,255,0.07);
-  --glass-border: rgba(255,255,255,0.09);
+  /* Glass surfaces — trasparenze/blur ridotti rispetto alla v3 per
+     leggibilità e performance (meno compositing GPU su device modesti). */
+  --glass:        rgba(255,255,255,0.05);
+  --glass-hover:  rgba(255,255,255,0.08);
+  --glass-border: rgba(255,255,255,0.11);
   --glass-border-focus: rgba(201,152,26,0.45);
+  --blur-sm: 4px;
+  --blur-md: 8px;
 
   /* Legacy aliases (usato in template con inline styles) */
   --border:        rgba(255,255,255,0.10);
   --lys-grey-200:  rgba(255,255,255,0.08);
-  --lys-grey-600:  #8A9DB8;
 
-  /* Elevazione */
-  --shadow:    0 1px 3px rgba(0,0,0,0.25), 0 4px 12px rgba(0,0,0,0.20);
-  --shadow-lg: 0 4px 8px rgba(0,0,0,0.30), 0 12px 32px rgba(0,0,0,0.25);
+  /* Elevazione — ombre più contenute (v3 aveva doppio strato pesante) */
+  --shadow:    0 1px 2px rgba(0,0,0,0.20), 0 2px 6px rgba(0,0,0,0.16);
+  --shadow-lg: 0 2px 6px rgba(0,0,0,0.24), 0 8px 20px rgba(0,0,0,0.20);
 
   /* Layout */
   --radius:    10px;
+  --radius-sm: 6px;
+  --radius-lg: 14px;
   --topbar-h:  62px;
 
+  /* Scala spaziatura — usata dai componenti nuovi/toccati in questo giro
+     (nav, action bar, card appuntamento/pratica). Il resto del foglio
+     mantiene i valori storici: retrofit totale fuori scope proporzionato. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* Target touch minimo (WCAG 2.5.5 / linee guida mobile) */
+  --tap-min: 44px;
+
   /* Tipografia */
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-mono: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
 
   /* BG */
   --page-bg:  #0B1525;
   --page-bg2: #0F1E35;
+
+  /* Transizioni — durata unica per coerenza (v3 aveva 0.1/0.15/0.18/0.2/0.22s sparsi) */
+  --transition-fast: 0.15s ease;
+  --transition-slow: 0.25s ease;
+}
+
+/* Rispetta la preferenza di sistema "riduci animazioni": disattiva
+   animazioni/transizioni/scroll fluido ovunque, senza eccezioni per
+   componente — deve valere anche per gli elementi aggiunti in futuro. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* ====== Reset & base ====== */
@@ -104,9 +140,9 @@ code {
 
 /* ====== Header ====== */
 .topbar {
-  background: rgba(11,21,37,0.85);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: rgba(11,21,37,0.92);
+  backdrop-filter: blur(var(--blur-md));
+  -webkit-backdrop-filter: blur(var(--blur-md));
   color: var(--lys-white);
   height: var(--topbar-h);
   padding: 0 24px;
@@ -293,6 +329,12 @@ code {
   line-height: 1.65;
 }
 
+/* Home: la ricerca deve essere il primo elemento utile, non un titolo +
+   due righe di spiegazione — vedi index.html. */
+.hero-compact { padding: var(--space-4) 0 var(--space-6); margin-bottom: var(--space-5); }
+.hero-compact h1 { font-size: 1.5rem; margin: 0 0 4px; }
+.hero-compact .subtitle { font-size: 0.88rem; margin: 0 0 16px; line-height: 1.4; }
+
 /* KPI strip */
 .hero-stats {
   display: flex;
@@ -302,7 +344,7 @@ code {
   border: 1px solid var(--glass-border);
   border-radius: var(--radius);
   overflow: hidden;
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(var(--blur-sm));
   animation: fade-up 0.45s 0.08s ease both;
 }
 .hero-stat {
@@ -370,7 +412,7 @@ code {
   background: var(--glass);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius);
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(var(--blur-sm));
   overflow: hidden;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
@@ -413,7 +455,7 @@ code {
   background: var(--glass);
   border-radius: var(--radius);
   border: 1px solid var(--glass-border);
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(var(--blur-sm));
 }
 .hints h2 {
   margin: 0 0 10px;
@@ -530,7 +572,7 @@ code {
   overflow: hidden;
   box-shadow: var(--shadow);
   border: 1px solid var(--glass-border);
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(var(--blur-sm));
 }
 .results-table th, .results-table td {
   text-align: left;
@@ -631,7 +673,7 @@ code {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(var(--blur-sm));
 }
 .btn:hover:not([disabled]) {
   border-color: rgba(201,152,26,0.4);
@@ -676,7 +718,7 @@ code {
   margin-bottom: 18px;
   box-shadow: var(--shadow);
   border: 1px solid var(--glass-border);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(var(--blur-sm));
   transition: box-shadow 0.2s, border-color 0.2s;
   animation: fade-up 0.4s ease both;
 }
@@ -853,7 +895,7 @@ code {
 .footbar {
   position: relative; z-index: 1;
   background: rgba(11,21,37,0.60);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(var(--blur-sm));
   border-top: 1px solid var(--glass-border);
   padding: 13px 24px;
   text-align: center;
@@ -1003,8 +1045,8 @@ html.is-app .foto-select { display: none; }
   background: var(--glass);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(var(--blur-sm));
+  -webkit-backdrop-filter: blur(var(--blur-sm));
 }
 .foto-selezione-bar span { flex: 1; font-size: 0.85rem; color: var(--lys-grey-700); }
 .foto-selezione-bar[hidden] { display: none; }
@@ -1021,8 +1063,8 @@ html.is-app .foto-thumb img {
   inset: 0;
   z-index: 200;
   background: rgba(6,12,22,0.88);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(var(--blur-sm));
+  -webkit-backdrop-filter: blur(var(--blur-sm));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1037,9 +1079,11 @@ html.is-app .foto-thumb img {
   border-radius: 8px;
   box-shadow: var(--shadow-lg);
   cursor: default;
+  /* Il pinch-zoom è gestito dal JS del lightbox (touch events standard,
+     stesso codice da browser e app) — touch-action:none evita che il
+     pinch-zoom nativo del browser lo contenda. */
+  touch-action: none;
 }
-/* Solo in app: da browser mobile deve restare il pinch-zoom nativo. */
-html.is-app .lightbox img { touch-action: none; }
 .lightbox-close {
   position: absolute;
   top: 18px;
@@ -1213,7 +1257,7 @@ body.lightbox-open { overflow: hidden; }
   font-size: 0.86rem;
   color: var(--lys-grey-900);
   line-height: 1.5;
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(var(--blur-md));
 }
 
 /* ====== Card subhead ====== */
@@ -1289,7 +1333,7 @@ body.lightbox-open { overflow: hidden; }
   overflow: hidden;
   background: var(--glass);
   box-shadow: var(--shadow);
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(var(--blur-sm));
 }
 .pec-meta {
   padding: 10px 14px;
@@ -1534,87 +1578,124 @@ textarea:focus-visible, .btn:focus-visible, [tabindex]:focus-visible {
    "html.is-app" li riattiva più sotto con il display corretto. */
 .app-only { display: none; }
 
+
 /* ============================================================
-   Redesign mobile-first — SOLO app Android (Capacitor)
+   Redesign mobile-first — dipende SOLO dal viewport
    ============================================================
-   Attivo esclusivamente quando <html> ha classe "is-app", impostata da
-   uno script in base.html solo se window.Capacitor esiste (mai in un
-   browser normale, anche da smartphone). Scelta esplicita: la
-   visualizzazione da browser di hub.lysauto.it resta quella storica,
-   il redesign qui sotto vale solo dentro l'app.
+   Fino alla v3, questo intero blocco viveva sotto "html.is-app": stessa
+   larghezza di schermo, due UX diverse (browser vs app Capacitor). Da
+   questa revisione la UX dipende esclusivamente dal viewport — l'app è
+   solo un wrapper che carica le stesse pagine, non ha più un layout
+   proprio. `html.is-app` resta riservata a ciò che è genuinamente nativo
+   (bottone sblocco biometrico qui sotto, notifiche/fotocamera/update
+   gestiti in base.html) — mai più per differenze di layout.
 
-   Il markup condiviso da browser e app (header, tabella pratiche,
-   lista appuntamenti) usa classi con un default che replica esattamente
-   l'aspetto pre-esistente: solo le regole "html.is-app ..." qui sotto lo
-   sovrascrivono. Vedi anche `.topbar-panel`/`.nav-toggle-*` e
-   `.appuntamento-row` per i default neutri. */
+   Breakpoint unico "mobile" a 640px, riusato ovunque in questo blocco
+   invece dei tre valori diversi (599/640/720px) sparsi nella v3. */
 
-/* -- Header: default neutro (nessun hamburger fuori dall'app) -- */
+/* -- Header: nav-group (dropdown desktop / accordion mobile) --
+   <details class="nav-group"><summary>Gruppo</summary><div
+   class="nav-group-menu">...link...</div></details> — un solo markup,
+   comportamento diverso solo via CSS in base al viewport. */
+.nav-group { position: relative; }
+.nav-group > summary {
+  list-style: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: rgba(255,255,255,0.60);
+  height: var(--topbar-h);
+  padding: 0 12px;
+  font-size: 0.87rem;
+  font-weight: 500;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color var(--transition-fast), background var(--transition-fast);
+  white-space: nowrap;
+  user-select: none;
+}
+.nav-group > summary::-webkit-details-marker { display: none; }
+.nav-group > summary::after {
+  content: '';
+  width: 6px; height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+  margin-top: -3px;
+  opacity: 0.7;
+  transition: transform var(--transition-fast);
+}
+.nav-group[open] > summary::after { transform: rotate(-135deg); margin-top: 3px; }
+.nav-group > summary:hover { color: #fff; background: rgba(255,255,255,0.04); }
+.nav-group.has-active > summary { color: var(--lys-gold-glow); border-bottom-color: var(--lys-gold); }
+.nav-group-menu { display: flex; flex-direction: column; }
+.nav-group-menu a {
+  color: rgba(255,255,255,0.75);
+  padding: 11px 16px;
+  font-size: 0.87rem;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  border-radius: var(--radius-sm);
+}
+.nav-group-menu a:hover { background: rgba(255,255,255,0.06); color: #fff; text-decoration: none; }
+.nav-group-menu a.active { color: var(--lys-gold-glow); background: rgba(201,152,26,0.08); }
+
+@media (min-width: 641px) {
+  .nav-group-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    min-width: 200px;
+    background: var(--page-bg2);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+    padding: 6px;
+    z-index: 200;
+  }
+}
+
+/* -- Header: default neutro su desktop --
+   `.topbar-panel` ha l'attributo HTML `hidden` (stato di partenza,
+   markup condiviso da tutti i viewport): "display:contents" qui lo
+   annulla su desktop, dove il pannello non è mai un drawer da
+   aprire/chiudere — nav e user-box restano semplicemente in linea nella
+   topbar. Il media query sotto lo ridefinisce come drawer fisso solo
+   sotto 640px, dove l'attributo `hidden` torna a fare il suo lavoro
+   normale (JS lo toglie/rimette per aprire/chiudere il drawer). */
 .topbar-panel { display: contents; }
-.nav-toggle-input { display: none; }
-.nav-toggle-btn { display: none; }
 
-html.is-app {
-  --app-pad-x: 16px;
-}
-/* Rete di sicurezza esplicita: mai scroll orizzontale nell'app, qualunque
-   contenuto dinamico arrivi da WinCar (nomi lunghi, indirizzi, ecc.). */
-html.is-app, html.is-app body {
-  overflow-x: hidden;
-  max-width: 100vw;
-}
-
-/* Header compatto + hamburger reale */
-html.is-app .topbar {
-  height: calc(60px + env(safe-area-inset-top, 0px));
-  padding: env(safe-area-inset-top, 0px) var(--app-pad-x) 0;
-  align-items: flex-end;
-  padding-bottom: 0;
-}
-html.is-app .topbar::after { bottom: 0; }
-html.is-app .brand { height: 60px; gap: 8px; }
-/* Solo logo, niente scritta "Workflow Hub": più spazio per ingrandirlo. */
-html.is-app .brand-logo { height: 42px; }
-
-/* Portale esterno (browser, non solo app): stessa scelta, niente "Workflow
-   Hub"/"Gestione Sinistri" accanto al logo, solo logo più grande — l'admin
-   da browser mantiene l'header invariato. La versione app (regole sopra)
-   ha già le sue dimensioni coerenti con l'header compatto/hamburger: qui
-   copriamo solo il caso browser puro (:not(.is-app), niente conflitto). */
-html.is-app .brand-sub,
-html.esterno .brand-sub { display: none; }
-html.is-app .brand-title,
-html.esterno .brand-title { display: none; }
-html.esterno:not(.is-app) .brand-logo { height: 50px; }
-
-html.is-app .nav-toggle-input {
-  display: block;
-  position: absolute;
-  width: 1px; height: 1px;
-  opacity: 0;
-  overflow: hidden;
-}
-html.is-app .nav-toggle-btn {
-  display: flex;
+/* -- Header: hamburger reale (bottone, non checkbox) --
+   Markup: <button id="nav-toggle-btn" aria-expanded aria-controls=
+   "topbar-panel">. JS in base.html gestisce toggle/ESC/click-esterno/
+   scroll-lock. Su desktop il bottone resta nascosto, la nav è sempre
+   visibile in linea. */
+.nav-toggle-btn {
+  display: none;
   align-items: center;
   justify-content: center;
-  width: 44px; height: 44px;
+  width: var(--tap-min); height: var(--tap-min);
   margin-left: auto;
   flex-shrink: 0;
+  border: none;
+  background: transparent;
   border-radius: 8px;
   cursor: pointer;
+  padding: 0;
 }
-html.is-app .nav-toggle-btn:hover { background: rgba(255,255,255,0.06); }
-html.is-app .nav-toggle-btn span {
+.nav-toggle-btn:hover { background: rgba(255,255,255,0.06); }
+.nav-toggle-btn span {
   position: relative;
   display: block;
   width: 20px; height: 2px;
   background: #fff;
   border-radius: 2px;
-  transition: background 0.15s ease;
+  transition: background var(--transition-fast);
 }
-html.is-app .nav-toggle-btn span::before,
-html.is-app .nav-toggle-btn span::after {
+.nav-toggle-btn span::before,
+.nav-toggle-btn span::after {
   content: '';
   position: absolute;
   left: 0;
@@ -1623,191 +1704,195 @@ html.is-app .nav-toggle-btn span::after {
   border-radius: 2px;
   transition: transform 0.2s ease;
 }
-html.is-app .nav-toggle-btn span::before { top: -6px; }
-html.is-app .nav-toggle-btn span::after { top: 6px; }
-html.is-app .nav-toggle-input:checked ~ .nav-toggle-btn span { background: transparent; }
-html.is-app .nav-toggle-input:checked ~ .nav-toggle-btn span::before { transform: translateY(6px) rotate(45deg); }
-html.is-app .nav-toggle-input:checked ~ .nav-toggle-btn span::after { transform: translateY(-6px) rotate(-45deg); }
+.nav-toggle-btn span::before { top: -6px; }
+.nav-toggle-btn span::after { top: 6px; }
+.nav-toggle-btn[aria-expanded="true"] span { background: transparent; }
+.nav-toggle-btn[aria-expanded="true"] span::before { transform: translateY(6px) rotate(45deg); }
+.nav-toggle-btn[aria-expanded="true"] span::after { transform: translateY(-6px) rotate(-45deg); }
 
-html.is-app .topbar-panel {
-  display: block;
-  position: fixed;
-  top: calc(60px + env(safe-area-inset-top, 0px));
-  left: 0; right: 0;
-  max-height: 0;
-  overflow: hidden;
-  opacity: 0;
-  background: #0B1525;
-  border-bottom: 1px solid var(--glass-border);
-  box-shadow: var(--shadow-lg);
-  transition: max-height 0.22s ease, opacity 0.18s ease;
-  z-index: 150;
-}
-html.is-app .nav-toggle-input:checked ~ .topbar-panel {
-  max-height: 75vh;
-  opacity: 1;
-  overflow-y: auto;
-}
-html.is-app .topnav {
-  flex-direction: column;
-  align-items: stretch;
-  height: auto;
-  overflow: visible;
-  gap: 0;
-  padding: 6px 0;
-}
-html.is-app .topnav a {
-  height: auto;
-  min-height: 48px;
-  width: 100%;
-  padding: 0 var(--app-pad-x);
-  margin-bottom: 0;
-  border-bottom: 1px solid var(--glass-border);
-  border-left: 3px solid transparent;
-  font-size: 0.95rem;
-}
-html.is-app .topnav a.active {
-  border-left-color: var(--lys-gold);
-  background: rgba(201,152,26,0.06);
-}
-html.is-app .user-box {
-  padding: 14px var(--app-pad-x);
-  justify-content: space-between;
-  border-top: 1px solid var(--glass-border);
-}
-html.is-app .user-box-name { font-size: 0.92rem; font-weight: 600; color: var(--lys-grey-900); }
-html.is-app .user-box-logout {
-  min-height: 40px;
-  padding: 8px 16px;
-  border: 1px solid rgba(248,113,113,0.35);
-  border-radius: var(--radius);
-  color: var(--lys-danger);
-}
+/* Blocca lo scroll della pagina sotto quando il drawer mobile è aperto —
+   classe aggiunta/rimossa da JS su <body>. */
+body.nav-open { overflow: hidden; }
 
-/* Container: safe-area + padding coerente 16px */
-html.is-app .container {
-  padding-left: max(var(--app-pad-x), env(safe-area-inset-left));
-  padding-right: max(var(--app-pad-x), env(safe-area-inset-right));
-  padding-top: 18px;
-  padding-bottom: max(32px, env(safe-area-inset-bottom));
-}
-html.is-app .footbar { padding-bottom: max(13px, env(safe-area-inset-bottom)); }
+@media (max-width: 640px) {
+  .nav-toggle-btn { display: flex; }
 
-/* Titoli: gerarchia più leggera, niente wrap su una sola riga lunghissima */
-html.is-app .hero h1 { font-size: clamp(1.35rem, 6vw, 1.7rem); }
-html.is-app .hero .subtitle { font-size: 0.87rem; max-width: 100%; }
-html.is-app .hero-eyebrow { font-size: 0.64rem; }
-html.is-app .pratica-header h1 { font-size: clamp(1.2rem, 5.5vw, 1.5rem); }
-html.is-app .card h2 { font-size: 0.74rem; }
+  .topbar {
+    height: calc(56px + env(safe-area-inset-top, 0px));
+    padding: env(safe-area-inset-top, 0px) 16px 0;
+    align-items: flex-end;
+    padding-bottom: 0;
+  }
+  .topbar::after { bottom: 0; }
+  .brand { height: 56px; gap: 8px; }
+  .brand-logo { height: 38px; }
+  /* Sotto una certa larghezza "Workflow Hub / Gestione Sinistri" accanto
+     al logo non ci sta bene insieme a titolo+hamburger: solo il logo,
+     più leggibile. */
+  .brand-sub, .brand-title { display: none; }
 
-/* Target touch minimi 44px su tutti i controlli interattivi principali */
-html.is-app .btn,
-html.is-app .select-inline,
-html.is-app .filtro-testo,
-html.is-app .search-form input,
-html.is-app .search-form button,
-html.is-app .form-field input,
-html.is-app .form-field select,
-html.is-app .form-field textarea {
-  min-height: 44px;
-}
-html.is-app .btn-sm { min-height: 36px; }
+  .topbar-panel {
+    display: block;
+    position: fixed;
+    top: calc(56px + env(safe-area-inset-top, 0px));
+    left: 0; right: 0;
+    max-height: calc(100vh - 56px - env(safe-area-inset-top, 0px));
+    overflow-y: auto;
+    background: var(--page-bg);
+    border-bottom: 1px solid var(--glass-border);
+    box-shadow: var(--shadow-lg);
+    z-index: 150;
+  }
+  .topbar-panel[hidden] { display: none; }
 
-/* -- Prossimi appuntamenti: card compatta invece di riga densa -- */
-html.is-app .appuntamento-row {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 4px 12px;
-  align-items: center;
-  padding: 12px 4px;
-  cursor: pointer;
-}
-html.is-app .appuntamento-data {
-  grid-row: 1 / 3;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-width: 52px;
-  padding: 6px 4px;
-  border-radius: var(--radius);
-  background: rgba(201,152,26,0.12);
-  border: 1px solid rgba(201,152,26,0.22);
-  font-weight: 800;
-  color: var(--lys-gold-glow);
-}
-html.is-app .appuntamento-data .giorno { display: block; font-size: 1.1rem; line-height: 1.1; }
-html.is-app .appuntamento-data .mese { display: block; font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.06em; }
-html.is-app .appuntamento-row .appuntamento-legacy { display: none; }
-html.is-app .appuntamento-info { min-width: 0; }
-html.is-app .appuntamento-titolo {
-  display: block;
-  font-weight: 600;
-  color: var(--lys-grey-900);
-  font-size: 0.92rem;
-  overflow-wrap: anywhere;
-}
-html.is-app .appuntamento-meta {
-  display: block;
-  font-size: 0.80rem;
-  color: var(--lys-grey-700);
-  overflow-wrap: anywhere;
-}
-html.is-app .appuntamento-pratica {
-  display: inline-block;
-  margin-top: 2px;
-  font-weight: 700;
-  color: var(--lys-gold-glow);
-  font-size: 0.84rem;
+  .topnav { flex-direction: column; align-items: stretch; height: auto; overflow: visible; gap: 0; padding: 6px 0; }
+  .topnav > a {
+    height: auto; min-height: var(--tap-min); width: 100%;
+    padding: 0 16px; margin-bottom: 0;
+    border-bottom: 1px solid var(--glass-border);
+    border-left: 3px solid transparent;
+    font-size: 0.95rem;
+  }
+  .topnav > a.active { border-left-color: var(--lys-gold); background: rgba(201,152,26,0.06); }
+
+  /* Gruppi: accordion verticale, stesso <details> del desktop ma senza
+     posizionamento assoluto (già escluso dalla regola @min-width sopra). */
+  .nav-group { border-bottom: 1px solid var(--glass-border); }
+  .nav-group > summary { width: 100%; height: auto; min-height: var(--tap-min); padding: 0 16px; border-bottom: none; margin-bottom: 0; justify-content: space-between; }
+  .nav-group-menu { padding: 0 0 6px 12px; }
+  .nav-group-menu a { padding: 10px 16px; min-height: 40px; display: flex; align-items: center; }
+
+  .user-box { padding: 14px 16px; justify-content: space-between; border-top: 1px solid var(--glass-border); }
+  .user-box-name { font-size: 0.92rem; font-weight: 600; color: var(--lys-grey-900); }
+  .user-box-logout { min-height: 40px; padding: 8px 16px; border: 1px solid rgba(248,113,113,0.35); border-radius: var(--radius); color: var(--lys-danger); }
+
+  .container { padding: 18px 16px 32px; }
+  .footbar { padding-bottom: max(13px, env(safe-area-inset-bottom)); }
+
+  .hero h1 { font-size: clamp(1.35rem, 6vw, 1.7rem); }
+  .hero .subtitle { font-size: 0.87rem; max-width: 100%; }
+  .hero-eyebrow { font-size: 0.64rem; }
+  .pratica-header h1 { font-size: clamp(1.2rem, 5.5vw, 1.5rem); }
+  .card h2 { font-size: 0.74rem; }
+
+  /* Target touch minimo 44px sui controlli interattivi principali. */
+  .btn, .select-inline, .filtro-testo,
+  .search-form input, .search-form button,
+  .form-field input, .form-field select, .form-field textarea {
+    min-height: var(--tap-min);
+  }
+  .btn-sm { min-height: 36px; }
+
+  /* -- Prossimi appuntamenti: card compatta invece di riga densa -- */
+  .appuntamento-row { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; align-items: center; padding: 12px 4px; cursor: pointer; }
+  .appuntamento-data {
+    grid-row: 1 / 3; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-width: 52px; padding: 6px 4px; border-radius: var(--radius);
+    background: rgba(201,152,26,0.12); border: 1px solid rgba(201,152,26,0.22);
+    font-weight: 800; color: var(--lys-gold-glow);
+  }
+  .appuntamento-data .giorno { display: block; font-size: 1.1rem; line-height: 1.1; }
+  .appuntamento-data .mese { display: block; font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.06em; }
+  .appuntamento-row .appuntamento-legacy { display: none; }
+  .appuntamento-info { min-width: 0; }
+  .appuntamento-titolo { display: block; font-weight: 600; color: var(--lys-grey-900); font-size: 0.92rem; overflow-wrap: anywhere; }
+  .appuntamento-meta { display: block; font-size: 0.80rem; color: var(--lys-grey-700); overflow-wrap: anywhere; }
+  .appuntamento-pratica { display: inline-block; margin-top: 2px; font-weight: 700; color: var(--lys-gold-glow); font-size: 0.84rem; }
+
+  /* -- Ricerca e filtri: ricerca a piena larghezza, filtri sotto -- */
+  .table-filters { flex-direction: column; align-items: stretch; gap: 8px; }
+  .filtro-testo { width: 100%; }
+  .table-filters .select-inline { width: 100%; }
+  .filtro-count-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .btn-azzera-filtri { display: inline-flex; min-height: 36px; padding: 6px 12px; font-size: 0.82rem; }
+
+  /* -- "Torna alla ricerca" in fondo alla pratica: da desktop il link in
+     cima basta, su mobile dopo aver scrollato tutta la pagina serve
+     anche in fondo. -- */
+  .breadcrumb-bottom { display: block; }
+
+  /* -- Cambio stato pratica: colonna a piena larghezza -- */
+  .form-inline-stato { flex-direction: column; align-items: stretch; gap: 10px; }
+  .form-inline-stato .select-inline, .form-inline-stato input[type="text"] { width: 100%; }
+  .form-inline-stato .btn { width: 100%; }
+
+  /* Spazio per la action bar fissa in fondo (dettaglio pratica, vedi
+     sotto) — evita che l'ultimo contenuto resti coperto. */
+  body:has(.mobile-action-bar) .container { padding-bottom: calc(72px + max(16px, env(safe-area-inset-bottom))); }
 }
 
-/* -- Ricerca e filtri: ricerca a piena larghezza, filtri sotto -- */
-html.is-app .table-filters { flex-direction: column; align-items: stretch; gap: 8px; }
-html.is-app .filtro-testo { width: 100%; }
-html.is-app .table-filters .select-inline { width: 100%; }
-html.is-app .filtro-count-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-html.is-app .btn-azzera-filtri {
-  display: inline-flex;
-  min-height: 36px;
-  padding: 6px 12px;
-  font-size: 0.82rem;
-}
-
-/* -- Toggle sblocco biometrico (/portale/impostazioni), solo app -- */
+/* -- Toggle sblocco biometrico: genuinamente nativo (Capacitor
+   NativeBiometric), niente equivalente da browser — is-app resta corretto
+   qui, è l'unico posto rimasto in questo file. -- */
 html.is-app .biometric-toggle-section { display: block; }
 
-/* -- "Torna alla ricerca" in fondo alla pratica admin, solo app: da
-   browser desktop il link in cima basta, ma in app dopo aver scrollato
-   tutta la pratica serve anche in fondo (come richiesto dall'utente). -- */
-html.is-app .breadcrumb-bottom { display: block; }
-
-/* -- Cambio stato pratica: colonna a piena larghezza invece di riga stretta -- */
-html.is-app .form-inline-stato { flex-direction: column; align-items: stretch; gap: 10px; }
-html.is-app .form-inline-stato .select-inline,
-html.is-app .form-inline-stato input[type="text"] { width: 100%; }
-html.is-app .form-inline-stato .btn { width: 100%; }
-
-/* -- Elenco pratiche: card invece di tabella (solo sotto tablet) -- */
-@media (max-width: 599px) {
-  html.is-app .pratiche-table thead { display: none; }
-  html.is-app .pratiche-table,
-  html.is-app .pratiche-table tbody,
-  html.is-app .pratiche-table tr {
-    display: block;
-    width: 100%;
+/* -- Action bar fissa in fondo (dettaglio pratica, solo mobile) --
+   Markup: <nav class="mobile-action-bar"><a>...</a>...</nav>, con classe
+   "app-only" rimossa: ora visibile a qualunque viewport stretto, non solo
+   nell'app. Ancore alle sezioni già esistenti (#foto, #note, #calendario). */
+.mobile-action-bar { display: none; }
+@media (max-width: 640px) {
+  .mobile-action-bar {
+    display: flex;
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    z-index: 140;
+    background: rgba(11,21,37,0.95);
+    backdrop-filter: blur(var(--blur-md));
+    -webkit-backdrop-filter: blur(var(--blur-md));
+    border-top: 1px solid var(--glass-border);
+    padding: 6px max(8px, env(safe-area-inset-left)) max(6px, env(safe-area-inset-bottom));
+    gap: 2px;
   }
-  html.is-app .pratiche-table {
-    background: none;
-    border: none;
-    box-shadow: none;
-    border-radius: 0;
+  .mobile-action-bar a {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 6px 4px;
+    min-height: var(--tap-min);
+    border-radius: var(--radius-sm);
+    color: var(--lys-grey-700);
+    font-size: 0.66rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    text-decoration: none;
   }
-  html.is-app .pratiche-table tr {
+  .mobile-action-bar a:hover, .mobile-action-bar a:active { background: rgba(255,255,255,0.06); color: var(--lys-gold-glow); text-decoration: none; }
+  .mobile-action-bar .icon { font-size: 1.15rem; line-height: 1; }
+}
+
+/* -- Filtri come chip invece di <select> (dove il set di valori è noto e
+   corto, es. stato pratica) — markup: <div class="chip-filter"><button
+   class="chip" data-value="...">Label</button>...</div>. */
+.chip-filter { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  border: 1px solid var(--glass-border);
+  background: var(--glass);
+  color: var(--lys-grey-700);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 0.80rem;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+  min-height: 32px;
+}
+.chip:hover { border-color: rgba(201,152,26,0.35); color: var(--lys-gold-glow); }
+.chip.active { background: rgba(201,152,26,0.14); border-color: rgba(201,152,26,0.45); color: var(--lys-gold-glow); }
+@media (max-width: 640px) { .chip { min-height: var(--tap-min); } }
+
+/* -- Elenco pratiche: card invece di tabella (qualunque viewport stretto,
+   browser o app) -- */
+@media (max-width: 640px) {
+  .pratiche-table thead { display: none; }
+  .pratiche-table, .pratiche-table tbody, .pratiche-table tr { display: block; width: 100%; }
+  .pratiche-table { background: none; border: none; box-shadow: none; border-radius: 0; }
+  .pratiche-table tr {
     background: var(--glass);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius);
@@ -1815,54 +1900,29 @@ html.is-app .form-inline-stato .btn { width: 100%; }
     margin-bottom: 10px;
     box-shadow: var(--shadow);
   }
-  html.is-app .pratiche-table tr.row-chiusa { opacity: 0.6; }
-  /* Il filtro JS di /portale nasconde le righe via [hidden], ma la regola
-     sopra impone display:block a *tutte* le tr per il layout a card — una
-     regola author batte sempre lo user-agent stylesheet ([hidden]{display:
-     none}), quindi le righe filtrate restavano visibili. Serve una regola
-     esplicita, più specifica, per il caso [hidden]. */
-  html.is-app .pratiche-table tr[hidden] { display: none; }
-  html.is-app .pratiche-table td {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    width: 100%;
-    border: none;
-    padding: 5px 0;
-    font-size: 0.88rem;
-    text-align: right;
+  .pratiche-table tr.row-chiusa { opacity: 0.6; }
+  /* Il filtro JS di /portale nasconde le righe via [hidden]: una regola
+     author (display:block sopra) batte lo user-agent stylesheet, serve
+     una regola esplicita e più specifica per [hidden]. */
+  .pratiche-table tr[hidden] { display: none; }
+  .pratiche-table td {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    width: 100%; border: none; padding: 5px 0; font-size: 0.88rem; text-align: right;
     overflow-wrap: anywhere;
     /* min-width:0 rompe il default "min-width:auto" dei flex item: senza
-       questo un valore lungo e senza spazi (ragione sociale, indirizzo)
-       forzerebbe scroll orizzontale della card invece di andare a capo. */
+       questo un valore lungo e senza spazi forza scroll orizzontale della
+       card invece di andare a capo. */
     min-width: 0;
   }
-  html.is-app .pratiche-table td > * { min-width: 0; }
-  html.is-app .pratiche-table td::before {
+  .pratiche-table td > * { min-width: 0; }
+  .pratiche-table td::before {
     content: attr(data-label);
-    font-size: 0.64rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--lys-grey-500);
-    text-align: left;
-    flex-shrink: 0;
+    font-size: 0.64rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--lys-grey-500); text-align: left; flex-shrink: 0;
   }
-  html.is-app .pratiche-table td.num {
-    display: block;
-    padding-bottom: 8px;
-    margin-bottom: 4px;
-    border-bottom: 1px solid var(--glass-border);
-  }
-  html.is-app .pratiche-table td.num::before { display: block; margin-bottom: 2px; }
-  html.is-app .pratiche-table td.num a { font-size: 1.05rem; font-weight: 800; }
-  html.is-app .pratiche-table td.actions { display: none; }
-  html.is-app .pratiche-table .prossimo-app-chip {
-    display: block;
-    margin-top: 4px;
-    font-size: 0.78rem;
-    font-weight: 500;
-    color: var(--lys-gold);
-  }
+  .pratiche-table td.num { display: block; padding-bottom: 8px; margin-bottom: 4px; border-bottom: 1px solid var(--glass-border); }
+  .pratiche-table td.num::before { display: block; margin-bottom: 2px; }
+  .pratiche-table td.num a { font-size: 1.05rem; font-weight: 800; }
+  .pratiche-table td.actions { display: none; }
+  .pratiche-table .prossimo-app-chip { display: block; margin-top: 4px; font-size: 0.78rem; font-weight: 500; color: var(--lys-gold); }
 }

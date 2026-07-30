@@ -2,13 +2,9 @@
 {% block title %}Pratiche · LYS Workflow Hub{% endblock %}
 
 {% block content %}
-<section class="hero">
-  <div class="hero-eyebrow">Carrozzeria LYS Auto</div>
-  <h1>Gestione pratiche sinistri</h1>
-  <p class="subtitle">
-    Digita il cognome del cliente, la targa, oppure il numero pratica WinCar.
-    L'app capisce da sola che tipo di ricerca fare.
-  </p>
+<section class="hero hero-compact">
+  <h1>Pratiche</h1>
+  <p class="subtitle">Cerca per cognome, targa o numero pratica.</p>
   <form method="get" action="/" class="search-form" autocomplete="off">
     <input
       type="text"
@@ -166,7 +162,7 @@
   <section class="results">
     <header class="results-header">
       <h2>Ultime pratiche</h2>
-      <span class="badge">{{ ultime_pratiche|length }}</span>
+      <span class="badge">{{ ultime_pratiche|length }} pratic{% if ultime_pratiche|length == 1 %}a{% else %}he{% endif %}</span>
     </header>
     <section class="card">
     {% if ultime_pratiche %}
@@ -211,7 +207,10 @@
   </section>
 {% endif %}
 <script>
-  if (document.documentElement.classList.contains("is-app")) {
+  // Card interamente cliccabile: solo sotto la soglia dove la tabella
+  // diventa una card (stessa soglia di style.css, 640px) — a viewport
+  // largo la riga resta una normale riga di tabella col link "Apri →".
+  if (window.matchMedia("(max-width: 640px)").matches) {
     document.querySelectorAll("[data-href]").forEach(function (el) {
       el.addEventListener("click", function (e) {
         if (e.target.closest("a, button")) return;

@@ -13,6 +13,13 @@
   <a href="/" class="btn btn-sm">← Torna alla ricerca</a>
 </nav>
 
+<nav class="mobile-action-bar" aria-label="Azioni rapide pratica">
+  <a href="#foto"><span class="icon" aria-hidden="true">📷</span>Foto</a>
+  <a href="#note"><span class="icon" aria-hidden="true">📝</span>Nota</a>
+  <a href="#calendario"><span class="icon" aria-hidden="true">📅</span>Evento</a>
+  <a href="#azioni"><span class="icon" aria-hidden="true">⋯</span>Altro</a>
+</nav>
+
 {% if uploaded %}
   <div class="alert alert-success">
     <strong>Scansione archiviata.</strong>
@@ -96,7 +103,7 @@
       <p class="meta">Aperta il {{ pratica.data_creazione.strftime("%d/%m/%Y") }}</p>
     {% endif %}
   </div>
-  <div class="pratica-actions">
+  <div class="pratica-actions" id="azioni">
     <a class="btn btn-primary" href="/pratiche/{{ pratica.numero }}/cessione">
       Genera cessione del credito
     </a>
@@ -625,9 +632,9 @@
     var closeBtn = document.getElementById("lightbox-close");
     if (!lb || !lbImg || !closeBtn) return;
 
-    var isApp = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
-
-    // -- Zoom/pan a due dita nel lightbox (solo app, come portale) --------
+    // -- Zoom/pan a due dita nel lightbox --------------------------------
+    // Solo Touch Events standard, nessun gate isApp: identico da browser
+    // mobile e da app, un mouse desktop non genera mai touchstart.
     var scale = 1, panX = 0, panY = 0, startDist = 0, startScale = 1, panStart = null;
     function applyTransform() {
       lbImg.style.transform = "translate(" + panX + "px," + panY + "px) scale(" + scale + ")";
@@ -641,7 +648,7 @@
       var dy = touches[0].clientY - touches[1].clientY;
       return Math.sqrt(dx * dx + dy * dy);
     }
-    if (isApp) {
+    {
       lbImg.addEventListener("touchstart", function (e) {
         if (e.touches.length === 2) {
           startDist = distanza(e.touches);
