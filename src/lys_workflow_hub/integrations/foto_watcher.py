@@ -408,7 +408,14 @@ class FotoWatcher:
                     }
                 ],
             )
-            return msg.content[0].text.strip().upper()
+            testo = next((b.text for b in msg.content if b.type == "text"), None)
+            if testo is None:
+                logger.warning(
+                    "FotoWatcher: risposta Claude Vision senza blocco testo (tipi: %s)",
+                    [b.type for b in msg.content],
+                )
+                return None
+            return testo.strip().upper()
         except Exception:
             logger.exception("FotoWatcher: errore Claude Vision")
             return None
