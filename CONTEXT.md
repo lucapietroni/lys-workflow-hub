@@ -884,10 +884,51 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 
 ## Stato attuale
 
-Versione **4.16.1**, tutto su branch `main`, in produzione su
+Versione **4.17.0**, tutto su branch `main`, in produzione su
 `https://hub.lysauto.it`. Changelog per-commit in `git log`; le decisioni
 tecniche non ovvie dal codice (formati, gotcha, cause di bug reali) restano
 documentate nelle sezioni sopra, per sottosistema.
+
+**4.17.0 — Eliminazione file caricati (esterno, solo i propri)**: un
+collaboratore esterno può ora eliminare foto/documenti che ha caricato
+lui stesso — mai quelli caricati dall'admin o da un altro collaboratore.
+L'admin continua a poter eliminare qualunque foto senza restrizioni
+(comportamento invariato), ma non aveva mai avuto una route per eliminare
+documenti — introdotta anche quella, riusata solo dal lato esterno per
+ora.
+
+Nuovo `core/pratica_file_uploader_repository.py`
+(`PraticaFileUploaderRepository`): traccia chi ha caricato ciascun file
+(chiave = path assoluto, sempre univoco perché `save_upload()` non
+sovrascrive mai). `caricato_da(path) is None` per un file caricato prima
+di questa feature — fail-safe deliberato, "nessun proprietario noto" non
+è mai un permesso implicito. `_salva_file_pratica()` (condivisa tra
+upload admin ed esterno, `web/routes.py`) registra l'autore dopo ogni
+salvataggio riuscito, best-effort (un fallimento della tracciatura non
+blocca mai il salvataggio del file, lo rende solo non eliminabile dal suo
+autore finché non lo elimina un admin).
+
+La logica fisica di eliminazione foto (unlink + `.thumb` + pulizia
+`Thumbs.thumb` + azzeramento `CARVEI.F_FOTO` se era l'ultima) è stata
+estratta in `_elimina_foto_fisica()`, condivisa tra la route admin
+(nessun controllo di proprietario) e la nuova route esterno (che verifica
+la proprietà PRIMA di chiamarla). Nuova `_elimina_documento_fisico()`
+per i documenti (più semplice, nessun side-effect WinCar).
+
+Nuove route: `POST /portale/pratiche/{numero}/foto/elimina` e
+`/documenti/elimina` — stessa catena di controlli delle altre route di
+scrittura del portale (`_verifica_accesso` → `_richiedi_permesso_scrittura`
+→ nuovo `_richiedi_proprietario_file`, 403 se il file non è tracciato
+come caricato da quell'utente PROPRIO sotto quel numero pratica).
+`PraticaFileUploaderRepository.eliminabile_da(numero, path, utente_id)`
+verifica esplicitamente `pratica_numero` oltre a `caricato_da` — non basta
+essere l'autore del file, l'invariante non dipende dal fatto che il
+chiamante rivalidi comunque il path con `scan_allegati(numero)` subito
+dopo (`_elimina_foto_fisica`/`_elimina_documento_fisico`, che condividono
+la validazione path-vs-pratica tramite `_valida_path_pratica_o_403()`).
+Copertura test dedicata all'IDOR cross-pratica (stesso utente, due
+pratiche assegnate, file dell'una eliminato passando per l'URL
+dell'altra) sia a livello repository sia HTTP end-to-end.
 
 **4.16.1**: badge stato ("IN TRATTATIVA" ecc.) andavano a capo su due
 righe nella lista pratiche admin quando la colonna era stretta —

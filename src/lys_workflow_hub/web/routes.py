@@ -39,7 +39,10 @@ from lys_workflow_hub.core.pratica_assegnazioni_repository import (
     PraticaAssegnazioniRepository,
 )
 from lys_workflow_hub.core.pratica_eventi_repository import PraticaEventiRepository
-from lys_workflow_hub.core.pratica_files import Allegato, UploadRifiutato
+from lys_workflow_hub.core.pratica_file_uploader_repository import (
+    PraticaFileUploaderRepository,
+)
+from lys_workflow_hub.core.pratica_files import Allegato, AllegatiPratica, UploadRifiutato
 from lys_workflow_hub.core.pratica_files import save_upload as save_pratica_upload
 from lys_workflow_hub.core.pratica_files import scan as scan_allegati
 from lys_workflow_hub.core.pratica_note_repository import PraticaNoteRepository
@@ -117,7 +120,10 @@ _NON_RENDERIZZABILI = {".heic", ".heif"}
 
 
 def _allegati_con_url(
-    numero: int, items: list[Allegato], base: str = "/pratiche"
+    numero: int,
+    items: list[Allegato],
+    base: str = "/pratiche",
+    eliminabili: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Arricchisce gli Allegato con l'URL di anteprima inline per il template.
 
@@ -127,7 +133,13 @@ def _allegati_con_url(
     Un utente esterno con URL costruiti sul prefisso admin prenderebbe
     sempre 403 dal middleware require_admin, anche se autorizzato alla
     pratica.
+
+    `eliminabili` (solo lato portale esterno, vedi routes_portale.py): set
+    di path che l'utente corrente ha caricato lui stesso e può quindi
+    eliminare — None/vuoto per l'admin, che elimina foto senza questa
+    restrizione tramite la sua route dedicata, invariata.
     """
+    eliminabili = eliminabili or set()
     return [
         {
             "nome_file": a.nome_file,
@@ -136,6 +148,7 @@ def _allegati_con_url(
             "categoria": a.categoria,
             "path": str(a.path),
             "url": f"{base}/{numero}/file?path={_urlquote(str(a.path))}",
+            "eliminabile": str(a.path) in eliminabili,
         }
         for a in items
     ]
@@ -989,15 +1002,33 @@ _MAX_FILES_PER_UPLOAD = 20
 
 
 def _salva_file_pratica(
-    numero: int, categoria: str, files: list[UploadFile], settings: Settings
+    numero: int,
+    categoria: str,
+    files: list[UploadFile],
+    settings: Settings,
+    *,
+    caricato_da: int | None = None,
+    caricato_da_nome: str = "",
 ) -> tuple[list[str], list[str]]:
     """Salva ogni file valido in Pubblici/Foto o Pubblici/Allegati, continuando
     sugli altri se uno fallisce. Nessun controllo di accesso/CSRF qui dentro —
     responsabilità del chiamante (admin-only vs assegnazione esterno diversi
-    tra routes.py e routes_portale.py, condividono solo questo nucleo)."""
+    tra routes.py e routes_portale.py, condividono solo questo nucleo).
+
+    `caricato_da`/`caricato_da_nome`: se passati, registra chi ha caricato
+    ogni file salvato (PraticaFileUploaderRepository) — serve solo a
+    permettere a un esterno di eliminare in seguito i propri upload, vedi
+    `routes_portale.py`. L'admin non ha bisogno di questa restrizione (la
+    sua route di eliminazione foto resta senza controllo di proprietario),
+    ma la tracciatura è comunque utile/innocua tenerla per tutti."""
     if len(files) > _MAX_FILES_PER_UPLOAD:
         raise HTTPException(400, f"Troppi file in un'unica richiesta (max {_MAX_FILES_PER_UPLOAD}).")
 
+    uploader_repo = (
+        PraticaFileUploaderRepository(db_path=settings.app_db_path)
+        if caricato_da is not None
+        else None
+    )
     salvati: list[str] = []
     errori: list[str] = []
     for f in files:
@@ -1005,7 +1036,7 @@ def _salva_file_pratica(
             continue
         try:
             raw = f.file.read()
-            save_pratica_upload(
+            target = save_pratica_upload(
                 archivio_root=settings.wincar_archivio,
                 numero_pratica=numero,
                 categoria=categoria,
@@ -1014,6 +1045,16 @@ def _salva_file_pratica(
                 odbc_driver=settings.wincar_odbc_driver,
             )
             salvati.append(f.filename)
+            if uploader_repo is not None:
+                try:
+                    uploader_repo.registra(
+                        numero, target, caricato_da=caricato_da, caricato_da_nome=caricato_da_nome
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "Impossibile registrare l'autore del file %s (pratica %s): %s",
+                        target, numero, exc,
+                    )
         except UploadRifiutato as exc:
             errori.append(f"{f.filename}: {exc}")
         except OSError as exc:
@@ -1040,7 +1081,10 @@ def _upload_pratica_admin(
     if not verify_csrf(request, csrf_token):
         raise HTTPException(403, "Token di sicurezza mancante o scaduto. Ricarica la pagina e riprova.")
 
-    salvati, errori = _salva_file_pratica(numero, categoria, files, settings)
+    salvati, errori = _salva_file_pratica(
+        numero, categoria, files, settings,
+        caricato_da=admin.id, caricato_da_nome=admin.nome or admin.email,
+    )
 
     if salvati:
         try:
@@ -1094,30 +1138,44 @@ def pratica_upload_documento(
     )
 
 
-@router.post("/pratiche/{numero}/foto/elimina")
-def pratica_elimina_foto(
+def _valida_path_pratica_o_403(
     numero: int,
-    path: str = Form(...),
-    admin: Utente = Depends(require_admin),
-    settings: Settings = Depends(get_app_settings),
-) -> RedirectResponse:
+    path: str,
+    settings: Settings,
+    *,
+    candidati: Callable[[AllegatiPratica], set[str]],
+) -> Path:
+    """Verifica che `path` sia uno degli allegati REALMENTE presenti sulla
+    pratica `numero` (via `scan_allegati`, non fidandosi del dato client) —
+    condivisa tra foto e documenti, che differiscono solo per quale
+    sotto-insieme di `AllegatiPratica` è considerato valido."""
+    try:
+        allegati = scan_allegati(settings.wincar_archivio, numero)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Impossibile leggere allegati per %s: %s", numero, exc)
+        raise HTTPException(404, "Pratica non trovata o cartelle non accessibili.")
+    if path not in candidati(allegati):
+        raise HTTPException(403, "File non autorizzato per questa pratica.")
+    return Path(path)
+
+
+def _elimina_foto_fisica(numero: int, path: str, settings: Settings) -> None:
     """Elimina una foto (+ il suo sidecar .thumb) dalla pratica. Se era
     l'ultima rimasta, azzera anche CARVEI.F_FOTO: WinCar non lo fa da solo
     quando le foto vengono cancellate (bug segnalato dall'utente, icona
     fotocamera rimane accesa a cartella vuota) — vedi
     wincar_carvei_write.marca_foto_assente. Best-effort, come l'analogo
     marca_foto_presente sull'upload: non deve mai bloccare l'eliminazione
-    vera e propria."""
-    try:
-        allegati = scan_allegati(settings.wincar_archivio, numero)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Impossibile leggere foto per %s: %s", numero, exc)
-        raise HTTPException(404, "Pratica non trovata o cartelle non accessibili.")
-    valid = {str(a.path) for a in allegati.foto}
-    if path not in valid:
-        raise HTTPException(403, "Foto non autorizzata per questa pratica.")
+    vera e propria.
 
-    file_path = Path(path)
+    Condivisa tra l'eliminazione admin (nessuna restrizione di
+    proprietario) e quella dell'esterno sul proprio upload
+    (`routes_portale.py`, che verifica la proprietà PRIMA di chiamare
+    questa funzione) — qui dentro solo la logica fisica, l'autorizzazione
+    resta responsabilità del chiamante."""
+    file_path = _valida_path_pratica_o_403(
+        numero, path, settings, candidati=lambda a: {str(x.path) for x in a.foto}
+    )
     nome_thumb = file_path.name + ".thumb"
     if not file_path.exists():
         # Non dovrebbe succedere: `path` è appena stato validato contro
@@ -1126,16 +1184,16 @@ def pratica_elimina_foto(
         # unlink(missing_ok=True) mascheri silenziosamente la cosa — se il
         # problema segnalato ("non elimina il file fisico") è un mismatch di
         # path, questo è il punto in cui deve emergere nei log.
-        logger.error("pratica_elimina_foto: file già assente su disco: %s", file_path)
+        logger.error("_elimina_foto_fisica: file già assente su disco: %s", file_path)
     try:
         file_path.unlink(missing_ok=True)
         file_path.with_name(nome_thumb).unlink(missing_ok=True)
     except OSError as exc:
-        logger.exception("pratica_elimina_foto: unlink fallito per %s", file_path)
+        logger.exception("_elimina_foto_fisica: unlink fallito per %s", file_path)
         raise HTTPException(500, f"Impossibile eliminare il file: {exc}")
     if file_path.exists():
         logger.error(
-            "pratica_elimina_foto: il file esiste ancora dopo unlink() senza errori: %s",
+            "_elimina_foto_fisica: il file esiste ancora dopo unlink() senza errori: %s",
             file_path,
         )
 
@@ -1162,7 +1220,62 @@ def pratica_elimina_foto(
             "Impossibile aggiornare CARVEI.F_FOTO dopo eliminazione per %s: %s", numero, exc
         )
 
+    try:
+        PraticaFileUploaderRepository(db_path=settings.app_db_path).rimuovi(file_path)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Impossibile ripulire il tracciamento upload per %s: %s", file_path, exc)
+
+
+@router.post("/pratiche/{numero}/foto/elimina")
+def pratica_elimina_foto(
+    numero: int,
+    path: str = Form(...),
+    admin: Utente = Depends(require_admin),
+    settings: Settings = Depends(get_app_settings),
+) -> RedirectResponse:
+    """Admin: nessuna restrizione di proprietario, può eliminare qualunque
+    foto della pratica (comportamento invariato)."""
+    _elimina_foto_fisica(numero, path, settings)
     return RedirectResponse(url=f"/pratiche/{numero}#foto", status_code=303)
+
+
+def _elimina_documento_fisico(numero: int, path: str, settings: Settings) -> None:
+    """Elimina un documento (denuncia/cessione/altro) dalla pratica — niente
+    thumb/flag WinCar da aggiornare come per le foto, solo il file fisico.
+    Nessuna route admin dedicata (mai richiesta finora): usata solo da
+    routes_portale.py per l'eliminazione del proprio upload da parte di un
+    esterno, che verifica la proprietà PRIMA di chiamare questa funzione —
+    qui dentro solo la logica fisica."""
+    def _candidati(a: AllegatiPratica) -> set[str]:
+        # Le foto non renderizzabili (.heic/.heif) sono elencate come
+        # "documenti" nel template (vedi portale_pratica_detail.html), pur
+        # restando categoria "foto" in Allegato — vanno incluse qui altrimenti
+        # non risulterebbero mai eliminabili da questa route.
+        valid = {str(x.path) for x in a.cessioni + a.denunce + a.altri}
+        valid |= {str(x.path) for x in a.foto if x.path.suffix.lower() in _NON_RENDERIZZABILI}
+        return valid
+
+    file_path = _valida_path_pratica_o_403(numero, path, settings, candidati=_candidati)
+    if not file_path.exists():
+        # Vedi commento analogo in _elimina_foto_fisica: `path` è appena
+        # stato validato, quindi il file c'era un istante fa — se manca già
+        # qui, meglio che emerga nei log invece di sparire in silenzio.
+        logger.error("_elimina_documento_fisico: file già assente su disco: %s", file_path)
+    try:
+        file_path.unlink(missing_ok=True)
+    except OSError as exc:
+        logger.exception("_elimina_documento_fisico: unlink fallito per %s", file_path)
+        raise HTTPException(500, f"Impossibile eliminare il file: {exc}")
+    if file_path.exists():
+        logger.error(
+            "_elimina_documento_fisico: il file esiste ancora dopo unlink() senza errori: %s",
+            file_path,
+        )
+
+    try:
+        PraticaFileUploaderRepository(db_path=settings.app_db_path).rimuovi(file_path)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Impossibile ripulire il tracciamento upload per %s: %s", file_path, exc)
 
 
 # --------------------------------------------------------------------------- #

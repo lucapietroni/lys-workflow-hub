@@ -32,6 +32,9 @@ from lys_workflow_hub.core.pratica_assegnazioni_repository import (
     PraticaAssegnazioniRepository,
 )
 from lys_workflow_hub.core.pratica_eventi_repository import PraticaEventiRepository
+from lys_workflow_hub.core.pratica_file_uploader_repository import (
+    PraticaFileUploaderRepository,
+)
 from lys_workflow_hub.core.pratica_files import scan as scan_allegati
 from lys_workflow_hub.core.pratica_note_repository import PraticaNoteRepository
 from lys_workflow_hub.core.pratica_stato_repository import (
@@ -49,6 +52,8 @@ from lys_workflow_hub.web.routes import (
     _arricchisci_eventi_con_pratica,
     _contesto_calendario,
     _costruisci_feed_attivita,
+    _elimina_documento_fisico,
+    _elimina_foto_fisica,
     _FEED_LIMIT,
     _NON_RENDERIZZABILI,
     _notifica_fcm_tutti_i_canali,
@@ -262,6 +267,18 @@ def portale_pratica_detail(
         "puo_scrivere": utente.ruolo != "supervisore",
     }
 
+    # File che QUESTO utente può eliminare: solo i propri upload (mai quelli
+    # dell'admin o di un altro collaboratore) — un file caricato prima che
+    # questa tracciatura esistesse non ha proprietario noto, quindi non
+    # risulterà mai eliminabile qui, comportamento sicuro di default.
+    try:
+        eliminabili = PraticaFileUploaderRepository(
+            db_path=settings.app_db_path
+        ).path_caricati_da(numero, utente.id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Impossibile leggere i file eliminabili per %s: %s", numero, exc)
+        eliminabili = set()
+
     try:
         allegati = scan_allegati(settings.wincar_archivio, numero)
         foto_renderizzabili = [
@@ -271,12 +288,13 @@ def portale_pratica_detail(
             a for a in allegati.foto if a.path.suffix.lower() in _NON_RENDERIZZABILI
         ]
         context["foto_pratica"] = _allegati_con_url(
-            numero, foto_renderizzabili, base="/portale/pratiche"
+            numero, foto_renderizzabili, base="/portale/pratiche", eliminabili=eliminabili
         )
         context["documenti_pratica"] = _allegati_con_url(
             numero,
             allegati.cessioni + allegati.denunce + allegati.altri + foto_non_renderizzabili,
             base="/portale/pratiche",
+            eliminabili=eliminabili,
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("Portale: impossibile leggere foto/documenti per %s: %s", numero, exc)
@@ -439,7 +457,10 @@ def _upload_pratica(
     _verifica_accesso(utente, numero, assegnazioni_repo)
     _richiedi_permesso_scrittura(utente)
 
-    salvati, errori = _salva_file_pratica(numero, categoria, files, settings)
+    salvati, errori = _salva_file_pratica(
+        numero, categoria, files, settings,
+        caricato_da=utente.id, caricato_da_nome=utente.nome or utente.email,
+    )
 
     if salvati:
         _notifica_admin(
@@ -491,6 +512,54 @@ def portale_upload_documento(
         numero, "documento", "documenti", files, request, csrf_token,
         current_user, assegnazioni_repo, settings,
     )
+
+
+def _richiedi_proprietario_file(
+    numero: int, path: str, utente: Utente, settings: Settings
+) -> None:
+    """Un esterno può eliminare SOLO i file che ha caricato lui, sulla pratica
+    dove li ha caricati — mai quelli dell'admin né di un altro collaboratore,
+    e mai passando il path corretto sotto il numero pratica sbagliato. Un
+    file caricato prima dell'introduzione di questa feature non ha
+    proprietario tracciato: resta eliminabile solo dall'admin, mai da qui —
+    nessuna riga significa nessun permesso, mai il contrario."""
+    ok = PraticaFileUploaderRepository(db_path=settings.app_db_path).eliminabile_da(
+        numero, Path(path), utente.id
+    )
+    if not ok:
+        raise HTTPException(403, "Puoi eliminare solo i file che hai caricato tu.")
+
+
+@router.post("/portale/pratiche/{numero}/foto/elimina")
+def portale_elimina_foto(
+    numero: int,
+    path: str = Form(...),
+    current_user: Utente | None = Depends(get_current_user),
+    assegnazioni_repo: PraticaAssegnazioniRepository = Depends(get_assegnazioni_repo),
+    settings: Settings = Depends(get_portale_settings),
+) -> RedirectResponse:
+    utente = _require_user(current_user)
+    _verifica_accesso(utente, numero, assegnazioni_repo)
+    _richiedi_permesso_scrittura(utente)
+    _richiedi_proprietario_file(numero, path, utente, settings)
+    _elimina_foto_fisica(numero, path, settings)
+    return RedirectResponse(url=f"/portale/pratiche/{numero}#foto", status_code=303)
+
+
+@router.post("/portale/pratiche/{numero}/documenti/elimina")
+def portale_elimina_documento(
+    numero: int,
+    path: str = Form(...),
+    current_user: Utente | None = Depends(get_current_user),
+    assegnazioni_repo: PraticaAssegnazioniRepository = Depends(get_assegnazioni_repo),
+    settings: Settings = Depends(get_portale_settings),
+) -> RedirectResponse:
+    utente = _require_user(current_user)
+    _verifica_accesso(utente, numero, assegnazioni_repo)
+    _richiedi_permesso_scrittura(utente)
+    _richiedi_proprietario_file(numero, path, utente, settings)
+    _elimina_documento_fisico(numero, path, settings)
+    return RedirectResponse(url=f"/portale/pratiche/{numero}#documenti", status_code=303)
 
 
 @router.post("/portale/pratiche/{numero}/note")

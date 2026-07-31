@@ -5,7 +5,7 @@ con il gestionale **WinCar**. Legge le pratiche dal database WinCar in sola lett
 genera documenti precompilati, monitora le risposte delle compagnie assicurative
 via PEC/email, classifica le risposte con AI e genera alert mirati.
 
-> Branch: **main** · Versione: **4.16.1** · In produzione su `hub.lysauto.it`
+> Branch: **main** · Versione: **4.17.0** · In produzione su `hub.lysauto.it`
 
 ---
 
@@ -26,8 +26,9 @@ via PEC/email, classifica le risposte con AI e genera alert mirati.
   automaticamente nella pratica corretta.
 - Foto e documenti in pratica: upload/visualizzazione/download da admin ed
   esterni assegnati, generazione automatica delle miniature lette anche da
-  WinCar stesso (`.thumb` + `Thumbs.thumb`), eliminazione singola foto
-  (admin) con pulizia coerente su disco e nel gestionale.
+  WinCar stesso (`.thumb` + `Thumbs.thumb`). L'admin elimina qualunque
+  foto (pulizia coerente su disco e nel gestionale); un esterno elimina
+  solo foto/documenti caricati da lui stesso, mai quelli di altri.
 
 **Collaborazione e accesso esterno**
 - Autenticazione con ruoli (`admin`/`esterno`/`supervisore`/`operatore`),

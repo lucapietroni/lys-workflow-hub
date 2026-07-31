@@ -964,8 +964,9 @@ code {
 html.is-app .foto-download-bar,
 html.is-app .foto-select { display: none; }
 
-/* Eliminazione foto (solo admin, pratica_detail.html — mai renderizzato in
-   app, il portale esterno non ha questo bottone). */
+/* Eliminazione foto: admin la vede sempre (pratica_detail.html), un
+   esterno solo sulle foto che ha caricato lui (portale_pratica_detail.html,
+   gating server-side "eliminabile" — vedi routes_portale.py). */
 .foto-elimina {
   position: absolute;
   top: 6px;

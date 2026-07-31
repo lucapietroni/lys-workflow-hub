@@ -253,6 +253,9 @@
       {% for f in foto_pratica %}
       <div class="foto-item">
         <input type="checkbox" class="foto-select" name="path" value="{{ f.path }}" />
+        {% if f.eliminabile %}
+        <button type="button" class="foto-elimina" data-path="{{ f.path }}" title="Elimina foto" aria-label="Elimina foto">&times;</button>
+        {% endif %}
         <button type="button" class="foto-thumb" data-full="{{ f.url }}" data-name="{{ f.nome_file }}" title="{{ f.nome_file }}">
           <img src="{{ f.url }}" alt="{{ f.nome_file }}" loading="lazy" />
         </button>
@@ -260,6 +263,35 @@
       {% endfor %}
     </div>
   </form>
+  {% if foto_pratica|selectattr("eliminabile")|list %}
+  <script>
+    // Eliminazione foto caricate da questo stesso utente (bottone "×"
+    // presente solo su quelle, vedi eliminabile in routes_portale.py):
+    // stesso pattern dell'admin in pratica_detail.html, form costruito al
+    // volo e appeso al <body> (l'HTML non permette form annidati dentro
+    // il form GET di download qui sopra).
+    document.querySelectorAll(".foto-elimina").forEach(function (btn) {
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        if (!confirm("Eliminare questa foto? L'operazione non è reversibile.")) return;
+        var f = document.createElement("form");
+        f.method = "post";
+        f.action = "/portale/pratiche/{{ pratica.numero }}/foto/elimina";
+        f.style.display = "none";
+        var csrf = document.createElement("input");
+        csrf.name = "csrf_token";
+        csrf.value = {{ csrf_token|tojson }};
+        var path = document.createElement("input");
+        path.name = "path";
+        path.value = btn.dataset.path;
+        f.appendChild(csrf);
+        f.appendChild(path);
+        document.body.appendChild(f);
+        f.submit();
+      });
+    });
+  </script>
+  {% endif %}
   <div id="foto-selezione-bar" class="foto-selezione-bar" hidden>
     <span><strong id="foto-selezione-count">0</strong> selezionate</span>
     <button type="button" class="btn btn-sm btn-primary" id="foto-selezione-scarica">Scarica</button>
@@ -354,10 +386,43 @@
     {% for d in documenti_pratica %}
     <li>
       <a class="file-name" href="{{ d.url }}" target="_blank" rel="noopener" style="text-decoration:none;">{{ d.nome_file }}</a>
-      <span class="file-meta">{{ d.data_modifica.strftime("%d/%m/%Y") }} · {{ d.size_label }}</span>
+      <span class="file-meta">
+        {{ d.data_modifica.strftime("%d/%m/%Y") }} · {{ d.size_label }}
+        {% if d.eliminabile %}
+        · <button type="button" class="btn-link documento-elimina" data-path="{{ d.path }}" style="color:var(--lys-danger);">Elimina</button>
+        {% endif %}
+      </span>
     </li>
     {% endfor %}
   </ul>
+  {% if documenti_pratica|selectattr("eliminabile")|list %}
+  <script>
+    // Eliminazione documenti caricati da questo stesso utente — stesso
+    // pattern del bottone "×" sulle foto qui sopra, form costruito al
+    // volo (niente file da riscaricare/aggiornare qui, solo il file
+    // fisico: nessun thumb/flag WinCar come per le foto).
+    document.querySelectorAll(".documento-elimina").forEach(function (btn) {
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        if (!confirm("Eliminare questo documento? L'operazione non è reversibile.")) return;
+        var f = document.createElement("form");
+        f.method = "post";
+        f.action = "/portale/pratiche/{{ pratica.numero }}/documenti/elimina";
+        f.style.display = "none";
+        var csrf = document.createElement("input");
+        csrf.name = "csrf_token";
+        csrf.value = {{ csrf_token|tojson }};
+        var path = document.createElement("input");
+        path.name = "path";
+        path.value = btn.dataset.path;
+        f.appendChild(csrf);
+        f.appendChild(path);
+        document.body.appendChild(f);
+        f.submit();
+      });
+    });
+  </script>
+  {% endif %}
   {% else %}
   <p class="meta" style="margin-top:-6px">Nessun documento archiviato per questa pratica.</p>
   {% endif %}

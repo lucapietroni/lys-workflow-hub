@@ -965,6 +965,233 @@ def test_esterno_non_puo_eliminare_foto(authenticated_app, portale_setup) -> Non
     assert resp.status_code == 403
 
 
+# --------------------------------------------------------------------------- #
+#  Eliminazione file caricati da un esterno (solo i propri, mai quelli
+#  dell'admin o di un altro collaboratore) — vedi
+#  PraticaFileUploaderRepository.
+# --------------------------------------------------------------------------- #
+
+
+def test_esterno_elimina_propria_foto(authenticated_app, portale_setup) -> None:
+    assegnazioni_repo, settings = portale_setup
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
+
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, "agenzia@esempio.it", "password1234")
+    token = get_csrf(client, "/portale/pratiche/766")
+
+    resp = client.post(
+        "/portale/pratiche/766/foto",
+        data={"csrf_token": token},
+        files={"files": ("danno.jpg", _jpeg_bytes(), "image/jpeg")},
+    )
+    assert resp.status_code == 303
+    foto_dir = settings.wincar_archivio / "Pratiche" / "766" / "Pubblici" / "Foto"
+    salvata = list(foto_dir.glob("danno_*.jpg"))[0]
+    assert salvata.exists()
+
+    # Il bottone di eliminazione deve comparire per questo file (l'ha
+    # caricato lei) nella pagina di dettaglio.
+    assert 'class="foto-elimina"' in client.get("/portale/pratiche/766").text
+
+    resp = client.post(
+        "/portale/pratiche/766/foto/elimina",
+        data={"csrf_token": token, "path": str(salvata)},
+    )
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/portale/pratiche/766#foto"
+    assert not salvata.exists()
+
+
+def test_esterno_non_puo_eliminare_foto_caricata_da_admin(
+    admin_client, authenticated_app, portale_setup
+) -> None:
+    admin_c, admin_settings = admin_client
+    assegnazioni_repo, portale_settings = portale_setup
+    # admin_client e portale_setup condividono lo stesso tmp_path in questo
+    # stesso test (fixture pytest risolte una sola volta per test) — stessa
+    # cartella WinCar/app.db, verificato esplicitamente per non dare per
+    # scontato un dettaglio implementativo delle fixture.
+    assert admin_settings.wincar_archivio == portale_settings.wincar_archivio
+
+    admin_c.post(
+        "/pratiche/766/foto",
+        data={"csrf_token": get_csrf(admin_c, "/pratiche/766")},
+        files={"files": ("danno.jpg", _jpeg_bytes(), "image/jpeg")},
+    )
+    foto_dir = admin_settings.wincar_archivio / "Pratiche" / "766" / "Pubblici" / "Foto"
+    salvata = list(foto_dir.glob("danno_*.jpg"))[0]
+    assert salvata.exists()
+
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, "agenzia@esempio.it", "password1234")
+    token = get_csrf(client, "/portale/pratiche/766")
+
+    # Niente bottone di eliminazione per un file non suo.
+    assert 'class="foto-elimina"' not in client.get("/portale/pratiche/766").text
+
+    resp = client.post(
+        "/portale/pratiche/766/foto/elimina",
+        data={"csrf_token": token, "path": str(salvata)},
+    )
+    assert resp.status_code == 403
+    assert salvata.exists()
+
+
+def test_esterno_non_puo_eliminare_foto_di_un_altro_esterno(
+    authenticated_app, portale_setup
+) -> None:
+    assegnazioni_repo, settings = portale_setup
+    primo = authenticated_app.create(
+        email="primo@esempio.it", password="password1234", nome="Primo", ruolo="esterno"
+    )
+    secondo = authenticated_app.create(
+        email="secondo@esempio.it", password="password1234", nome="Secondo", ruolo="esterno"
+    )
+    assegnazioni_repo.assegna(766, primo.id, assegnato_da=1)
+    assegnazioni_repo.assegna(766, secondo.id, assegnato_da=1)
+
+    client_primo = TestClient(app, follow_redirects=False)
+    login_as(client_primo, "primo@esempio.it", "password1234")
+    client_primo.post(
+        "/portale/pratiche/766/foto",
+        data={"csrf_token": get_csrf(client_primo, "/portale/pratiche/766")},
+        files={"files": ("danno.jpg", _jpeg_bytes(), "image/jpeg")},
+    )
+    foto_dir = settings.wincar_archivio / "Pratiche" / "766" / "Pubblici" / "Foto"
+    salvata = list(foto_dir.glob("danno_*.jpg"))[0]
+
+    client_secondo = TestClient(app, follow_redirects=False)
+    login_as(client_secondo, "secondo@esempio.it", "password1234")
+    resp = client_secondo.post(
+        "/portale/pratiche/766/foto/elimina",
+        data={
+            "csrf_token": get_csrf(client_secondo, "/portale/pratiche/766"),
+            "path": str(salvata),
+        },
+    )
+    assert resp.status_code == 403
+    assert salvata.exists()
+
+
+def test_esterno_elimina_proprio_documento(authenticated_app, portale_setup) -> None:
+    assegnazioni_repo, settings = portale_setup
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
+
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, "agenzia@esempio.it", "password1234")
+    token = get_csrf(client, "/portale/pratiche/766")
+
+    client.post(
+        "/portale/pratiche/766/documenti",
+        data={"csrf_token": token},
+        files={"files": ("doc.pdf", b"%PDF-fake", "application/pdf")},
+    )
+    allegati_dir = settings.wincar_archivio / "Pratiche" / "766" / "Pubblici" / "Allegati"
+    salvato = list(allegati_dir.glob("doc_*.pdf"))[0]
+    assert salvato.exists()
+
+    resp = client.post(
+        "/portale/pratiche/766/documenti/elimina",
+        data={"csrf_token": token, "path": str(salvato)},
+    )
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/portale/pratiche/766#documenti"
+    assert not salvato.exists()
+
+
+def test_esterno_non_puo_eliminare_documento_caricato_da_admin(
+    admin_client, authenticated_app, portale_setup
+) -> None:
+    admin_c, admin_settings = admin_client
+    assegnazioni_repo, _ = portale_setup
+
+    admin_c.post(
+        "/pratiche/766/documenti",
+        data={"csrf_token": get_csrf(admin_c, "/pratiche/766")},
+        files={"files": ("doc.pdf", b"%PDF-fake", "application/pdf")},
+    )
+    allegati_dir = admin_settings.wincar_archivio / "Pratiche" / "766" / "Pubblici" / "Allegati"
+    salvato = list(allegati_dir.glob("doc_*.pdf"))[0]
+
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, "agenzia@esempio.it", "password1234")
+
+    resp = client.post(
+        "/portale/pratiche/766/documenti/elimina",
+        data={"csrf_token": get_csrf(client, "/portale/pratiche/766"), "path": str(salvato)},
+    )
+    assert resp.status_code == 403
+    assert salvato.exists()
+
+
+def test_esterno_non_puo_eliminare_file_di_unaltra_pratica_assegnata(
+    tmp_path: Path, authenticated_app
+) -> None:
+    """IDOR: stesso esterno assegnato a due pratiche (766 e 767). Carica un
+    file sulla 767 e prova a eliminarlo passando per l'URL della 766 con lo
+    stesso path — deve restare 403. Blocca la regressione se in futuro
+    `_richiedi_proprietario_file`/`_elimina_foto_fisica` venissero disaccoppiate
+    (oggi `PraticaFileUploaderRepository.eliminabile_da` verifica ESPLICITAMENTE
+    che `pratica_numero` combaci, non solo `caricato_da`)."""
+    assegnazioni_repo = PraticaAssegnazioniRepository(db_path=tmp_path / "app.db")
+    wincar_repo = MagicMock()
+    wincar_repo.get_pratica.side_effect = (
+        lambda n: _sample_pratica(n) if n in (766, 767) else None
+    )
+    settings = Settings(wincar_archivio=tmp_path, app_db_path=tmp_path / "app.db")
+
+    app.dependency_overrides[get_assegnazioni_repo] = lambda: assegnazioni_repo
+    app.dependency_overrides[get_wincar_repo] = lambda: wincar_repo
+    app.dependency_overrides[get_portale_settings] = lambda: settings
+    try:
+        esterno = authenticated_app.create(
+            email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+        )
+        assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
+        assegnazioni_repo.assegna(767, esterno.id, assegnato_da=1)
+
+        client = TestClient(app, follow_redirects=False)
+        login_as(client, "agenzia@esempio.it", "password1234")
+
+        client.post(
+            "/portale/pratiche/767/foto",
+            data={"csrf_token": get_csrf(client, "/portale/pratiche/767")},
+            files={"files": ("danno.jpg", _jpeg_bytes(), "image/jpeg")},
+        )
+        foto_dir = settings.wincar_archivio / "Pratiche" / "767" / "Pubblici" / "Foto"
+        salvata = list(foto_dir.glob("danno_*.jpg"))[0]
+        assert salvata.exists()
+
+        resp = client.post(
+            "/portale/pratiche/766/foto/elimina",
+            data={
+                "csrf_token": get_csrf(client, "/portale/pratiche/766"),
+                "path": str(salvata),
+            },
+        )
+        assert resp.status_code == 403
+        assert salvata.exists()
+    finally:
+        app.dependency_overrides.pop(get_assegnazioni_repo, None)
+        app.dependency_overrides.pop(get_wincar_repo, None)
+        app.dependency_overrides.pop(get_portale_settings, None)
+
+
 def test_admin_upload_rifiuta_formato_non_supportato(admin_client) -> None:
     client, settings = admin_client
     resp = client.post(

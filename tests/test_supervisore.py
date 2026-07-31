@@ -287,6 +287,32 @@ def test_supervisore_post_upload_documento_403(supervisore_setup) -> None:
     assert resp.status_code == 403
 
 
+def test_supervisore_post_elimina_foto_403(supervisore_setup) -> None:
+    _, _, supervisore = supervisore_setup
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, supervisore.email, "password1234")
+    csrf = get_csrf(client, "/portale/pratiche/700")
+
+    resp = client.post(
+        "/portale/pratiche/700/foto/elimina",
+        data={"path": "qualunque.jpg", "csrf_token": csrf},
+    )
+    assert resp.status_code == 403
+
+
+def test_supervisore_post_elimina_documento_403(supervisore_setup) -> None:
+    _, _, supervisore = supervisore_setup
+    client = TestClient(app, follow_redirects=False)
+    login_as(client, supervisore.email, "password1234")
+    csrf = get_csrf(client, "/portale/pratiche/700")
+
+    resp = client.post(
+        "/portale/pratiche/700/documenti/elimina",
+        data={"path": "qualunque.pdf", "csrf_token": csrf},
+    )
+    assert resp.status_code == 403
+
+
 def test_supervisore_download_zip_consentito(supervisore_setup, tmp_path: Path) -> None:
     # Il download NON è una modifica — deve restare permesso. Foto vera sul
     # filesystem (non solo bytes finti): senza, build_foto_zip risponde 400
