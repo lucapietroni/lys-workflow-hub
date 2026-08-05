@@ -22,7 +22,10 @@ import com.getcapacitor.annotation.CapacitorPlugin;
  */
 @CapacitorPlugin(name = "ColdStart")
 public class ColdStartPlugin extends Plugin {
-    private static boolean coldStart = true;
+    // volatile: @PluginMethod puo' girare su thread diversi dalla chiamata
+    // JS che lo invoca; senza volatile non e' garantito che un thread veda
+    // subito la scrittura fatta da un altro.
+    private static volatile boolean coldStart = true;
 
     @PluginMethod
     public void consume(PluginCall call) {

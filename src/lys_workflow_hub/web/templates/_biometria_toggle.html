@@ -39,28 +39,36 @@
       // Impostazioni e spegnere la protezione senza dover provare nulla.
       bottone.disabled = true;
       stato.textContent = "Verifica in corso...";
-      NativeBiometric.verifyIdentity({
-        reason: "Conferma per disattivare lo sblocco",
-        title: "LYS Hub",
-        useFallback: true,
-      })
-        .then(function () {
-          try {
-            localStorage.removeItem("lys_biometric_lock");
-            localStorage.removeItem("lys_last_unlock_ts");
-            localStorage.removeItem("lys_last_background_ts");
-            // NON azzerato: senza questo, al prossimo resume l'autosetup
-            // (base.html) la riattiverebbe da sola in silenzio, vanificando
-            // la disattivazione appena fatta. Si azzera solo al logout,
-            // quando ha senso ripartire da una decisione pulita.
-            localStorage.setItem("lys_biometric_autosetup_done", "1");
-          } catch (e) {}
-          sezione.style.display = "none";
+      // try/catch attorno alla chiamata stessa: un throw sincrono (plugin
+      // con metodo mancante) non deve lasciare il bottone disabilitato per
+      // sempre con "Verifica in corso..." bloccato a schermo.
+      try {
+        NativeBiometric.verifyIdentity({
+          reason: "Conferma per disattivare lo sblocco",
+          title: "LYS Hub",
+          useFallback: true,
         })
-        .catch(function () {
-          bottone.disabled = false;
-          stato.textContent = "Verifica non riuscita, nessuna modifica.";
-        });
+          .then(function () {
+            try {
+              localStorage.removeItem("lys_biometric_lock");
+              localStorage.removeItem("lys_last_unlock_ts");
+              localStorage.removeItem("lys_last_background_ts");
+              // NON azzerato: senza questo, al prossimo resume l'autosetup
+              // (base.html) la riattiverebbe da sola in silenzio, vanificando
+              // la disattivazione appena fatta. Si azzera solo al logout,
+              // quando ha senso ripartire da una decisione pulita.
+              localStorage.setItem("lys_biometric_autosetup_done", "1");
+            } catch (e) {}
+            sezione.style.display = "none";
+          })
+          .catch(function () {
+            bottone.disabled = false;
+            stato.textContent = "Verifica non riuscita, nessuna modifica.";
+          });
+      } catch (e) {
+        bottone.disabled = false;
+        stato.textContent = "Verifica non riuscita, nessuna modifica.";
+      }
     });
   });
 </script>

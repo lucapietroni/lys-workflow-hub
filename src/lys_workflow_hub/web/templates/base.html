@@ -311,8 +311,11 @@
       // pre-paint, vedi lì il perché).
       if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
         (function () {
-          // Cold start (processo Android appena avviato) → pagina ricaricata
-          // e poi SEMPRE biometria (vedi controllaLock). Rilevato da
+          // Cold start (processo Android appena avviato) → pagina ricaricata,
+          // poi la richiesta di biometria segue comunque serveBiometria()
+          // (soglia di inattività) — non è una garanzia assoluta separata,
+          // solo che dopo un vero riavvio del processo la pagina riparte da
+          // dati freschi prima di quella decisione. Rilevato da
           // ColdStartPlugin.java (static field nativo, sopravvive solo
           // quanto il processo), non da sessionStorage: il WebView non
           // garantisce che si azzeri esattamente e solo alla morte del
@@ -321,9 +324,19 @@
           function determinaColdStart() {
             var ColdStart = window.Capacitor.Plugins.ColdStart;
             if (!ColdStart) return Promise.resolve(true);
-            return ColdStart.consume()
-              .then(function (r) { return !!(r && r.wasColdStart); })
-              .catch(function () { return true; });
+            // try/catch attorno alla chiamata stessa, non solo sulla promise
+            // che restituisce: un mismatch fra bundle JS e APK nativa (es.
+            // metodo non ancora presente sul plugin) lancia SINCRONO prima
+            // che si formi qualunque promise, e senza questo try/catch
+            // uscirebbe da controllaLock() lasciando la pagina nascosta per
+            // sempre (vedi anche il catch finale in controllaLock).
+            try {
+              return ColdStart.consume()
+                .then(function (r) { return !!(r && r.wasColdStart); })
+                .catch(function () { return true; });
+            } catch (e) {
+              return Promise.resolve(true);
+            }
           }
 
           // Un solo confronto fra due istanti: se l'app non è mai andata in
@@ -467,28 +480,37 @@
             // password del dispositivo come alternativa nativa
             // all'impronta/volto (BiometricPrompt con DEVICE_CREDENTIAL):
             // è già il fallback gestito dal sistema operativo.
-            NativeBiometric.verifyIdentity({ reason: "Sblocca LYS Hub", title: "LYS Hub", useFallback: true })
-              .then(function () {
-                verificaInCorso = false;
-                segnaSbloccato();
-                nascondiOverlay();
-              })
-              .catch(function () {
-                verificaInCorso = false;
-                // Annullato dall'utente, fallito, o le credenziali
-                // biometriche non sono più disponibili (impronte
-                // cancellate, sensore guasto): capiamo quale dei due casi
-                // è per mostrare l'overlay giusto, mai un retry automatico.
-                NativeBiometric.isAvailable()
-                  .then(function (r) {
-                    if (r && r.isAvailable) {
-                      mostraOverlaySblocco("Verifica non riuscita. Riprova.");
-                    } else {
-                      mostraOverlayNonDisponibile();
-                    }
-                  })
-                  .catch(function () { mostraOverlaySblocco("Verifica non riuscita. Riprova."); });
-              });
+            // try/catch attorno alla chiamata stessa: un plugin presente ma
+            // con metodo mancante (mismatch bundle/APK) lancia sincrono,
+            // altrimenti verificaInCorso resterebbe bloccato a true e il
+            // bottone "Sblocca" smetterebbe di rispondere per sempre.
+            try {
+              NativeBiometric.verifyIdentity({ reason: "Sblocca LYS Hub", title: "LYS Hub", useFallback: true })
+                .then(function () {
+                  verificaInCorso = false;
+                  segnaSbloccato();
+                  nascondiOverlay();
+                })
+                .catch(function () {
+                  verificaInCorso = false;
+                  // Annullato dall'utente, fallito, o le credenziali
+                  // biometriche non sono più disponibili (impronte
+                  // cancellate, sensore guasto): capiamo quale dei due casi
+                  // è per mostrare l'overlay giusto, mai un retry automatico.
+                  NativeBiometric.isAvailable()
+                    .then(function (r) {
+                      if (r && r.isAvailable) {
+                        mostraOverlaySblocco("Verifica non riuscita. Riprova.");
+                      } else {
+                        mostraOverlayNonDisponibile();
+                      }
+                    })
+                    .catch(function () { mostraOverlaySblocco("Verifica non riuscita. Riprova."); });
+                });
+            } catch (e) {
+              verificaInCorso = false;
+              mostraOverlayNonDisponibile();
+            }
           }
 
           // Attivazione automatica dopo il primo login: niente dialog
@@ -514,26 +536,36 @@
           }
           function avviaAutosetup() {
             var NB = window.Capacitor.Plugins.NativeBiometric;
-            return NB.isAvailable()
-              .then(function (result) {
-                if (!result || !result.isAvailable) {
-                  segnaAutosetupFatto();
-                  return;
-                }
-                return NB.verifyIdentity({
-                  reason: "Attiva lo sblocco biometrico per LYS Hub",
-                  title: "LYS Hub",
-                  useFallback: true,
-                })
-                  .then(function () {
-                    try { localStorage.setItem("lys_biometric_lock", "1"); } catch (e) {}
-                    segnaSbloccato();
+            // try/catch attorno alla chiamata stessa (stesso motivo di
+            // tentaSblocco/determinaColdStart): un throw sincrono qui non
+            // deve mai propagarsi fuori, la promise restituita da
+            // avviaAutosetup() deve SEMPRE risolvere (mai rifiutare), come
+            // richiesto dal chiamante in controllaLock.
+            try {
+              return NB.isAvailable()
+                .then(function (result) {
+                  if (!result || !result.isAvailable) {
                     segnaAutosetupFatto();
-                    mostraConfermaBreve("Protezione con impronta/Face attivata.");
+                    return;
+                  }
+                  return NB.verifyIdentity({
+                    reason: "Attiva lo sblocco biometrico per LYS Hub",
+                    title: "LYS Hub",
+                    useFallback: true,
                   })
-                  .catch(function () { segnaAutosetupFatto(); });
-              })
-              .catch(function () { segnaAutosetupFatto(); });
+                    .then(function () {
+                      try { localStorage.setItem("lys_biometric_lock", "1"); } catch (e) {}
+                      segnaSbloccato();
+                      segnaAutosetupFatto();
+                      mostraConfermaBreve("Protezione con impronta/Face attivata.");
+                    })
+                    .catch(function () { segnaAutosetupFatto(); });
+                })
+                .catch(function () { segnaAutosetupFatto(); });
+            } catch (e) {
+              segnaAutosetupFatto();
+              return Promise.resolve();
+            }
           }
 
           // Punto d'ingresso unico: chiamato al caricamento pagina e ad
@@ -580,6 +612,15 @@
                 controlloInCorso = false;
                 ripristinaVisibilita();
               }
+            }).catch(function () {
+              // Rete di sicurezza finale: qualunque eccezione imprevista
+              // nella catena (anche sincrona dentro uno dei .then, es.
+              // serveBiometria/autosetupPuoPartire) non deve lasciare la
+              // pagina bloccata con visibility:hidden per sempre. Fail
+              // verso l'overlay "non disponibile" (mai una rivelazione
+              // silenziosa del contenuto): l'utente può sempre uscire.
+              controlloInCorso = false;
+              mostraOverlayNonDisponibile();
             });
           }
 
@@ -594,6 +635,20 @@
               }
             });
           }
+
+          // bfcache (tasto indietro Android dopo un resume): la WebView di
+          // sistema può ripristinare l'intera pagina precedente dalla
+          // cache SENZA rieseguire questo script, mostrando contenuto già
+          // sbloccato in precedenza senza una nuova verifica. pageshow con
+          // e.persisted=true è l'unico segnale per un ripristino da
+          // bfcache — forza di nuovo la stessa decisione presa al carica-
+          // mento pagina.
+          window.addEventListener("pageshow", function (e) {
+            if (e.persisted) {
+              document.documentElement.style.visibility = "hidden";
+              controllaLock();
+            }
+          });
         })();
       }
     </script>
