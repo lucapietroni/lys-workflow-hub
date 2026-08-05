@@ -1,0 +1,66 @@
+<!-- Stato sblocco biometrico, riusato da impostazioni.html (admin) e
+     portale_impostazioni.html (esterno/supervisore). Si attiva da sola al
+     primo login (vedi base.html, autosetup) — qui compare SOLO quando è
+     già attiva, con l'unica azione possibile: disattivarla. Nessuna
+     attivazione manuale: l'utente non deve scoprire la funzione qui. -->
+<section class="card app-only biometric-toggle-section" style="display:none;">
+  <div class="form-field">
+    <p style="margin:0 0 4px;">🔒 Sblocco con impronta o Face attivo</p>
+    <small class="hint">
+      Ti chiediamo l'impronta o il riconoscimento facciale ogni volta che
+      apri l'app, così chi prende in mano il telefono sbloccato non entra
+      direttamente nelle tue pratiche.
+    </small>
+    <p><button type="button" class="btn btn-sm" id="biometria-disattiva">Disattiva</button></p>
+    <p id="biometria-stato" class="hint"></p>
+  </div>
+</section>
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    var sezione = document.querySelector(".biometric-toggle-section");
+    var bottone = document.getElementById("biometria-disattiva");
+    var stato = document.getElementById("biometria-stato");
+    if (!sezione || !bottone || !stato) return;
+
+    var isApp = window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
+    if (!isApp) return;
+    var NativeBiometric = window.Capacitor.Plugins.NativeBiometric;
+    if (!NativeBiometric) return;
+
+    function attiva() {
+      try { return localStorage.getItem("lys_biometric_lock") === "1"; }
+      catch (e) { return false; }
+    }
+    if (attiva()) sezione.style.display = "";
+
+    bottone.addEventListener("click", function () {
+      // Richiede una verifica riuscita anche per DISATTIVARE — altrimenti
+      // chi trova il telefono con l'app già aperta potrebbe entrare in
+      // Impostazioni e spegnere la protezione senza dover provare nulla.
+      bottone.disabled = true;
+      stato.textContent = "Verifica in corso...";
+      NativeBiometric.verifyIdentity({
+        reason: "Conferma per disattivare lo sblocco",
+        title: "LYS Hub",
+        useFallback: true,
+      })
+        .then(function () {
+          try {
+            localStorage.removeItem("lys_biometric_lock");
+            localStorage.removeItem("lys_last_unlock_ts");
+            localStorage.removeItem("lys_last_background_ts");
+            // NON azzerato: senza questo, al prossimo resume l'autosetup
+            // (base.html) la riattiverebbe da sola in silenzio, vanificando
+            // la disattivazione appena fatta. Si azzera solo al logout,
+            // quando ha senso ripartire da una decisione pulita.
+            localStorage.setItem("lys_biometric_autosetup_done", "1");
+          } catch (e) {}
+          sezione.style.display = "none";
+        })
+        .catch(function () {
+          bottone.disabled = false;
+          stato.textContent = "Verifica non riuscita, nessuna modifica.";
+        });
+    });
+  });
+</script>
