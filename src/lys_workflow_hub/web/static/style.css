@@ -20,7 +20,10 @@
   --lys-grey-900: #E8EDF5;
   --lys-grey-700: #A0B5CC;
   --lys-grey-600: #8A9DB8;
-  --lys-grey-500: #6A80A0;
+  /* Era #6A80A0 (contrasto ~4.54:1 su --page-bg, al limite AA 4.5:1 per
+     testo piccolo — .hint/.field-label lo usano a font-size ridotto).
+     Alzato a ~5.6:1, mantenendo l'ordine della scala grigi (< 600). */
+  --lys-grey-500: #7690B4;
   --lys-grey-400: #4A6080;
   --lys-grey-300: rgba(255,255,255,0.10);
   --lys-grey-100: rgba(255,255,255,0.05);
@@ -592,6 +595,32 @@ code {
 }
 .breadcrumb a { color: var(--lys-grey-700); }
 .breadcrumb a:hover { color: var(--lys-gold-glow); text-decoration: none; }
+
+/* Scorciatoie interne alla pratica (dettaglio admin/portale): pagina con
+   6+ card in sequenza, senza questo l'unico modo di raggiungere "Foto" o
+   "Documenti" e' scrollare tutto. Riga di pillole ad ancora, scorrevole
+   orizzontalmente su schermi stretti (stesso pattern overflow-x:auto gia'
+   usato per le tabelle responsive). */
+.quick-nav {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 2px 10px;
+  margin: -4px 0 14px;
+  -webkit-overflow-scrolling: touch;
+}
+.quick-nav-link {
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  color: var(--lys-grey-700);
+  font-size: 0.82rem;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.quick-nav-link:hover { color: var(--lys-gold-glow); border-color: var(--lys-gold-glow); text-decoration: none; }
 
 .pratica-header {
   display: flex;
@@ -1714,6 +1743,23 @@ html.is-app .form-field textarea {
 }
 html.is-app .btn-sm { min-height: 36px; }
 
+/* Stesso minimo anche da browser mobile normale (non solo app): gating
+   solo sulla larghezza viewport, nessun impatto su desktop dove il mouse
+   non ha bisogno di target da 44px. */
+@media (max-width: 599px) {
+  html:not(.is-app) .btn,
+  html:not(.is-app) .select-inline,
+  html:not(.is-app) .filtro-testo,
+  html:not(.is-app) .search-form input,
+  html:not(.is-app) .search-form button,
+  html:not(.is-app) .form-field input,
+  html:not(.is-app) .form-field select,
+  html:not(.is-app) .form-field textarea {
+    min-height: 44px;
+  }
+  html:not(.is-app) .btn-sm { min-height: 36px; }
+}
+
 /* -- Prossimi appuntamenti: card compatta invece di riga densa -- */
 html.is-app .appuntamento-row {
   display: grid;
@@ -1782,10 +1828,10 @@ html.is-app .btn-azzera-filtri {
 /* -- Toggle sblocco biometrico (/portale/impostazioni), solo app -- */
 html.is-app .biometric-toggle-section { display: block; }
 
-/* -- "Torna alla ricerca" in fondo alla pratica admin, solo app: da
-   browser desktop il link in cima basta, ma in app dopo aver scrollato
-   tutta la pratica serve anche in fondo (come richiesto dall'utente). -- */
-html.is-app .breadcrumb-bottom { display: block; }
+/* -- "Torna alla ricerca" in fondo alla pratica admin: pagina lunga anche
+   da browser (desktop e mobile), non solo in app — utile ovunque dopo
+   aver scrollato tutta la pratica, non serve gating su html.is-app. -- */
+.breadcrumb-bottom { display: block; }
 
 /* -- Cambio stato pratica: colonna a piena larghezza invece di riga stretta -- */
 html.is-app .form-inline-stato { flex-direction: column; align-items: stretch; gap: 10px; }
@@ -1793,22 +1839,26 @@ html.is-app .form-inline-stato .select-inline,
 html.is-app .form-inline-stato input[type="text"] { width: 100%; }
 html.is-app .form-inline-stato .btn { width: 100%; }
 
-/* -- Elenco pratiche: card invece di tabella (solo sotto tablet) -- */
+/* -- Elenco pratiche: card invece di tabella (solo sotto tablet) --
+   Era solo html.is-app: stesso problema anche da browser mobile normale
+   (esterni/operatori senza l'app) — scroll orizzontale su schermo stretto
+   invece di un layout leggibile. Tolto il gating su is-app, resta solo
+   quello sulla larghezza viewport (nessun impatto su desktop). */
 @media (max-width: 599px) {
-  html.is-app .pratiche-table thead { display: none; }
-  html.is-app .pratiche-table,
-  html.is-app .pratiche-table tbody,
-  html.is-app .pratiche-table tr {
+  .pratiche-table thead { display: none; }
+  .pratiche-table,
+  .pratiche-table tbody,
+  .pratiche-table tr {
     display: block;
     width: 100%;
   }
-  html.is-app .pratiche-table {
+  .pratiche-table {
     background: none;
     border: none;
     box-shadow: none;
     border-radius: 0;
   }
-  html.is-app .pratiche-table tr {
+  .pratiche-table tr {
     background: var(--glass);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius);
@@ -1816,14 +1866,14 @@ html.is-app .form-inline-stato .btn { width: 100%; }
     margin-bottom: 10px;
     box-shadow: var(--shadow);
   }
-  html.is-app .pratiche-table tr.row-chiusa { opacity: 0.6; }
+  .pratiche-table tr.row-chiusa { opacity: 0.6; }
   /* Il filtro JS di /portale nasconde le righe via [hidden], ma la regola
      sopra impone display:block a *tutte* le tr per il layout a card — una
      regola author batte sempre lo user-agent stylesheet ([hidden]{display:
      none}), quindi le righe filtrate restavano visibili. Serve una regola
      esplicita, più specifica, per il caso [hidden]. */
-  html.is-app .pratiche-table tr[hidden] { display: none; }
-  html.is-app .pratiche-table td {
+  .pratiche-table tr[hidden] { display: none; }
+  .pratiche-table td {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -1839,8 +1889,8 @@ html.is-app .form-inline-stato .btn { width: 100%; }
        forzerebbe scroll orizzontale della card invece di andare a capo. */
     min-width: 0;
   }
-  html.is-app .pratiche-table td > * { min-width: 0; }
-  html.is-app .pratiche-table td::before {
+  .pratiche-table td > * { min-width: 0; }
+  .pratiche-table td::before {
     content: attr(data-label);
     font-size: 0.64rem;
     font-weight: 700;
@@ -1850,16 +1900,16 @@ html.is-app .form-inline-stato .btn { width: 100%; }
     text-align: left;
     flex-shrink: 0;
   }
-  html.is-app .pratiche-table td.num {
+  .pratiche-table td.num {
     display: block;
     padding-bottom: 8px;
     margin-bottom: 4px;
     border-bottom: 1px solid var(--glass-border);
   }
-  html.is-app .pratiche-table td.num::before { display: block; margin-bottom: 2px; }
-  html.is-app .pratiche-table td.num a { font-size: 1.05rem; font-weight: 800; }
-  html.is-app .pratiche-table td.actions { display: none; }
-  html.is-app .pratiche-table .prossimo-app-chip {
+  .pratiche-table td.num::before { display: block; margin-bottom: 2px; }
+  .pratiche-table td.num a { font-size: 1.05rem; font-weight: 800; }
+  .pratiche-table td.actions { display: none; }
+  .pratiche-table .prossimo-app-chip {
     display: block;
     margin-top: 4px;
     font-size: 0.78rem;

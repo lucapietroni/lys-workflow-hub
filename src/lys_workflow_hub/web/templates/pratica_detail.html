@@ -13,6 +13,15 @@
   <a href="/" class="btn btn-sm">← Torna alla ricerca</a>
 </nav>
 
+<nav class="quick-nav" aria-label="Vai a">
+  <a href="#collaboratori" class="quick-nav-link">Collaboratori</a>
+  <a href="#attivita" class="quick-nav-link">Attività</a>
+  <a href="#note" class="quick-nav-link">Note</a>
+  <a href="#calendario" class="quick-nav-link">Calendario</a>
+  <a href="#foto" class="quick-nav-link">Foto</a>
+  <a href="#documenti" class="quick-nav-link">Documenti</a>
+</nav>
+
 {% if uploaded %}
   <div class="alert alert-success">
     <strong>Scansione archiviata.</strong>
@@ -614,7 +623,7 @@
   <a href="/api/pratiche/{{ pratica.numero }}" target="_blank" rel="noopener">apri /api/pratiche/{{ pratica.numero }}</a>.
 </aside>
 
-<nav class="breadcrumb app-only breadcrumb-bottom">
+<nav class="breadcrumb breadcrumb-bottom">
   <a href="/" class="btn btn-sm">← Torna alla ricerca</a>
 </nav>
 
