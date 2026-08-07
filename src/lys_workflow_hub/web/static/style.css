@@ -1960,6 +1960,18 @@ html.is-app .form-inline-stato .select-inline,
 html.is-app .form-inline-stato input[type="text"] { width: 100%; }
 html.is-app .form-inline-stato .btn { width: 100%; }
 
+/* Stesso stack a colonna anche da browser mobile: il campo "Note
+   (opzionale)" del cambio stato non e' dentro .form-field (e' un input
+   nudo con style="flex:1" inline), quindi non beneficiava del fix
+   touch-target generico — restava schiacciato sulla stessa riga di
+   dropdown+bottone, segnalato "minuscolo" da un utente esterno. */
+@media (max-width: 599px) {
+  html:not(.is-app) .form-inline-stato { flex-direction: column; align-items: stretch; gap: 10px; }
+  html:not(.is-app) .form-inline-stato .select-inline,
+  html:not(.is-app) .form-inline-stato input[type="text"] { width: 100%; min-height: 44px; }
+  html:not(.is-app) .form-inline-stato .btn { width: 100%; }
+}
+
 /* -- Elenco pratiche: card invece di tabella (solo sotto tablet) --
    Era solo html.is-app: stesso problema anche da browser mobile normale
    (esterni/operatori senza l'app) — scroll orizzontale su schermo stretto
