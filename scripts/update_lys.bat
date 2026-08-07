@@ -59,15 +59,19 @@ schtasks /End /TN "LYS Workflow Hub" >nul 2>&1
 timeout /t 2 /nobreak >nul
 
 REM ---- Termina eventuali processi Python residui dell'app ----
-REM schtasks /End da solo spesso non basta: puo' restare un python.exe
-REM residuo che tiene .venv/i file dell'app aperti e blocca i move() piu'
-REM sotto. Scoped sul CommandLine (non un taskkill /IM python.exe cieco,
-REM che ammazzerebbe anche altri script Python eventualmente in corso
-REM sulla macchina) - matcha solo processi lanciati dentro C:\LYSApp.
+REM schtasks /End da solo spesso non basta: puo' restare un python.exe/
+REM pythonw.exe residuo che tiene .venv/i file dell'app aperti e blocca i
+REM move() piu' sotto. pythonw.exe incluso perche' Task Scheduler spesso
+REM lancia cosi' per non far comparire la finestra console - verificato
+REM in produzione (2026-08-07): il filtro solo su python.exe non
+REM trovava nulla da uccidere e il move falliva comunque ("file in uso").
+REM Scoped sul CommandLine (non un taskkill /IM cieco, che ammazzerebbe
+REM anche altri script Python eventualmente in corso sulla macchina) -
+REM matcha solo processi lanciati dentro C:\LYSApp.
 REM Solo apici singoli dentro -Command: con for /f + backquote, i doppi
 REM apici annidati vengono corrotti da un secondo giro di parsing di cmd.
 echo Termino eventuali processi Python residui dell'app...
-for /f "usebackq delims=" %%p in (`powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'python.exe' -and $_.CommandLine -like '*LYSApp*' } | Select-Object -ExpandProperty ProcessId"`) do (
+for /f "usebackq delims=" %%p in (`powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { ($_.Name -eq 'python.exe' -or $_.Name -eq 'pythonw.exe') -and $_.CommandLine -like '*LYSApp*' } | Select-Object -ExpandProperty ProcessId"`) do (
     echo    Termino PID %%p...
     taskkill /F /PID %%p >nul 2>&1
 )
