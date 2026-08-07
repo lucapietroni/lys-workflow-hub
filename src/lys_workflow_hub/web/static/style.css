@@ -1542,8 +1542,18 @@ body.lightbox-open { overflow: hidden; }
   .hero h1 { font-size: 1.6rem; }
   .hero-stats { flex-wrap: wrap; }
   .hero-stat { min-width: 140px; }
-  .results-table th:nth-child(4), .results-table td:nth-child(4) { display: none; }
-  .results-table th:nth-child(5), .results-table td:nth-child(5) { display: none; }
+  /* :not(.pratiche-table): quella tabella ha il suo layout a card dedicato
+     (vedi @media max-width:599px più sotto), che mostra OGNI colonna con
+     etichetta — qui sotto 640px nascondeva a forza la 4a/5a colonna
+     (Veicolo, Data sinistro) per posizione, vincendo per specificità sulla
+     regola card e facendole sparire anche lì. Bug reale: "Veicolo"
+     mancante nelle card di /home in app/mobile. Le altre tabelle
+     (.results-table senza .pratiche-table: impostazioni, statistiche)
+     restano sul fallback per posizione, non hanno un layout a card. */
+  .results-table:not(.pratiche-table) th:nth-child(4),
+  .results-table:not(.pratiche-table) td:nth-child(4) { display: none; }
+  .results-table:not(.pratiche-table) th:nth-child(5),
+  .results-table:not(.pratiche-table) td:nth-child(5) { display: none; }
   .search-form { flex-direction: column; }
   .search-form button { width: 100%; justify-content: center; }
   .form-actions { flex-direction: column-reverse; }
