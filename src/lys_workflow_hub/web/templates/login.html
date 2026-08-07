@@ -2,6 +2,16 @@
 <html lang="it">
   <head>
     <meta charset="utf-8" />
+    <script>
+      // Stessa marcatura di base.html: login.html non lo estende (pagina a
+      // sé, niente nav/topbar), quindi senza questo il redesign mobile-first
+      // sotto html.is-app (style.css) non si applicava MAI qui — l'unica
+      // schermata che l'utente app rivede spesso (ogni logout, anche dal
+      // gate biometrico) restava con lo skin da browser standard.
+      if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
+        document.documentElement.classList.add("is-app");
+      }
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Accedi · LYS Workflow Hub</title>
     <link rel="stylesheet" href="/static/style.css?v={{ version }}" />

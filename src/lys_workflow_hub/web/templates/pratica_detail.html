@@ -532,7 +532,13 @@
             }
             var blob = new Blob([new Uint8Array(byteNumbers)], { type: "image/jpeg" });
             var file = new File([blob], "foto-" + Date.now() + ".jpg", { type: "image/jpeg" });
+            // Riparte dai file già selezionati (upload da galleria o scatti
+            // precedenti): un DataTransfer vuoto qui sovrascriverebbe la
+            // selezione invece di accumularla.
             var dt = new DataTransfer();
+            for (var i = 0; i < fileInput.files.length; i++) {
+              dt.items.add(fileInput.files[i]);
+            }
             dt.items.add(file);
             fileInput.files = dt.files;
           } catch (e) {

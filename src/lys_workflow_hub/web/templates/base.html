@@ -13,6 +13,44 @@
         document.documentElement.classList.add("is-app");
       }
     </script>
+    <script>
+      // Anti-doppio-submit generico: nessun router client-side, ogni azione
+      // (genera documento, upload foto/documenti, ecc.) è un submit form con
+      // reload pagina completo. Senza un segnale visivo immediato, su rete
+      // lenta l'utente tende a ripremere prima del reload — genera
+      // documenti/upload duplicati. Non gated su isNativePlatform: il
+      // problema esiste identico da browser (desktop e mobile).
+      // Il caso "app + .js-app-download" resta gestito dal suo handler
+      // dedicato più sotto (preventDefault sul click, niente vero submit
+      // del form) — questo listener non lo tocca due volte.
+      document.addEventListener("submit", function (e) {
+        var form = e.target;
+        if (!(form instanceof HTMLFormElement)) return;
+        var buttons = form.querySelectorAll('button[type="submit"], input[type="submit"]');
+        if (!buttons.length) return;
+        buttons.forEach(function (btn) {
+          if (btn.disabled) return;
+          btn.disabled = true;
+          if (btn.tagName === "BUTTON") {
+            btn.dataset.lysOrigLabel = btn.textContent;
+            btn.textContent = "Attendere…";
+          }
+        });
+        // Rete di sicurezza: se la pagina non naviga via (validazione
+        // server-side che ricarica la stessa pagina con un errore, download
+        // in background che non fa una vera navigazione, ecc.) i bottoni
+        // non devono restare bloccati per sempre.
+        setTimeout(function () {
+          buttons.forEach(function (btn) {
+            btn.disabled = false;
+            if (btn.dataset.lysOrigLabel !== undefined) {
+              btn.textContent = btn.dataset.lysOrigLabel;
+              delete btn.dataset.lysOrigLabel;
+            }
+          });
+        }, 8000);
+      });
+    </script>
     {% if current_user %}
     <script>
       // Sblocco biometrico: protegge l'ACCESSO ALL'APP, non il login. La
