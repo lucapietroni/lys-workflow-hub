@@ -268,7 +268,7 @@
               <summary class="meta" style="cursor:pointer;">Modifica</summary>
               <form method="post" action="/pratiche/{{ pratica.numero }}/note/{{ n.id }}/modifica" style="display:flex; gap:8px; margin-top:6px; align-items:flex-end;">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-                <textarea name="testo" rows="2" required style="flex:1; resize:vertical;">{{ n.testo }}</textarea>
+                <textarea name="testo" rows="4" required style="flex:1; resize:vertical;">{{ n.testo }}</textarea>
                 <button type="submit" class="btn btn-sm">Salva</button>
               </form>
             </details>
@@ -287,7 +287,7 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
     <div class="form-field" style="flex:1; margin:0;">
       <label for="f_nota_testo">Nuova nota</label>
-      <textarea id="f_nota_testo" name="testo" rows="2" required style="width:100%; resize:vertical;"></textarea>
+      <textarea id="f_nota_testo" name="testo" rows="4" required style="width:100%; resize:vertical;"></textarea>
     </div>
     <button type="submit" class="btn btn-primary">Invia</button>
   </form>
@@ -514,18 +514,32 @@
     <button type="submit" class="btn btn-primary">Upload</button>
   </form>
   <script>
-    // Scatto foto diretto dalla fotocamera — solo dentro l'app Capacitor,
-    // stesso pattern di portale_pratica_detail.html (@capacitor/camera +
-    // DataTransfer, cosi' submit/CSRF del form non cambiano).
-    if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
-      document.addEventListener("DOMContentLoaded", function () {
-        var fileInput = document.getElementById("foto-input");
-        if (!fileInput) return;
-        var btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "btn";
-        btn.textContent = "Scatta foto";
-        fileInput.insertAdjacentElement("afterend", btn);
+    // Scatto foto diretto dalla fotocamera. In app usa @capacitor/camera
+    // (plugin nativo). Da browser mobile usa un secondo input file
+    // nascosto con capture="environment" (apre la fotocamera diretta sui
+    // browser mobili, invece del picker generico) — prima il bottone
+    // esisteva solo in app, stesso fix di portale_pratica_detail.html.
+    document.addEventListener("DOMContentLoaded", function () {
+      var fileInput = document.getElementById("foto-input");
+      if (!fileInput) return;
+      var isApp = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+
+      function aggiungiFile(file) {
+        var dt = new DataTransfer();
+        for (var i = 0; i < fileInput.files.length; i++) {
+          dt.items.add(fileInput.files[i]);
+        }
+        dt.items.add(file);
+        fileInput.files = dt.files;
+      }
+
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn";
+      btn.textContent = "Scatta foto";
+      fileInput.insertAdjacentElement("afterend", btn);
+
+      if (isApp) {
         btn.addEventListener("click", async function () {
           try {
             var Camera = window.Capacitor.Plugins.Camera;
@@ -540,22 +554,25 @@
               byteNumbers[i] = byteChars.charCodeAt(i);
             }
             var blob = new Blob([new Uint8Array(byteNumbers)], { type: "image/jpeg" });
-            var file = new File([blob], "foto-" + Date.now() + ".jpg", { type: "image/jpeg" });
-            // Riparte dai file già selezionati (upload da galleria o scatti
-            // precedenti): un DataTransfer vuoto qui sovrascriverebbe la
-            // selezione invece di accumularla.
-            var dt = new DataTransfer();
-            for (var i = 0; i < fileInput.files.length; i++) {
-              dt.items.add(fileInput.files[i]);
-            }
-            dt.items.add(file);
-            fileInput.files = dt.files;
+            aggiungiFile(new File([blob], "foto-" + Date.now() + ".jpg", { type: "image/jpeg" }));
           } catch (e) {
             console.error("Camera capture failed", e);
           }
         });
-      });
-    }
+      } else {
+        var captureInput = document.createElement("input");
+        captureInput.type = "file";
+        captureInput.accept = "image/*";
+        captureInput.setAttribute("capture", "environment");
+        captureInput.style.display = "none";
+        fileInput.insertAdjacentElement("afterend", captureInput);
+        btn.addEventListener("click", function () { captureInput.click(); });
+        captureInput.addEventListener("change", function () {
+          if (captureInput.files && captureInput.files[0]) aggiungiFile(captureInput.files[0]);
+          captureInput.value = "";
+        });
+      }
+    });
   </script>
 </section>
 
@@ -711,6 +728,12 @@
     document.addEventListener("keydown", function(e) {
       if (e.key === "Escape" && !lb.hidden) closeLightbox();
     });
+    if (!isApp) {
+      // Browser: niente pinch-zoom qui (gestito solo in app, sopra), quindi
+      // tap sulla foto stessa può chiudere senza conflitti — stesso fix di
+      // portale_pratica_detail.html.
+      lbImg.addEventListener("click", closeLightbox);
+    }
   })();
 
   // Drag & drop + nome file scelto

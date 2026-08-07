@@ -51,20 +51,32 @@
 {% endfor %}
 
 <script>
-  // Scatto foto diretto dalla fotocamera — stesso pattern usato per le foto
-  // pratica in portale_pratica_detail.html: solo dentro l'app Capacitor,
-  // inietta il risultato nell'input file esistente via DataTransfer così
-  // submit/CSRF lato server non cambiano. Qui si ripete per ognuno dei 4
-  // slot documento (CID/identità/libretto/foto danno vengono tutti spesso
-  // fotografati col telefono, non solo il danno).
-  if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
-    document.addEventListener("DOMContentLoaded", function () {
-      document.querySelectorAll('input[data-camera="1"]').forEach(function (fileInput) {
-        var btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "btn";
-        btn.textContent = "Scatta foto";
-        fileInput.insertAdjacentElement("afterend", btn);
+  // Scatto foto diretto dalla fotocamera per ognuno dei 4 slot documento
+  // (CID/identità/libretto/foto danno vengono tutti spesso fotografati col
+  // telefono, non solo il danno). In app usa @capacitor/camera. Da browser
+  // mobile usa un secondo input file nascosto con capture="environment"
+  // (apre la fotocamera diretta sui browser mobili) — prima il bottone
+  // esisteva solo in app, stesso fix di pratica_detail.html/
+  // portale_pratica_detail.html.
+  document.addEventListener("DOMContentLoaded", function () {
+    var isApp = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+    document.querySelectorAll('input[data-camera="1"]').forEach(function (fileInput) {
+      function aggiungiFile(file) {
+        var dt = new DataTransfer();
+        for (var i = 0; i < fileInput.files.length; i++) {
+          dt.items.add(fileInput.files[i]);
+        }
+        dt.items.add(file);
+        fileInput.files = dt.files;
+      }
+
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn";
+      btn.textContent = "Scatta foto";
+      fileInput.insertAdjacentElement("afterend", btn);
+
+      if (isApp) {
         btn.addEventListener("click", async function () {
           try {
             var Camera = window.Capacitor.Plugins.Camera;
@@ -79,22 +91,25 @@
               byteNumbers[i] = byteChars.charCodeAt(i);
             }
             var blob = new Blob([new Uint8Array(byteNumbers)], { type: "image/jpeg" });
-            var file = new File([blob], "scatto-" + Date.now() + ".jpg", { type: "image/jpeg" });
-            // Riparte dai file già selezionati (upload da galleria o scatti
-            // precedenti): un DataTransfer vuoto qui sovrascriverebbe la
-            // selezione invece di accumularla.
-            var dt = new DataTransfer();
-            for (var i = 0; i < fileInput.files.length; i++) {
-              dt.items.add(fileInput.files[i]);
-            }
-            dt.items.add(file);
-            fileInput.files = dt.files;
+            aggiungiFile(new File([blob], "scatto-" + Date.now() + ".jpg", { type: "image/jpeg" }));
           } catch (e) {
             console.error("Camera capture failed", e);
           }
         });
-      });
+      } else {
+        var captureInput = document.createElement("input");
+        captureInput.type = "file";
+        captureInput.accept = "image/*";
+        captureInput.setAttribute("capture", "environment");
+        captureInput.style.display = "none";
+        fileInput.insertAdjacentElement("afterend", captureInput);
+        btn.addEventListener("click", function () { captureInput.click(); });
+        captureInput.addEventListener("change", function () {
+          if (captureInput.files && captureInput.files[0]) aggiungiFile(captureInput.files[0]);
+          captureInput.value = "";
+        });
+      }
     });
-  }
+  });
 </script>
 {% endblock %}

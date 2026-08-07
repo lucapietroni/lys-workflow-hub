@@ -187,7 +187,7 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
     <div class="form-field" style="flex:1; margin:0;">
       <label for="f_nota_testo">Nuova nota</label>
-      <textarea id="f_nota_testo" name="testo" rows="2" required style="width:100%; resize:vertical;"></textarea>
+      <textarea id="f_nota_testo" name="testo" rows="4" required style="width:100%; resize:vertical;"></textarea>
     </div>
     <button type="submit" class="btn btn-primary">Invia</button>
   </form>
@@ -341,21 +341,36 @@
   </form>
   {% endif %}
   <script>
-    // Scatto foto diretto dalla fotocamera — solo dentro l'app Capacitor
-    // (no-op da browser: window.Capacitor non esiste). L'input file esistente
-    // resta invariato (galleria/multi-select restano disponibili): il tasto
-    // aggiunge solo un secondo modo di popolarlo, via @capacitor/camera invece
-    // che il picker di sistema, iniettando il risultato con DataTransfer così
-    // il submit del form (e la validazione/CSRF lato server) non cambiano.
-    if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
-      document.addEventListener("DOMContentLoaded", function () {
-        var fileInput = document.getElementById("foto-input");
-        if (!fileInput) return;
-        var btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "btn";
-        btn.textContent = "Scatta foto";
-        fileInput.insertAdjacentElement("afterend", btn);
+    // Scatto foto diretto dalla fotocamera. In app usa @capacitor/camera
+    // (plugin nativo, non esiste da browser). Da browser mobile usa invece
+    // un secondo input file nascosto con capture="environment", che sui
+    // browser mobili apre la fotocamera direttamente invece del picker
+    // generico — prima il bottone "Scatta foto" esisteva solo in app,
+    // da browser mobile non c'era alcun modo dedicato di scattare
+    // (segnalato da un utente esterno). In entrambi i casi il risultato
+    // viene iniettato nell'input file visibile via DataTransfer (accumula,
+    // non sovrascrive quanto già selezionato) così submit/CSRF non cambiano.
+    document.addEventListener("DOMContentLoaded", function () {
+      var fileInput = document.getElementById("foto-input");
+      if (!fileInput) return;
+      var isApp = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+
+      function aggiungiFile(file) {
+        var dt = new DataTransfer();
+        for (var i = 0; i < fileInput.files.length; i++) {
+          dt.items.add(fileInput.files[i]);
+        }
+        dt.items.add(file);
+        fileInput.files = dt.files;
+      }
+
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn";
+      btn.textContent = "Scatta foto";
+      fileInput.insertAdjacentElement("afterend", btn);
+
+      if (isApp) {
         btn.addEventListener("click", async function () {
           try {
             var Camera = window.Capacitor.Plugins.Camera;
@@ -374,22 +389,25 @@
               byteNumbers[i] = byteChars.charCodeAt(i);
             }
             var blob = new Blob([new Uint8Array(byteNumbers)], { type: "image/jpeg" });
-            var file = new File([blob], "foto-" + Date.now() + ".jpg", { type: "image/jpeg" });
-            // Riparte dai file già selezionati (upload da galleria o scatti
-            // precedenti): un DataTransfer vuoto qui sovrascriverebbe la
-            // selezione invece di accumularla.
-            var dt = new DataTransfer();
-            for (var i = 0; i < fileInput.files.length; i++) {
-              dt.items.add(fileInput.files[i]);
-            }
-            dt.items.add(file);
-            fileInput.files = dt.files;
+            aggiungiFile(new File([blob], "foto-" + Date.now() + ".jpg", { type: "image/jpeg" }));
           } catch (e) {
             console.error("Camera capture failed", e);
           }
         });
-      });
-    }
+      } else {
+        var captureInput = document.createElement("input");
+        captureInput.type = "file";
+        captureInput.accept = "image/*";
+        captureInput.setAttribute("capture", "environment");
+        captureInput.style.display = "none";
+        fileInput.insertAdjacentElement("afterend", captureInput);
+        btn.addEventListener("click", function () { captureInput.click(); });
+        captureInput.addEventListener("change", function () {
+          if (captureInput.files && captureInput.files[0]) aggiungiFile(captureInput.files[0]);
+          captureInput.value = "";
+        });
+      }
+    });
   </script>
 </section>
 
@@ -532,6 +550,14 @@
     document.addEventListener("keydown", function(e) {
       if (e.key === "Escape" && !lb.hidden) closeLightbox();
     });
+    if (!isApp) {
+      // Browser: niente pinch-zoom qui (gestito solo in app, sopra), quindi
+      // tap sulla foto stessa può chiudere senza conflitti — su schermo
+      // stretto la foto riempie quasi tutto il lightbox, il margine di
+      // sfondo cliccabile resta troppo sottile per essere un'uscita
+      // affidabile da solo (segnalato: "non si può uscire da una foto").
+      lbImg.addEventListener("click", closeLightbox);
+    }
 
     if (!isApp) {
       // Browser: comportamento invariato, nessun long-press/selezione multipla.

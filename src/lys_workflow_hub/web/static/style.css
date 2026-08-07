@@ -1071,11 +1071,16 @@ html.is-app .foto-thumb img {
 /* Solo in app: da browser mobile deve restare il pinch-zoom nativo. */
 html.is-app .lightbox img { touch-action: none; }
 .lightbox-close {
-  position: absolute;
-  top: 18px;
+  /* fixed, non absolute: resta ancorato al viewport indipendentemente da
+     qualunque scroll/stacking-context del contenitore — segnalato un caso
+     reale da browser mobile dove il bottone non era raggiungibile/visibile
+     una volta aperta la foto (nessun modo di uscire). */
+  position: fixed;
+  top: max(18px, env(safe-area-inset-top));
   right: 24px;
-  width: 40px;
-  height: 40px;
+  z-index: 210;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   border: 1px solid var(--glass-border);
   background: var(--glass);
@@ -1722,6 +1727,112 @@ html.is-app .user-box-logout {
   border: 1px solid rgba(248,113,113,0.35);
   border-radius: var(--radius);
   color: var(--lys-danger);
+}
+
+/* Stesso hamburger anche da browser mobile normale, non solo app: senza
+   questo, su telefono, brand+nav+nome utente+Esci restano tutti sulla
+   stessa riga (il default e' quello desktop) e si accavallano/tagliano —
+   bug reale segnalato da un utente esterno (screenshot: "Le mie
+   pratiche" e nome utente sovrapposti/tagliati). Duplica esattamente il
+   meccanismo checkbox+label sopra, gated solo sulla larghezza viewport
+   invece che su html.is-app. */
+@media (max-width: 640px) {
+  html:not(.is-app) .nav-toggle-input {
+    display: block;
+    position: absolute;
+    width: 1px; height: 1px;
+    opacity: 0;
+    overflow: hidden;
+  }
+  html:not(.is-app) .nav-toggle-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px; height: 44px;
+    margin-left: auto;
+    flex-shrink: 0;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  html:not(.is-app) .nav-toggle-btn:hover { background: rgba(255,255,255,0.06); }
+  html:not(.is-app) .nav-toggle-btn span {
+    position: relative;
+    display: block;
+    width: 20px; height: 2px;
+    background: #fff;
+    border-radius: 2px;
+    transition: background 0.15s ease;
+  }
+  html:not(.is-app) .nav-toggle-btn span::before,
+  html:not(.is-app) .nav-toggle-btn span::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    width: 20px; height: 2px;
+    background: #fff;
+    border-radius: 2px;
+    transition: transform 0.2s ease;
+  }
+  html:not(.is-app) .nav-toggle-btn span::before { top: -6px; }
+  html:not(.is-app) .nav-toggle-btn span::after { top: 6px; }
+  html:not(.is-app) .nav-toggle-input:checked ~ .nav-toggle-btn span { background: transparent; }
+  html:not(.is-app) .nav-toggle-input:checked ~ .nav-toggle-btn span::before { transform: translateY(6px) rotate(45deg); }
+  html:not(.is-app) .nav-toggle-input:checked ~ .nav-toggle-btn span::after { transform: translateY(-6px) rotate(-45deg); }
+
+  html:not(.is-app) .topbar-panel {
+    display: block;
+    position: fixed;
+    top: var(--topbar-h);
+    left: 0; right: 0;
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    background: #0B1525;
+    border-bottom: 1px solid var(--glass-border);
+    box-shadow: var(--shadow-lg);
+    transition: max-height 0.22s ease, opacity 0.18s ease;
+    z-index: 150;
+  }
+  html:not(.is-app) .nav-toggle-input:checked ~ .topbar-panel {
+    max-height: 75vh;
+    opacity: 1;
+    overflow-y: auto;
+  }
+  html:not(.is-app) .topnav {
+    flex-direction: column;
+    align-items: stretch;
+    height: auto;
+    overflow: visible;
+    gap: 0;
+    padding: 6px 0;
+  }
+  html:not(.is-app) .topnav a {
+    height: auto;
+    min-height: 48px;
+    width: 100%;
+    padding: 0 16px;
+    margin-bottom: 0;
+    border-bottom: 1px solid var(--glass-border);
+    border-left: 3px solid transparent;
+    font-size: 0.95rem;
+  }
+  html:not(.is-app) .topnav a.active {
+    border-left-color: var(--lys-gold);
+    background: rgba(201,152,26,0.06);
+  }
+  html:not(.is-app) .user-box {
+    padding: 14px 16px;
+    justify-content: space-between;
+    border-top: 1px solid var(--glass-border);
+  }
+  html:not(.is-app) .user-box-name { font-size: 0.92rem; font-weight: 600; color: var(--lys-grey-900); }
+  html:not(.is-app) .user-box-logout {
+    min-height: 40px;
+    padding: 8px 16px;
+    border: 1px solid rgba(248,113,113,0.35);
+    border-radius: var(--radius);
+    color: var(--lys-danger);
+  }
 }
 
 /* Container: safe-area + padding coerente 16px */
