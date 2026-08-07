@@ -5,7 +5,7 @@ con il gestionale **WinCar**. Legge le pratiche dal database WinCar in sola lett
 genera documenti precompilati, monitora le risposte delle compagnie assicurative
 via PEC/email, classifica le risposte con AI e genera alert mirati.
 
-> Branch: **main** · Versione: **4.18.0** · In produzione su `hub.lysauto.it`
+> Branch: **main** · Versione: **4.19.0** · In produzione su `hub.lysauto.it`
 
 ---
 

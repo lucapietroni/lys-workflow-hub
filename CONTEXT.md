@@ -890,10 +890,64 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 
 ## Stato attuale
 
-Versione **4.18.0**, tutto su branch `main`, in produzione su
+Versione **4.19.0**, tutto su branch `main`, in produzione su
 `https://hub.lysauto.it`. Changelog per-commit in `git log`; le decisioni
 tecniche non ovvie dal codice (formati, gotcha, cause di bug reali) restano
 documentate nelle sezioni sopra, per sottosistema.
+
+**4.19.0 — Giro di fix UX/UI mobile (audit + segnalazioni reali)**: audit
+statico richiesto sui template/CSS (nessuna modifica), poi fix in due
+ondate — prima quelli trovati dall'audit, poi 5 bug reali segnalati da un
+utente esterno via screenshot da browser telefono, con causa comune non
+notata subito: gran parte del redesign mobile-first di `style.css` era
+gated solo su `html.is-app` (JS, `window.Capacitor` esiste solo nel
+wrapper Android), quindi il browser mobile normale — canale reale per
+collaboratori esterni e operatori, non solo l'app — restava sullo skin
+desktop non responsive. Fix principale del giro: **stessa duplicazione
+`html:not(.is-app)` gated su `@media` invece che su `html.is-app`**,
+applicata punto per punto via segnalazioni reali, non un redesign
+preventivo completo:
+- **Bug**: "Scatta foto" sovrascriveva lo scatto precedente invece di
+  accumularlo (`DataTransfer` nuovo ad ogni tap) — `pratica_detail.html`,
+  `portale_pratica_detail.html`, `operatore_ingresso_detail.html`.
+- **Bug**: nessun feedback di caricamento su generazione documenti/upload
+  fuori dall'app (rischio doppio submit su rete lenta, architettura a
+  full-page-reload) — nuovo listener generico su `submit` in `base.html`,
+  disabilita i bottoni + "Attendere…" con rete di sicurezza 8s, non gated
+  su `isNativePlatform()`.
+- **Bug**: `login.html` non estende `base.html`, quindi non riceveva mai
+  la classe `html.is-app` — unica schermata dell'app rimasta sullo skin
+  browser (visibile ad ogni logout, anche dal gate biometrico).
+- Tabelle→card e touch target 44px estesi al browser mobile (prima solo
+  app), scorciatoie rapide (pillole) in cima alle pagine pratica dense,
+  bottone "Torna alla ricerca" in fondo pagina reso visibile ovunque,
+  contrasto `--lys-grey-500` alzato da ~4.54:1 (al limite AA) a ~5.6:1.
+- **Bug**: colonna "Veicolo" (e "Data sinistro") sparita nelle card di
+  `/home` sotto 640px — una vecchia regola `nth-child(4)/(5)` genererica
+  di `.results-table` (precedente al layout a card dedicato di
+  `.pratiche-table`) vinceva per specificità e nascondeva quelle colonne
+  per posizione, ovunque, non solo sopra i 599px dove servirebbe da
+  fallback. Escluso `.pratiche-table` da quella regola.
+- **Bug** (5 segnalati insieme via screenshot da un utente esterno,
+  Valentino, da browser Samsung Internet): (1) menu accavallato/tagliato
+  (hamburger esteso al browser mobile, stesso meccanismo checkbox+label
+  già usato in app); (2) riquadro "Nuova nota" minuscolo (`rows="2"` →
+  `"4"`); (3) impossibile chiudere una foto aperta (bottone chiudi da
+  `position:absolute` a `fixed` — poteva non essere raggiungibile a
+  seconda dello scroll/stacking del genitore — più tap-sulla-foto-per-
+  chiudere da browser, dove non c'è pinch-zoom con cui confliggere); (4)
+  nessun tasto "Scatta foto" da browser (il plugin `@capacitor/camera`
+  esiste solo in app — aggiunto un secondo input nascosto con
+  `capture="environment"`, apre la fotocamera diretta sui browser
+  mobili, stesso meccanismo di accumulo via `DataTransfer` del fix
+  sopra); (5) dopo il fix (2), segnalato che il riquadro note era
+  "ancora piccolo" — in realtà un campo diverso, l'input nudo "Note
+  (opzionale)" nel form di cambio stato pratica (non dentro
+  `.form-field`, quindi fuori dal fix touch-target generico): stack a
+  colonna di `.form-inline-stato` esteso anche al browser mobile.
+
+Nessuna modifica nativa Android in questo giro — tutto server-side
+(template/CSS/JS), live senza rebuild APK.
 
 **4.18.0 — Riscrittura sblocco biometrico LYSApp + fix apertura documenti
 admin in app** (APK `versionCode 9` / `versionName 4.10.0`, numerazione
