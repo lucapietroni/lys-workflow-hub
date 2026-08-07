@@ -874,7 +874,13 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 ## Ambiente
 
 - **Dev**: WSL2, repo `/mnt/c/Users/lucap/Documents/Claude/Projects/Lysauto/lys-workflow-hub`
-- **Prod**: `C:\LYSApp\lys-workflow-hub` (Windows), Task Scheduler
+- **Prod**: macchina fisica separata in carrozzeria, hostname **LYSAUTO**
+  (NON il laptop di sviluppo) — `C:\LYSApp\lys-workflow-hub` (Windows), Task
+  Scheduler, task "LYS Workflow Hub" account `lysau`. Raggiungibile da qui
+  via share di rete `\\LYSAUTO\WinCar` (mappata `Z:`) o AnyDesk/RDP. Query
+  `schtasks`/processi vanno puntate esplicitamente a LYSAUTO — MAI assumere
+  che questo laptop sia prod solo perché il path locale è identico
+  (`C:\LYSApp\...` esiste anche qui, ma è solo l'ambiente di test).
 - **gh CLI**: `"/mnt/c/Program Files/GitHub CLI/gh.exe"` (non nel PATH WSL)
 - **Python env**: `.venv` nella root del repo
 - **DB**: `data/lys_hub.db` (gitignored)
@@ -884,10 +890,62 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 
 ## Stato attuale
 
-Versione **4.17.0**, tutto su branch `main`, in produzione su
+Versione **4.18.0**, tutto su branch `main`, in produzione su
 `https://hub.lysauto.it`. Changelog per-commit in `git log`; le decisioni
 tecniche non ovvie dal codice (formati, gotcha, cause di bug reali) restano
 documentate nelle sezioni sopra, per sottosistema.
+
+**4.18.0 — Riscrittura sblocco biometrico LYSApp + fix apertura documenti
+admin in app** (APK `versionCode 9` / `versionName 4.10.0`, numerazione
+separata dal repo): il gate biometrico introdotto in 4.12.0 girava su
+`sessionStorage` (azzerato solo al backgrounding via `appStateChange`), un
+segnale poco affidabile per un vero cold start del processo Android.
+Riscritto per usare un plugin nativo dedicato, `ColdStartPlugin.java`
+(`mobile/android/.../ColdStartPlugin.java`): uno `static volatile boolean
+coldStart` ricreato solo alla vera morte/riavvio del processo Java — una
+navigazione interna (link, reload nella stessa WebView) non lo tocca mai,
+solo un riavvio reale del processo Android lo resetta a `true`. `volatile`
+necessario perché `@PluginMethod` può girare su thread diverso da quello
+della chiamata JS. Auto-setup della preferenza al primo login (nessuna
+attivazione manuale in Impostazioni, l'utente non deve "scoprire" la
+funzione), nessun bypass. Reload pagina forzato su cold start reale (non
+più solo su richiesta biometria).
+
+**Hardening di sicurezza da code-review dopo il merge**: (1) le chiamate
+sincrone ai plugin Capacitor (`NativeBiometric.verifyIdentity`,
+`ColdStart.consume`, `NB.isAvailable`) possono lanciare eccezioni
+*sincrone* su un mismatch di versione bundle/APK, bypassando `.catch()` —
+avvolte in `try/catch` con fallback esplicito ("nessuna verifica riuscita
+→ resta bloccato o bottone si riabilita", mai un'eccezione non gestita che
+lascia l'overlay/bottone in uno stato indeterminato); rete di sicurezza
+anche in `_biometria_toggle.html` per il bottone "Disattiva". (2) bypass
+teorico del lock screen via back-forward cache (bfcache) di Android: una
+pagina ripristinata dalla bfcache non riesegue gli script, quindi il gate
+non si ripresentava; fix con un listener `pageshow` che, quando
+`event.persisted` è vero, nasconde subito il documento e rilancia
+`controllaLock()`.
+
+**Fix bug reale: admin non riusciva ad aprire documenti/allegati in
+app**: root cause in `base.html` — un unico blocco Jinja `{% if
+current_user and not current_user.is_admin and fcm_web_configured %}
+...{% endif %}` avvolgeva DUE script indipendenti (il Web Push FCM per
+browser, giustamente non-admin-only, e lo script di apertura file
+`fetch`+`Filesystem`+`Share` per l'app, che invece serve a TUTTI gli
+utenti loggati incluso l'admin) — la condizione `not is_admin` nascondeva
+l'intero script di apertura file anche per l'admin. Diviso in due blocchi
+`{% if %}` indipendenti, ciascuno con la propria condizione. Bug
+preesistente dal commit che aveva introdotto quello script (non
+introdotto in questo giro).
+
+Branch `feat/biometric-lock-rewrite` mergiato in `main`, poi cancellato
+(locale+remoto) insieme alla release/tag di test
+`android-biometric-lock-rewrite-test`. La release ufficiale
+`android-lysapp-v1` — fino a questo giro ferma a `versionCode 8`/`4.9.1`,
+un build PRECEDENTE all'intera feature di sblocco biometrico (verificato:
+`ColdStartPlugin.java` non esisteva ancora a quel commit) — è stata
+rigenerata e aggiornata con l'APK corrente (`4.10.0`) + `latest.json`
+allineato, così il check-aggiornamento in-app e il sideload puntano
+entrambi alla build giusta.
 
 **4.17.0 — Eliminazione file caricati (esterno, solo i propri)**: un
 collaboratore esterno può ora eliminare foto/documenti che ha caricato
