@@ -255,7 +255,7 @@ async def portale_esporta_csv(
 
     form = await request.form()
     numeri_selezionati = {int(v) for v in form.getlist("numero") if str(v).isdigit()}
-    stato_filtro = (str(form.get("stato") or "")).strip()
+    stati_filtro = {str(v).strip() for v in form.getlist("stato") if str(v).strip()}
 
     numeri = _numeri_visibili(current_user, assegnazioni_repo)
     stato_repo = PraticaStatoRepository(db_path=settings.app_db_path)
@@ -273,7 +273,7 @@ async def portale_esporta_csv(
             continue
         stato_obj = stato_repo.get_stato(numero)
         stato_corrente = stato_obj.stato if stato_obj else STATO_APERTA
-        if stato_filtro and stato_corrente != stato_filtro:
+        if stati_filtro and stato_corrente not in stati_filtro:
             continue
         righe.append(_pratica_csv_row(
             pratica.numero, pratica.cliente.nominativo, pratica.veicolo.targa,

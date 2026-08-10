@@ -454,6 +454,28 @@ def pratiche_esporta(
     context["stato_corrente_per_numero"] = {
         p.numero: stati_correnti.get(p.numero, STATO_APERTA) for p in pratiche
     }
+
+    # Filtro collaboratore, solo admin — quali esterni si vedono nell'elenco
+    # checkbox, e quali pratiche sono assegnate a ciascuno (per il filtro
+    # sia lato client sulla tabella sia lato server nel POST .csv sotto).
+    try:
+        context["esterni_disponibili"] = UtentiRepository(
+            db_path=settings.app_db_path
+        ).list_esterni()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Esporta: impossibile leggere gli utenti esterni: %s", exc)
+        context["esterni_disponibili"] = []
+    try:
+        mappa_collaboratori = PraticaAssegnazioniRepository(
+            db_path=settings.app_db_path
+        ).mappa_utenti_per_pratica()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Esporta: impossibile leggere le assegnazioni: %s", exc)
+        mappa_collaboratori = {}
+    context["collaboratori_ids_per_numero"] = {
+        p.numero: mappa_collaboratori.get(p.numero, []) for p in pratiche
+    }
+
     return templates.TemplateResponse(request, "pratiche_esporta.html", context)
 
 
@@ -465,7 +487,10 @@ async def pratiche_esporta_csv(
 ) -> Response:
     form = await request.form()
     numeri_selezionati = {int(v) for v in form.getlist("numero") if str(v).isdigit()}
-    stato_filtro = (str(form.get("stato") or "")).strip()
+    stati_filtro = {str(v).strip() for v in form.getlist("stato") if str(v).strip()}
+    collaboratori_filtro = {
+        int(v) for v in form.getlist("collaboratore") if str(v).isdigit()
+    }
 
     try:
         pratiche = repo.search_pratiche(limit=_EXPORT_MAX_PRATICHE)
@@ -479,12 +504,25 @@ async def pratiche_esporta_csv(
         logger.warning("Esporta CSV: impossibile leggere gli stati pratiche: %s", exc)
         stati_correnti = {}
 
+    mappa_collaboratori: dict[int, list[int]] = {}
+    if collaboratori_filtro:
+        try:
+            mappa_collaboratori = PraticaAssegnazioniRepository(
+                db_path=settings.app_db_path
+            ).mappa_utenti_per_pratica()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Esporta CSV: impossibile leggere le assegnazioni: %s", exc)
+
     righe: list[list[str]] = []
     for p in pratiche:
         if numeri_selezionati and p.numero not in numeri_selezionati:
             continue
+        if collaboratori_filtro and not (
+            set(mappa_collaboratori.get(p.numero, [])) & collaboratori_filtro
+        ):
+            continue
         stato_corrente = stati_correnti.get(p.numero, STATO_APERTA)
-        if stato_filtro and stato_corrente != stato_filtro:
+        if stati_filtro and stato_corrente not in stati_filtro:
             continue
         righe.append(_pratica_csv_row(
             p.numero, p.cliente_nominativo, p.targa, p.marca, p.modello,

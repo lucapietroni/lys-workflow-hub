@@ -890,10 +890,46 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 
 ## Stato attuale
 
-Versione **4.19.0**, tutto su branch `main`, in produzione su
+Versione **4.20.0**, tutto su branch `main`, in produzione su
 `https://hub.lysauto.it`. Changelog per-commit in `git log`; le decisioni
 tecniche non ovvie dal codice (formati, gotcha, cause di bug reali) restano
 documentate nelle sezioni sopra, per sottosistema.
+
+**4.20.0 — Export CSV pratiche (admin + portale esterno, solo browser)**:
+nuova voce di menu "Esporta" — nascosta in app (`html.is-app
+.csv-export-link/.csv-export-page { display:none }`), perché il download
+da form POST non funziona nella WebView Capacitor senza l'intercettazione
+`.js-app-download`, deliberatamente non implementata qui. Pagina dedicata
+(`pratiche_esporta.html`/`portale_esporta.html`) con: checkbox per riga +
+"seleziona tutto" (solo righe visibili secondo i filtri), filtro testo
+(numero/cliente/targa), filtro **stato** a checkbox multi-selezione
+(entrambi i ruoli — nessuna selezione = tutti gli stati) e filtro
+**collaboratore** a checkbox multi-selezione (**solo admin**, lista da
+`UtentiRepository.list_esterni()`, verifica assegnazione via nuovo
+`PraticaAssegnazioniRepository.mappa_utenti_per_pratica()` — dict bulk
+pratica→lista utente_id, per evitare una query per pratica su
+potenzialmente migliaia di righe). Filtri sempre AND tra loro, applicati
+sia lato client (JS aggiorna la tabella dal vivo) sia lato server nel
+`POST .../esporta.csv`: se non si seleziona nessuna riga si esportano
+tutte quelle che passano i filtri correnti, altrimenti solo le righe
+selezionate (a loro volta ulteriormente filtrabili).
+
+Colonne del CSV identiche a quelle della home esterno (Numero, Cliente,
+Targa, Veicolo, Data sinistro, Stato) — mai le altre colonne solo-admin
+(Collaboratore). Separatore `;` (non `,`) + BOM UTF-8: Excel in locale
+italiano tratta la virgola come separatore decimale e mostrerebbe
+caratteri accentati corrotti senza BOM. Nuovo
+`PraticaStatoRepository.stati_correnti()` (stesso pattern a subquery
+`ROW_NUMBER()` di `count_by_stato()`) per il filtro stato bulk. Lo
+scoping di sicurezza del portale esterno è identico a `/portale` — un
+utente non può esportare una pratica non sua nemmeno passando il numero
+a mano nella selezione (coperto da test).
+
+`WinCarRepository` non espone una variante "tutte le pratiche" davvero
+illimitata (solo `search_pratiche(limit=N)`, `SELECT TOP N` SQL): la
+pagina di export usa `limit=20000`, pragmatico ma non un vero unbounded —
+copre l'intero storico realistico di una carrozzeria senza dover toccare
+l'accesso read-only a WinCar per aggiungere un metodo dedicato.
 
 **4.19.0 — Giro di fix UX/UI mobile (audit + segnalazioni reali)**: audit
 statico richiesto sui template/CSS (nessuna modifica), poi fix in due

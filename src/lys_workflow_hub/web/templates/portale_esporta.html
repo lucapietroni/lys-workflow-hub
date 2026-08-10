@@ -12,8 +12,8 @@
     <h1>Esporta CSV</h1>
     <p class="meta">
       Seleziona le pratiche da esportare, oppure lascia tutto deselezionato
-      e usa il filtro stato per esportarle tutte (o solo quelle in un certo
-      stato). Le colonne sono le stesse della tua home.
+      e usa il filtro stato per esportarle tutte (o solo quelle in uno o
+      più stati). Le colonne sono le stesse della tua home.
     </p>
   </div>
 </header>
@@ -32,16 +32,19 @@
     <div class="table-filters">
       <input type="search" id="esporta-filtro-testo" class="filtro-testo"
              placeholder="Cerca per numero, cliente o targa…" aria-label="Cerca pratica" />
-      <select name="stato" id="esporta-filtro-stato" class="select-inline" aria-label="Filtra per stato">
-        <option value="">Tutti gli stati</option>
-        {% for s in stati_disponibili %}
-        <option value="{{ s }}">{{ stato_labels.get(s, s) }}</option>
-        {% endfor %}
-      </select>
       <div class="filtro-count-row">
         <span class="meta" id="esporta-filtro-count"></span>
       </div>
     </div>
+    <fieldset class="filtro-checkbox-group">
+      <legend>Stato</legend>
+      {% for s in stati_disponibili %}
+      <label class="filtro-checkbox-item">
+        <input type="checkbox" name="stato" value="{{ s }}" class="esporta-filtro-stato" />
+        {{ stato_labels.get(s, s) }}
+      </label>
+      {% endfor %}
+    </fieldset>
     <table class="results-table pratiche-table" id="esporta-tabella">
       <thead>
         <tr>
@@ -78,7 +81,7 @@
     </table>
     <p class="meta" id="esporta-filtro-vuoto" hidden>Nessuna pratica corrisponde ai filtri.</p>
     <div style="display:flex; gap:12px; align-items:center; margin-top:14px; flex-wrap:wrap;">
-      <span class="meta" id="esporta-selezionate-count">Nessuna riga selezionata: verranno esportate tutte quelle visibili sopra (secondo il filtro stato).</span>
+      <span class="meta" id="esporta-selezionate-count">Nessuna riga selezionata: verranno esportate tutte quelle visibili sopra (secondo i filtri).</span>
       <button type="submit" class="btn btn-primary">Esporta CSV</button>
     </div>
   </form>
@@ -93,21 +96,31 @@
       var rows = document.querySelectorAll("#esporta-tabella tbody tr");
       if (!form || !rows.length) return;
 
+      function checkedValues(selector) {
+        return Array.prototype.map.call(
+          form.querySelectorAll(selector + ":checked"),
+          function (cb) { return cb.value; }
+        );
+      }
+
       function aggiornaContatoreSelezionate() {
         var n = form.querySelectorAll(".esporta-riga-check:checked").length;
         selCountEl.textContent = n
           ? n + " selezionat" + (n === 1 ? "a" : "e")
-          : "Nessuna riga selezionata: verranno esportate tutte quelle visibili sopra (secondo il filtro stato).";
+          : "Nessuna riga selezionata: verranno esportate tutte quelle visibili sopra (secondo i filtri).";
       }
 
-      function applicaFiltroTesto() {
+      function applicaFiltri() {
         var testo = input ? input.value.trim().toLowerCase() : "";
+        var statiAttivi = checkedValues(".esporta-filtro-stato");
         var visibili = 0;
         rows.forEach(function (row) {
-          var visibile = !testo
+          var matchTesto = !testo
             || row.dataset.numero.indexOf(testo) !== -1
             || row.dataset.cliente.indexOf(testo) !== -1
             || row.dataset.targa.indexOf(testo) !== -1;
+          var matchStato = !statiAttivi.length || statiAttivi.indexOf(row.dataset.stato) !== -1;
+          var visibile = matchTesto && matchStato;
           row.hidden = !visibile;
           if (visibile) visibili++;
         });
@@ -115,8 +128,11 @@
         if (emptyMsg) emptyMsg.hidden = visibili !== 0;
       }
 
-      if (input) input.addEventListener("input", applicaFiltroTesto);
-      applicaFiltroTesto();
+      if (input) input.addEventListener("input", applicaFiltri);
+      form.querySelectorAll(".esporta-filtro-stato").forEach(function (cb) {
+        cb.addEventListener("change", applicaFiltri);
+      });
+      applicaFiltri();
 
       if (selezionaTutto) {
         selezionaTutto.addEventListener("change", function () {

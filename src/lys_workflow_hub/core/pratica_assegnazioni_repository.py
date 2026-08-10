@@ -130,6 +130,21 @@ class PraticaAssegnazioniRepository:
             ).fetchall()
         return [r["pratica_numero"] for r in rows]
 
+    def mappa_utenti_per_pratica(self) -> dict[int, list[int]]:
+        """Tutte le assegnazioni in un colpo solo, come dict pratica_numero
+        -> lista utente_id — per l'export CSV filtrato per collaboratore
+        (o per mostrare i filtri lato client), dove una query per pratica
+        su potenzialmente migliaia di righe sarebbe troppo lenta."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT pratica_numero, utente_id FROM pratica_assegnazioni "
+                "ORDER BY assegnato_at"
+            ).fetchall()
+        mappa: dict[int, list[int]] = {}
+        for r in rows:
+            mappa.setdefault(r["pratica_numero"], []).append(r["utente_id"])
+        return mappa
+
     def list_pratica_numeri_assegnate(self) -> list[int]:
         """Ogni pratica con almeno un'assegnazione, a chiunque — usato dal
         ruolo "supervisore" (vede tutto in sola lettura, non solo le proprie

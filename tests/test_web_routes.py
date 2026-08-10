@@ -243,7 +243,7 @@ def test_pratiche_esporta_pagina_mostra_checkbox_e_filtro_stato(client_with_mock
     response = client.get("/pratiche/esporta")
     assert response.status_code == 200
     assert 'id="esporta-seleziona-tutto"' in response.text
-    assert 'id="esporta-filtro-stato"' in response.text
+    assert 'class="esporta-filtro-stato"' in response.text
     assert 'name="numero" value="766"' in response.text
     assert "rossi mario" in response.text
 
@@ -300,3 +300,85 @@ def test_pratiche_esporta_csv_filtro_stato_senza_selezione(
     body = response.content.decode("utf-8-sig")
     assert "900;verdi luigi" in body
     assert "766;rossi mario" not in body
+
+
+def test_pratiche_esporta_csv_filtro_multi_stato(client_with_mock_repo, tmp_path) -> None:
+    client, repo = client_with_mock_repo
+    repo.search_pratiche.return_value = [_sample_summary(), _secondo_summary()]
+    settings = Settings(wincar_archivio=tmp_path, app_db_path=tmp_path / "app.db")
+    stato_repo = PraticaStatoRepository(db_path=settings.app_db_path)
+    stato_repo.set_stato(766, "in_gestione", changed_by="Admin")
+    stato_repo.set_stato(900, "chiusa", changed_by="Admin")
+
+    app.dependency_overrides[get_app_settings] = lambda: settings
+    try:
+        token = get_csrf(client, "/pratiche/esporta")
+        response = client.post(
+            "/pratiche/esporta.csv",
+            data={"csrf_token": token, "stato": ["in_gestione", "chiusa"]},
+        )
+    finally:
+        app.dependency_overrides.pop(get_app_settings, None)
+
+    body = response.content.decode("utf-8-sig")
+    assert "766;rossi mario" in body
+    assert "900;verdi luigi" in body
+
+
+def test_pratiche_esporta_csv_filtro_collaboratore(client_with_mock_repo, tmp_path) -> None:
+    from lys_workflow_hub.core.pratica_assegnazioni_repository import (
+        PraticaAssegnazioniRepository,
+    )
+    from lys_workflow_hub.core.utenti_repository import UtentiRepository
+
+    client, repo = client_with_mock_repo
+    repo.search_pratiche.return_value = [_sample_summary(), _secondo_summary()]
+    settings = Settings(wincar_archivio=tmp_path, app_db_path=tmp_path / "app.db")
+
+    utenti_repo = UtentiRepository(db_path=settings.app_db_path)
+    agenzia = utenti_repo.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    avvocato = utenti_repo.create(
+        email="avvocato@esempio.it", password="password1234", nome="Avvocato", ruolo="esterno"
+    )
+    assegnazioni_repo = PraticaAssegnazioniRepository(db_path=settings.app_db_path)
+    assegnazioni_repo.assegna(766, agenzia.id, assegnato_da=1)
+    assegnazioni_repo.assegna(900, avvocato.id, assegnato_da=1)
+
+    app.dependency_overrides[get_app_settings] = lambda: settings
+    try:
+        token = get_csrf(client, "/pratiche/esporta")
+        response = client.post(
+            "/pratiche/esporta.csv",
+            data={"csrf_token": token, "collaboratore": [str(agenzia.id)]},
+        )
+    finally:
+        app.dependency_overrides.pop(get_app_settings, None)
+
+    body = response.content.decode("utf-8-sig")
+    assert "766;rossi mario" in body
+    assert "900;verdi luigi" not in body
+
+
+def test_pratiche_esporta_pagina_mostra_filtro_collaboratore(
+    client_with_mock_repo, tmp_path
+) -> None:
+    from lys_workflow_hub.core.utenti_repository import UtentiRepository
+
+    client, repo = client_with_mock_repo
+    repo.search_pratiche.return_value = [_sample_summary()]
+    settings = Settings(wincar_archivio=tmp_path, app_db_path=tmp_path / "app.db")
+    UtentiRepository(db_path=settings.app_db_path).create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+
+    app.dependency_overrides[get_app_settings] = lambda: settings
+    try:
+        response = client.get("/pratiche/esporta")
+    finally:
+        app.dependency_overrides.pop(get_app_settings, None)
+
+    assert response.status_code == 200
+    assert 'class="esporta-filtro-collaboratore"' in response.text
+    assert "Agenzia" in response.text

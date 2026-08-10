@@ -191,9 +191,11 @@ def test_portale_esporta_pagina_mostra_checkbox_e_filtro_stato(
     resp = client.get("/portale/esporta")
     assert resp.status_code == 200
     assert 'id="esporta-seleziona-tutto"' in resp.text
-    assert 'id="esporta-filtro-stato"' in resp.text
+    assert 'class="esporta-filtro-stato"' in resp.text
     assert 'name="numero" value="766"' in resp.text
     assert 'name="numero" value="900"' in resp.text
+    # Filtro collaboratore: solo admin, non nel portale esterno.
+    assert "esporta-filtro-collaboratore" not in resp.text
 
 
 def test_portale_esporta_csv_tutte_senza_selezione(authenticated_app, portale_client) -> None:
@@ -255,3 +257,24 @@ def test_portale_esporta_csv_non_include_pratiche_non_assegnate(
     body = resp.content.decode("utf-8-sig")
     assert "766" not in body
     assert "Numero;Cliente;Targa;Veicolo;Data sinistro;Stato" in body
+
+
+def test_portale_esporta_csv_filtro_multi_stato(
+    tmp_path: Path, authenticated_app, portale_client
+) -> None:
+    _autorizza_esterno_su_766_e_900(authenticated_app, portale_client)
+    stato_repo = PraticaStatoRepository(db_path=tmp_path / "app.db")
+    stato_repo.set_stato(766, "in_gestione", changed_by="Admin")
+    stato_repo.set_stato(900, "chiusa", changed_by="Admin")
+
+    client = TestClient(app)
+    login_as(client, "agenzia@esempio.it", "password1234")
+    token = get_csrf(client, "/portale/esporta")
+    resp = client.post(
+        "/portale/esporta.csv",
+        data={"csrf_token": token, "stato": ["in_gestione", "chiusa"]},
+    )
+
+    body = resp.content.decode("utf-8-sig")
+    assert "766;ROSSI MARIO" in body
+    assert "900;VERDI LUIGI" in body

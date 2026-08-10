@@ -509,6 +509,47 @@ code {
 }
 .filtro-testo:focus { outline: none; border-color: var(--glass-border-focus); }
 
+/* Filtri a checkbox multi-selezione (export CSV pratiche: stato,
+   collaboratore) — un gruppo di pillole invece di un <select multiple>,
+   che su desktop richiede ctrl+click poco scopribile e su alcuni browser
+   mobile apre un picker scomodo per poche opzioni come queste. */
+.filtro-checkbox-group {
+  border: none;
+  margin: 0 0 14px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.filtro-checkbox-group legend {
+  padding: 0;
+  margin-right: 2px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--lys-grey-500);
+}
+.filtro-checkbox-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  background: var(--glass);
+  font-size: 0.84rem;
+  color: var(--lys-grey-700);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.filtro-checkbox-item input { accent-color: var(--lys-gold-glow); }
+.filtro-checkbox-item:has(input:checked) {
+  border-color: var(--lys-gold);
+  color: var(--lys-grey-900);
+}
+
 /* Pulse dot action_required */
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; transform: scale(1); }
