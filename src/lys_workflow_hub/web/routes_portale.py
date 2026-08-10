@@ -39,6 +39,7 @@ from lys_workflow_hub.core.pratica_files import scan as scan_allegati
 from lys_workflow_hub.core.pratica_note_repository import PraticaNoteRepository
 from lys_workflow_hub.core.pratica_stato_repository import (
     STATI,
+    STATO_APERTA,
     STATO_LABELS,
     STATO_PERIZIATA,
     PraticaStatoRepository,
@@ -50,6 +51,7 @@ from lys_workflow_hub.web.auth import get_current_user, template_context_process
 from lys_workflow_hub.web.routes import (
     _allegati_con_url,
     _arricchisci_eventi_con_pratica,
+    _build_csv_response,
     _contesto_calendario,
     _costruisci_feed_attivita,
     _elimina_documento_fisico,
@@ -58,6 +60,7 @@ from lys_workflow_hub.web.routes import (
     _NON_RENDERIZZABILI,
     _notifica_fcm_tutti_i_canali,
     _parse_date,
+    _pratica_csv_row,
     _raggruppa_per_giorno,
     _salva_file_pratica,
     build_foto_zip,
@@ -197,6 +200,89 @@ def portale_list(
     context["prossimo_evento_per_pratica"] = prossimo_per_pratica
 
     return templates.TemplateResponse(request, "portale_list.html", context)
+
+
+@router.get("/portale/esporta", response_class=HTMLResponse)
+def portale_esporta(
+    request: Request,
+    current_user: Utente | None = Depends(get_current_user),
+    assegnazioni_repo: PraticaAssegnazioniRepository = Depends(get_assegnazioni_repo),
+    wincar_repo: WinCarRepository = Depends(get_wincar_repo),
+    settings: Settings = Depends(get_portale_settings),
+) -> HTMLResponse:
+    numeri = _numeri_visibili(current_user, assegnazioni_repo) if current_user else []
+    pratiche = []
+    for numero in numeri:
+        try:
+            pratica = wincar_repo.get_pratica(numero)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Esporta: impossibile leggere pratica %s da WinCar: %s", numero, exc)
+            pratica = None
+        if pratica is not None:
+            pratiche.append(pratica)
+    pratiche.sort(key=lambda p: p.numero, reverse=True)
+
+    context = {
+        "version": __version__,
+        "pratiche": pratiche,
+        "stato_labels": STATO_LABELS,
+        "stati_disponibili": STATI,
+    }
+    try:
+        stato_repo = PraticaStatoRepository(db_path=settings.app_db_path)
+        stato_per_numero: dict[int, str] = {}
+        for p in pratiche:
+            stato_obj = stato_repo.get_stato(p.numero)
+            stato_per_numero[p.numero] = stato_obj.stato if stato_obj else STATO_APERTA
+        context["stato_corrente_per_numero"] = stato_per_numero
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Esporta: impossibile leggere stato pratiche: %s", exc)
+        context["stato_corrente_per_numero"] = {p.numero: STATO_APERTA for p in pratiche}
+
+    return templates.TemplateResponse(request, "portale_esporta.html", context)
+
+
+@router.post("/portale/esporta.csv")
+async def portale_esporta_csv(
+    request: Request,
+    current_user: Utente | None = Depends(get_current_user),
+    assegnazioni_repo: PraticaAssegnazioniRepository = Depends(get_assegnazioni_repo),
+    wincar_repo: WinCarRepository = Depends(get_wincar_repo),
+    settings: Settings = Depends(get_portale_settings),
+) -> Response:
+    if not current_user:
+        raise HTTPException(401, "Login richiesto.")
+
+    form = await request.form()
+    numeri_selezionati = {int(v) for v in form.getlist("numero") if str(v).isdigit()}
+    stato_filtro = (str(form.get("stato") or "")).strip()
+
+    numeri = _numeri_visibili(current_user, assegnazioni_repo)
+    stato_repo = PraticaStatoRepository(db_path=settings.app_db_path)
+
+    righe: list[list[str]] = []
+    for numero in numeri:
+        if numeri_selezionati and numero not in numeri_selezionati:
+            continue
+        try:
+            pratica = wincar_repo.get_pratica(numero)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Esporta CSV: impossibile leggere pratica %s da WinCar: %s", numero, exc)
+            pratica = None
+        if pratica is None:
+            continue
+        stato_obj = stato_repo.get_stato(numero)
+        stato_corrente = stato_obj.stato if stato_obj else STATO_APERTA
+        if stato_filtro and stato_corrente != stato_filtro:
+            continue
+        righe.append(_pratica_csv_row(
+            pratica.numero, pratica.cliente.nominativo, pratica.veicolo.targa,
+            pratica.veicolo.marca, pratica.veicolo.modello, pratica.sinistro.data,
+            stato_corrente,
+        ))
+    righe.sort(key=lambda r: int(r[0]), reverse=True)
+
+    return _build_csv_response(righe, filename=f"pratiche_{date.today().isoformat()}.csv")
 
 
 @router.get("/portale/calendario", response_class=HTMLResponse)

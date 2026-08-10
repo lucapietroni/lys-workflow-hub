@@ -11,10 +11,11 @@ Route principali:
 from __future__ import annotations
 
 import calendar
+import csv
 import logging
 import zipfile
 from datetime import date, datetime, time
-from io import BytesIO
+from io import BytesIO, StringIO
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import quote as _urlquote
@@ -49,6 +50,7 @@ from lys_workflow_hub.core.pratica_note_repository import PraticaNoteRepository
 from lys_workflow_hub.core.pratica_stato_repository import (
     PraticaStatoRepository,
     STATI,
+    STATO_APERTA,
     STATO_LABELS,
     STATO_PERIZIATA,
 )
@@ -372,6 +374,124 @@ def home(
         context["reminder_pendenti"] = []
 
     return templates.TemplateResponse(request, "index.html", context)
+
+
+# --------------------------------------------------------------------------- #
+#  Export CSV pratiche (admin + portale esterno, solo browser — vedi
+#  pratiche_esporta.html/portale_esporta.html: nascosto in app perché il
+#  download da form POST non funziona nella WebView Capacitor senza
+#  l'intercettazione .js-app-download, deliberatamente non implementata
+#  qui, la feature resta browser-only).
+# --------------------------------------------------------------------------- #
+
+# TOP N pragmatico per "tutte le pratiche": WinCarRepository non espone una
+# variante davvero illimitata (solo `limit`, via `SELECT TOP {limit}` SQL).
+# Un numero generoso copre l'intero storico realistico di una carrozzeria
+# senza dover toccare l'accesso read-only a WinCar per aggiungerne uno.
+_EXPORT_MAX_PRATICHE = 20000
+
+_CSV_HEADER = ["Numero", "Cliente", "Targa", "Veicolo", "Data sinistro", "Stato"]
+
+
+def _pratica_csv_row(
+    numero: int,
+    cliente_nominativo: str | None,
+    targa: str | None,
+    marca: str | None,
+    modello: str | None,
+    data_sinistro: date | None,
+    stato_corrente: str,
+) -> list[str]:
+    """Stessa identica logica di formattazione "Veicolo" (marca + modello
+    troncato al primo " dal ") già usata in index.html/portale_list.html —
+    le colonne del CSV devono combaciare con quelle viste in home."""
+    modello_corto = (modello or "").split(" dal ")[0]
+    marca_modello = " ".join(x for x in [(marca or ""), modello_corto] if x).strip()
+    return [
+        str(numero),
+        cliente_nominativo or "",
+        targa or "",
+        marca_modello,
+        data_sinistro.strftime("%d/%m/%Y") if data_sinistro else "",
+        STATO_LABELS.get(stato_corrente, stato_corrente),
+    ]
+
+
+def _build_csv_response(rows: list[list[str]], filename: str) -> Response:
+    # Delimiter ";" (non ",") + BOM UTF-8: Excel in locale italiano tratta
+    # la virgola come separatore decimale e altrimenti apre il CSV in
+    # un'unica colonna, o mostra caratteri accentati corrotti senza BOM.
+    buf = StringIO()
+    csv.writer(buf, delimiter=";").writerows([_CSV_HEADER, *rows])
+    content = "﻿" + buf.getvalue()
+    return Response(
+        content=content.encode("utf-8"),
+        media_type="text/csv",
+        headers={"content-disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/pratiche/esporta", response_class=HTMLResponse)
+def pratiche_esporta(
+    request: Request,
+    repo: WinCarRepository = Depends(get_repository),
+    settings: Settings = Depends(get_app_settings),
+) -> HTMLResponse:
+    context = _common_context()
+    context["stato_labels"] = STATO_LABELS
+    context["stati_disponibili"] = STATI
+    try:
+        pratiche = repo.search_pratiche(limit=_EXPORT_MAX_PRATICHE)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Esporta: impossibile leggere pratiche da WinCar: %s", exc)
+        pratiche = []
+    context["pratiche"] = pratiche
+    try:
+        stati_correnti = PraticaStatoRepository(db_path=settings.app_db_path).stati_correnti()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Esporta: impossibile leggere gli stati pratiche: %s", exc)
+        stati_correnti = {}
+    context["stato_corrente_per_numero"] = {
+        p.numero: stati_correnti.get(p.numero, STATO_APERTA) for p in pratiche
+    }
+    return templates.TemplateResponse(request, "pratiche_esporta.html", context)
+
+
+@router.post("/pratiche/esporta.csv")
+async def pratiche_esporta_csv(
+    request: Request,
+    repo: WinCarRepository = Depends(get_repository),
+    settings: Settings = Depends(get_app_settings),
+) -> Response:
+    form = await request.form()
+    numeri_selezionati = {int(v) for v in form.getlist("numero") if str(v).isdigit()}
+    stato_filtro = (str(form.get("stato") or "")).strip()
+
+    try:
+        pratiche = repo.search_pratiche(limit=_EXPORT_MAX_PRATICHE)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Esporta CSV: impossibile leggere pratiche da WinCar: %s", exc)
+        raise HTTPException(502, "Impossibile leggere le pratiche da WinCar.") from exc
+
+    try:
+        stati_correnti = PraticaStatoRepository(db_path=settings.app_db_path).stati_correnti()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Esporta CSV: impossibile leggere gli stati pratiche: %s", exc)
+        stati_correnti = {}
+
+    righe: list[list[str]] = []
+    for p in pratiche:
+        if numeri_selezionati and p.numero not in numeri_selezionati:
+            continue
+        stato_corrente = stati_correnti.get(p.numero, STATO_APERTA)
+        if stato_filtro and stato_corrente != stato_filtro:
+            continue
+        righe.append(_pratica_csv_row(
+            p.numero, p.cliente_nominativo, p.targa, p.marca, p.modello,
+            p.data_sinistro, stato_corrente,
+        ))
+
+    return _build_csv_response(righe, filename=f"pratiche_{date.today().isoformat()}.csv")
 
 
 @router.get("/calendario", response_class=HTMLResponse)

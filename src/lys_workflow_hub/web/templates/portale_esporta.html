@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}Esporta pratiche · Portale · LYS Workflow Hub{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb">
+  <a href="/portale" class="btn btn-sm">← Torna alle tue pratiche</a>
+</nav>
+
+<header class="pratica-header">
+  <div>
+    <div class="hero-eyebrow">Portale collaborazione</div>
+    <h1>Esporta CSV</h1>
+    <p class="meta">
+      Seleziona le pratiche da esportare, oppure lascia tutto deselezionato
+      e usa il filtro stato per esportarle tutte (o solo quelle in un certo
+      stato). Le colonne sono le stesse della tua home.
+    </p>
+  </div>
+</header>
+
+<p class="meta app-only">
+  L'export CSV è disponibile solo da browser — apri questa pagina da
+  Chrome/Safari, non dall'app.
+</p>
+
+<section class="card csv-export-page">
+{% if not pratiche %}
+  <p class="meta" style="margin-top:0">Nessuna pratica ti è ancora stata assegnata.</p>
+{% else %}
+  <form method="post" action="/portale/esporta.csv" id="export-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <div class="table-filters">
+      <input type="search" id="esporta-filtro-testo" class="filtro-testo"
+             placeholder="Cerca per numero, cliente o targa…" aria-label="Cerca pratica" />
+      <select name="stato" id="esporta-filtro-stato" class="select-inline" aria-label="Filtra per stato">
+        <option value="">Tutti gli stati</option>
+        {% for s in stati_disponibili %}
+        <option value="{{ s }}">{{ stato_labels.get(s, s) }}</option>
+        {% endfor %}
+      </select>
+      <div class="filtro-count-row">
+        <span class="meta" id="esporta-filtro-count"></span>
+      </div>
+    </div>
+    <table class="results-table pratiche-table" id="esporta-tabella">
+      <thead>
+        <tr>
+          <th style="width:36px;"><input type="checkbox" id="esporta-seleziona-tutto" aria-label="Seleziona tutte le righe visibili" /></th>
+          <th class="num">N.</th>
+          <th>Cliente</th>
+          <th>Targa</th>
+          <th>Veicolo</th>
+          <th>Data sinistro</th>
+          <th>Stato</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in pratiche %}
+        {% set stato_corrente = stato_corrente_per_numero.get(p.numero, "aperta") %}
+        <tr data-numero="{{ p.numero }}"
+            data-cliente="{{ (p.cliente.nominativo or '')|lower }}"
+            data-targa="{{ (p.veicolo.targa or '')|lower }}"
+            data-stato="{{ stato_corrente }}">
+          <td data-label=""><input type="checkbox" name="numero" value="{{ p.numero }}" class="esporta-riga-check" /></td>
+          <td class="num" data-label="Pratica">{{ p.numero }}</td>
+          <td data-label="Cliente">{{ p.cliente.nominativo or "—" }}</td>
+          <td data-label="Targa"><code>{{ p.veicolo.targa or "—" }}</code></td>
+          <td data-label="Veicolo">
+            {%- set modello_corto = (p.veicolo.modello or "").split(" dal ")[0] -%}
+            {%- set marca_modello = [(p.veicolo.marca or ""), modello_corto]|join(" ")|trim -%}
+            {{ marca_modello or "—" }}
+          </td>
+          <td data-label="Data sinistro">{{ p.sinistro.data.strftime("%d/%m/%Y") if p.sinistro.data else "—" }}</td>
+          <td data-label="Stato"><span class="badge badge-stato badge-{{ stato_corrente }}">{{ stato_labels.get(stato_corrente, stato_corrente) }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="meta" id="esporta-filtro-vuoto" hidden>Nessuna pratica corrisponde ai filtri.</p>
+    <div style="display:flex; gap:12px; align-items:center; margin-top:14px; flex-wrap:wrap;">
+      <span class="meta" id="esporta-selezionate-count">Nessuna riga selezionata: verranno esportate tutte quelle visibili sopra (secondo il filtro stato).</span>
+      <button type="submit" class="btn btn-primary">Esporta CSV</button>
+    </div>
+  </form>
+  <script>
+    (function () {
+      var form = document.getElementById("export-form");
+      var input = document.getElementById("esporta-filtro-testo");
+      var selezionaTutto = document.getElementById("esporta-seleziona-tutto");
+      var countEl = document.getElementById("esporta-filtro-count");
+      var emptyMsg = document.getElementById("esporta-filtro-vuoto");
+      var selCountEl = document.getElementById("esporta-selezionate-count");
+      var rows = document.querySelectorAll("#esporta-tabella tbody tr");
+      if (!form || !rows.length) return;
+
+      function aggiornaContatoreSelezionate() {
+        var n = form.querySelectorAll(".esporta-riga-check:checked").length;
+        selCountEl.textContent = n
+          ? n + " selezionat" + (n === 1 ? "a" : "e")
+          : "Nessuna riga selezionata: verranno esportate tutte quelle visibili sopra (secondo il filtro stato).";
+      }
+
+      function applicaFiltroTesto() {
+        var testo = input ? input.value.trim().toLowerCase() : "";
+        var visibili = 0;
+        rows.forEach(function (row) {
+          var visibile = !testo
+            || row.dataset.numero.indexOf(testo) !== -1
+            || row.dataset.cliente.indexOf(testo) !== -1
+            || row.dataset.targa.indexOf(testo) !== -1;
+          row.hidden = !visibile;
+          if (visibile) visibili++;
+        });
+        if (countEl) countEl.textContent = visibili + " di " + rows.length;
+        if (emptyMsg) emptyMsg.hidden = visibili !== 0;
+      }
+
+      if (input) input.addEventListener("input", applicaFiltroTesto);
+      applicaFiltroTesto();
+
+      if (selezionaTutto) {
+        selezionaTutto.addEventListener("change", function () {
+          rows.forEach(function (row) {
+            if (row.hidden) return;
+            var cb = row.querySelector(".esporta-riga-check");
+            if (cb) cb.checked = selezionaTutto.checked;
+          });
+          aggiornaContatoreSelezionate();
+        });
+      }
+      form.querySelectorAll(".esporta-riga-check").forEach(function (cb) {
+        cb.addEventListener("change", aggiornaContatoreSelezionate);
+      });
+    })();
+  </script>
+{% endif %}
+</section>
+{% endblock %}

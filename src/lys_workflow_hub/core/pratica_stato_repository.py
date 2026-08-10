@@ -226,6 +226,35 @@ class PraticaStatoRepository:
             ).fetchone()
         return self._row_to_stato(row) if row else None
 
+    def stati_correnti(self) -> dict[int, str]:
+        """Stato corrente di OGNI pratica con almeno un cambio registrato,
+        in un colpo solo — per l'export CSV filtrato per stato, dove
+        servirebbe altrimenti una query per numero su potenzialmente
+        migliaia di pratiche. Stessa subquery "riga più recente per
+        pratica" di `count_by_stato`. Le pratiche assenti dal dict
+        risultante non hanno mai avuto un cambio di stato: il chiamante
+        applica il default STATO_APERTA, come ovunque nell'app."""
+        sql = """
+            SELECT pratica_numero, stato
+            FROM (
+                SELECT pratica_numero,
+                       stato,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY pratica_numero
+                           ORDER BY changed_at DESC, id DESC
+                       ) AS rn
+                FROM pratica_stato
+            )
+            WHERE rn = 1
+        """
+        try:
+            with self._connect() as conn:
+                rows = conn.execute(sql).fetchall()
+            return {int(r["pratica_numero"]): r["stato"] for r in rows}
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("stati_correnti fallito: %s", exc)
+            return {}
+
     def storia(self, pratica_numero: int, limit: int = 20) -> list[PraticaStato]:
         """Tutti i cambi di stato per una pratica (più recenti prima)."""
         with self._connect() as conn:

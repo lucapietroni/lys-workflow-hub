@@ -993,6 +993,13 @@ code {
 html.is-app .foto-download-bar,
 html.is-app .foto-select { display: none; }
 
+/* Export CSV: solo browser, stesso motivo dello zip foto sopra — un
+   download da form POST non funziona nella WebView Capacitor senza
+   l'intercettazione .js-app-download, non implementata qui perché la
+   feature è deliberatamente browser-only (richiesta esplicita). */
+html.is-app .csv-export-link,
+html.is-app .csv-export-page { display: none; }
+
 /* Eliminazione foto: admin la vede sempre (pratica_detail.html), un
    esterno solo sulle foto che ha caricato lui (portale_pratica_detail.html,
    gating server-side "eliminabile" — vedi routes_portale.py). */

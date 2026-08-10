@@ -23,9 +23,10 @@ from lys_workflow_hub.core.wincar_repository import (
     Sinistro,
     Veicolo,
 )
+from lys_workflow_hub.core.pratica_stato_repository import PraticaStatoRepository
 from lys_workflow_hub.main import app
 from lys_workflow_hub.web.routes import get_app_settings, get_repository
-from tests.conftest import login_as_admin
+from tests.conftest import get_csrf, login_as_admin
 
 
 def _sample_summary() -> PraticaSummary:
@@ -217,3 +218,85 @@ def test_pratica_detail_404_when_not_found(client_with_mock_repo):
     assert response.status_code == 404
     assert "Pratica non trovata" in response.text
     assert "99999" in response.text
+
+
+# --------------------------------------------------------------------------- #
+#  Export CSV pratiche (admin)
+# --------------------------------------------------------------------------- #
+
+
+def _secondo_summary() -> PraticaSummary:
+    return PraticaSummary(
+        numero=900,
+        cliente_nominativo="verdi luigi",
+        targa="XY987ZW",
+        marca="BMW",
+        modello="Serie 1",
+        data_sinistro=date(2026, 6, 1),
+        codice_fiscale=None,
+    )
+
+
+def test_pratiche_esporta_pagina_mostra_checkbox_e_filtro_stato(client_with_mock_repo):
+    client, repo = client_with_mock_repo
+    repo.search_pratiche.return_value = [_sample_summary()]
+    response = client.get("/pratiche/esporta")
+    assert response.status_code == 200
+    assert 'id="esporta-seleziona-tutto"' in response.text
+    assert 'id="esporta-filtro-stato"' in response.text
+    assert 'name="numero" value="766"' in response.text
+    assert "rossi mario" in response.text
+
+
+def test_pratiche_esporta_csv_tutte_senza_selezione(client_with_mock_repo):
+    client, repo = client_with_mock_repo
+    repo.search_pratiche.return_value = [_sample_summary(), _secondo_summary()]
+
+    token = get_csrf(client, "/pratiche/esporta")
+    response = client.post("/pratiche/esporta.csv", data={"csrf_token": token})
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv")
+    assert "attachment" in response.headers["content-disposition"]
+    body = response.content.decode("utf-8-sig")
+    assert "Numero;Cliente;Targa;Veicolo;Data sinistro;Stato" in body
+    assert "766;rossi mario;AB123CD;FIAT Punto;08/05/2026;Aperta" in body
+    assert "900;verdi luigi;XY987ZW;BMW Serie 1;01/06/2026;Aperta" in body
+
+
+def test_pratiche_esporta_csv_selezione_filtra_le_righe(client_with_mock_repo):
+    client, repo = client_with_mock_repo
+    repo.search_pratiche.return_value = [_sample_summary(), _secondo_summary()]
+
+    token = get_csrf(client, "/pratiche/esporta")
+    response = client.post(
+        "/pratiche/esporta.csv", data={"csrf_token": token, "numero": ["766"]}
+    )
+
+    body = response.content.decode("utf-8-sig")
+    assert "766;rossi mario" in body
+    assert "900;verdi luigi" not in body
+
+
+def test_pratiche_esporta_csv_filtro_stato_senza_selezione(
+    client_with_mock_repo, tmp_path
+) -> None:
+    client, repo = client_with_mock_repo
+    repo.search_pratiche.return_value = [_sample_summary(), _secondo_summary()]
+    settings = Settings(wincar_archivio=tmp_path, app_db_path=tmp_path / "app.db")
+    PraticaStatoRepository(db_path=settings.app_db_path).set_stato(
+        900, "chiusa", changed_by="Admin"
+    )
+
+    app.dependency_overrides[get_app_settings] = lambda: settings
+    try:
+        token = get_csrf(client, "/pratiche/esporta")
+        response = client.post(
+            "/pratiche/esporta.csv", data={"csrf_token": token, "stato": "chiusa"}
+        )
+    finally:
+        app.dependency_overrides.pop(get_app_settings, None)
+
+    body = response.content.decode("utf-8-sig")
+    assert "900;verdi luigi" in body
+    assert "766;rossi mario" not in body

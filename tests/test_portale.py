@@ -27,7 +27,7 @@ from lys_workflow_hub.web.routes_portale import (
     get_portale_settings,
     get_wincar_repo,
 )
-from tests.conftest import login_as, login_as_admin
+from tests.conftest import get_csrf, login_as, login_as_admin
 
 
 def _sample_pratica(numero: int) -> Pratica:
@@ -151,3 +151,107 @@ def test_portale_non_mostra_pratiche_di_altri_utenti(authenticated_app, portale_
     resp = client.get("/portale")
     assert resp.status_code == 200
     assert "766" not in resp.text
+
+
+# --------------------------------------------------------------------------- #
+#  Export CSV pratiche (portale esterno)
+# --------------------------------------------------------------------------- #
+
+
+def _sample_pratica_900() -> Pratica:
+    return Pratica(
+        numero=900,
+        data_creazione=datetime(2026, 6, 1, 0, 0),
+        cliente=Cliente("VERDI LUIGI", None, None, None, None, None, None, None, None, None),
+        veicolo=Veicolo("XY987ZW", "BMW", "Serie 1", None),
+        sinistro=Sinistro(None, None, None, None, None, None, None),
+        controparte=Controparte(None, None, None, None, None, None, None, None),
+        assicurazione_cliente=CompagniaCliente(None, None, None, None, None, None, None),
+    )
+
+
+def _autorizza_esterno_su_766_e_900(authenticated_app, portale_client):
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    portale_client.assegna(766, esterno.id, assegnato_da=1)
+    portale_client.assegna(900, esterno.id, assegnato_da=1)
+    wincar_repo = app.dependency_overrides[get_wincar_repo]()
+    wincar_repo.get_pratica.side_effect = (
+        lambda n: _sample_pratica(n) if n == 766 else (_sample_pratica_900() if n == 900 else None)
+    )
+
+
+def test_portale_esporta_pagina_mostra_checkbox_e_filtro_stato(
+    authenticated_app, portale_client
+) -> None:
+    _autorizza_esterno_su_766_e_900(authenticated_app, portale_client)
+    client = TestClient(app)
+    login_as(client, "agenzia@esempio.it", "password1234")
+    resp = client.get("/portale/esporta")
+    assert resp.status_code == 200
+    assert 'id="esporta-seleziona-tutto"' in resp.text
+    assert 'id="esporta-filtro-stato"' in resp.text
+    assert 'name="numero" value="766"' in resp.text
+    assert 'name="numero" value="900"' in resp.text
+
+
+def test_portale_esporta_csv_tutte_senza_selezione(authenticated_app, portale_client) -> None:
+    _autorizza_esterno_su_766_e_900(authenticated_app, portale_client)
+    client = TestClient(app)
+    login_as(client, "agenzia@esempio.it", "password1234")
+
+    token = get_csrf(client, "/portale/esporta")
+    resp = client.post("/portale/esporta.csv", data={"csrf_token": token})
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/csv")
+    body = resp.content.decode("utf-8-sig")
+    assert "Numero;Cliente;Targa;Veicolo;Data sinistro;Stato" in body
+    assert "766;ROSSI MARIO;AB123CD;FIAT Punto;;Aperta" in body
+    assert "900;VERDI LUIGI;XY987ZW;BMW Serie 1;;Aperta" in body
+
+
+def test_portale_esporta_csv_selezione_filtra_le_righe(
+    authenticated_app, portale_client
+) -> None:
+    _autorizza_esterno_su_766_e_900(authenticated_app, portale_client)
+    client = TestClient(app)
+    login_as(client, "agenzia@esempio.it", "password1234")
+
+    token = get_csrf(client, "/portale/esporta")
+    resp = client.post(
+        "/portale/esporta.csv", data={"csrf_token": token, "numero": ["766"]}
+    )
+
+    body = resp.content.decode("utf-8-sig")
+    assert "766;ROSSI MARIO" in body
+    assert "900;VERDI LUIGI" not in body
+
+
+def test_portale_esporta_csv_non_include_pratiche_non_assegnate(
+    tmp_path: Path, authenticated_app, portale_client
+) -> None:
+    """L'export deve rispettare lo stesso scoping di /portale — un utente
+    non deve poter esportare una pratica non sua passando il suo numero
+    a mano nella selezione."""
+    esterno_a = authenticated_app.create(
+        email="a@esempio.it", password="password1234", ruolo="esterno"
+    )
+    esterno_b = authenticated_app.create(
+        email="b@esempio.it", password="password1234", ruolo="esterno"
+    )
+    portale_client.assegna(766, esterno_a.id, assegnato_da=1)
+    wincar_repo = app.dependency_overrides[get_wincar_repo]()
+    wincar_repo.get_pratica.side_effect = lambda n: _sample_pratica(n) if n == 766 else None
+
+    client = TestClient(app)
+    login_as(client, "b@esempio.it", "password1234")
+    token = get_csrf(client, "/portale/esporta")
+    resp = client.post(
+        "/portale/esporta.csv", data={"csrf_token": token, "numero": ["766"]}
+    )
+
+    body = resp.content.decode("utf-8-sig")
+    assert "766" not in body
+    assert "Numero;Cliente;Targa;Veicolo;Data sinistro;Stato" in body

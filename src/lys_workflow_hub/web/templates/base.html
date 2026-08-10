@@ -115,6 +115,7 @@
           <a href="/statistiche">Statistiche</a>
           <a href="/foto">Foto</a>
           <a href="/calendario">Calendario</a>
+          <a href="/pratiche/esporta" class="csv-export-link">Esporta</a>
           <a href="/utenti">Utenti</a>
           <a href="/impostazioni">Impostazioni</a>
           <a href="/ingressi">Ingressi officina</a>
@@ -124,6 +125,7 @@
           {% elif current_user %}
           <a href="/portale">{{ "Pratiche assegnate" if current_user.is_supervisore else "Le mie pratiche" }}</a>
           <a href="/portale/calendario">Calendario</a>
+          <a href="/portale/esporta" class="csv-export-link">Esporta</a>
           <a href="/portale/impostazioni">Impostazioni</a>
           {% endif %}
         </nav>
