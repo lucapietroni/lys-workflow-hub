@@ -890,10 +890,24 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 
 ## Stato attuale
 
-Versione **4.21.0**, tutto su branch `main`, in produzione su
+Versione **4.21.1**, tutto su branch `main`, in produzione su
 `https://hub.lysauto.it`. Changelog per-commit in `git log`; le decisioni
 tecniche non ovvie dal codice (formati, gotcha, cause di bug reali) restano
 documentate nelle sezioni sopra, per sottosistema.
+
+**4.21.1 — Fix titolo reminder esterno**: segnalato dall'utente via
+screenshot — il widget "Notifiche in attesa" lato esterno mostrava titoli
+in stile oggetto email ("[LYS Hub] Nuova nota sulla pratica 840") invece
+che brevi come lato admin ("Nuova nota · Pratica 840"). Causa:
+`_notifica_esterni_assegnati` (`web/routes.py`) riusava lo stesso `subject`
+sia per l'oggetto email sia per ntfy/FCM/titolo reminder — a differenza di
+`_notifica_admin`, che tiene sempre distinti `push_titolo` (breve) e
+`messaggio`. Fix: `costruisci_messaggio` ora restituisce una tupla a 3
+(`push_titolo, subject, body_text`) in tutti e 4 i call site (nota, evento,
+upload, cessione firmata) — `subject` esteso resta solo per l'email,
+`push_titolo` breve va a ntfy/FCM/reminder. Cambia anche il titolo delle
+push reali su ntfy/FCM lato esterno, non solo il widget. Test di
+regressione aggiunto.
 
 **4.21.0 — Reminder ricorrente per notifiche esterni non gestite**:
 simmetrico al reminder admin del 4.16.0, lato collaboratore esterno. Se

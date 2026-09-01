@@ -20,6 +20,9 @@ from lys_workflow_hub.config import Settings
 from lys_workflow_hub.core.admin_pratica_reminder_repository import (
     AdminPraticaReminderRepository,
 )
+from lys_workflow_hub.core.esterno_pratica_reminder_repository import (
+    EsternoPraticaReminderRepository,
+)
 from lys_workflow_hub.core.pratica_assegnazioni_repository import (
     PraticaAssegnazioniRepository,
 )
@@ -273,6 +276,35 @@ def test_admin_aggiunge_nota_notifica_esterno_assegnato(admin_client, authentica
         mock_notify.assert_called_once()
         assert mock_notify.call_args.kwargs["recipient"] == "agenzia@esempio.it"
         assert "766" in mock_notify.call_args.kwargs["subject"]
+
+
+def test_admin_aggiunge_nota_crea_reminder_esterno_titolo_breve(
+    admin_client, authenticated_app
+) -> None:
+    """Regressione: il reminder esterno (e le push ntfy/FCM, stesso campo)
+    devono usare il titolo breve stile admin ("Nuova nota · Pratica 766"),
+    non l'oggetto email esteso ("[LYS Hub] Nuova nota sulla pratica 766") —
+    prima della fix i due coincidevano e il widget "Notifiche in attesa"
+    lato esterno mostrava il testo email invece che quello breve."""
+    client, settings = admin_client
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    assegnazioni_repo = PraticaAssegnazioniRepository(db_path=settings.app_db_path)
+    assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
+
+    with patch("lys_workflow_hub.web.routes.notify_esterno_nuova_attivita"):
+        resp = client.post(
+            "/pratiche/766/note",
+            data={"testo": "servono foto lavorazione", "csrf_token": get_csrf(client, "/pratiche/766")},
+        )
+        assert resp.status_code == 303
+
+    reminder_repo = EsternoPraticaReminderRepository(db_path=settings.app_db_path)
+    attivi = reminder_repo.list_attivi()
+    assert len(attivi) == 1
+    assert attivi[0].titolo == "Nuova nota · Pratica 766"
+    assert "LYS Hub" not in attivi[0].titolo
 
 
 def test_admin_aggiunge_nota_non_notifica_se_nessun_assegnato(admin_client) -> None:

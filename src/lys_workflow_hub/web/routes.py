@@ -807,17 +807,26 @@ def _notifica_esterni_assegnati(
     request: Request,
     settings: Settings,
     numero: int,
-    costruisci_messaggio: Callable[[], tuple[str, str]],
+    costruisci_messaggio: Callable[[], tuple[str, str, str]],
 ) -> None:
     """Email e/o push a ogni utente esterno assegnato alla pratica, secondo
     le preferenze self-service di ciascuno (v3.0 fase 5, parte D — vedi
     `UtentiRepository.set_notifiche` e `/portale/impostazioni`).
 
-    `costruisci_messaggio` (subject, body) è chiamato QUI DENTRO, non dal
-    chiamante: così anche un errore nella costruzione del testo (f-string,
-    `settings.public_url`, `strftime`, ecc.) resta contenuto in questo
-    try/except e non può far fallire la request — la nota/evento è già
-    salvato quando questa funzione gira, la notifica è best-effort.
+    `costruisci_messaggio` (push_titolo, subject, body) è chiamato QUI
+    DENTRO, non dal chiamante: così anche un errore nella costruzione del
+    testo (f-string, `settings.public_url`, `strftime`, ecc.) resta
+    contenuto in questo try/except e non può far fallire la request — la
+    nota/evento è già salvato quando questa funzione gira, la notifica è
+    best-effort.
+
+    `push_titolo` (stile breve "Nuova nota · Pratica {n}", stesso di
+    `_notifica_admin`) va a ntfy/FCM/reminder; `subject` (stile esteso "[LYS
+    Hub] Nuova nota sulla pratica {n}") resta solo per l'oggetto email, dove
+    ha senso distinguersi in una casella con altri mittenti — prima i due
+    coincidevano e sia le push sia il widget "Notifiche in attesa" mostravano
+    il testo lungo stile email invece che quello breve, a differenza del
+    widget admin.
     """
     try:
         assegnazioni_repo = PraticaAssegnazioniRepository(db_path=settings.app_db_path)
@@ -825,7 +834,7 @@ def _notifica_esterni_assegnati(
         assegnati_ids = set(assegnazioni_repo.list_utente_ids_per_pratica(numero))
         if not assegnati_ids:
             return
-        subject, body_text = costruisci_messaggio()
+        push_titolo, subject, body_text = costruisci_messaggio()
         for u in utenti_repo.list_all():
             if u.id not in assegnati_ids or not u.attivo:
                 continue
@@ -846,12 +855,12 @@ def _notifica_esterni_assegnati(
                 notify_push_nuova_attivita(
                     ntfy_server=settings.ntfy_server,
                     ntfy_topic=u.ntfy_topic,
-                    titolo=subject,
+                    titolo=push_titolo,
                     messaggio=body_text,
                     disabled=settings.notify_disabled,
                 )
             _notifica_fcm_tutti_i_canali(
-                u, settings, subject=subject, body_text=body_text, numero=numero
+                u, settings, subject=push_titolo, body_text=body_text, numero=numero
             )
         # Reminder ricorrente lato esterno (simmetrico a quello admin, v4.16.0
         # — vedi EsternoPraticaReminderRepository): se nessun assegnato agisce
@@ -859,7 +868,7 @@ def _notifica_esterni_assegnati(
         # entro 24h, run_polling.py rimanda questa stessa notifica finché non
         # viene risolta o silenziata manualmente.
         EsternoPraticaReminderRepository(db_path=settings.app_db_path).upsert_attivo(
-            numero, titolo=subject, messaggio=body_text
+            numero, titolo=push_titolo, messaggio=body_text
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("Impossibile notificare esterni assegnati a %s: %s", numero, exc)
@@ -889,6 +898,7 @@ def pratica_aggiungi_nota(
         settings,
         numero,
         costruisci_messaggio=lambda: (
+            f"Nuova nota · Pratica {numero}",
             f"[LYS Hub] Nuova nota sulla pratica {numero}",
             f"{admin.nome or admin.email} ha scritto una nuova nota sulla pratica {numero}:\n\n"
             f"{testo}\n\n"
@@ -941,6 +951,7 @@ def pratica_aggiungi_evento(
         settings,
         numero,
         costruisci_messaggio=lambda: (
+            f"Nuovo evento · Pratica {numero}",
             f"[LYS Hub] Nuovo evento sulla pratica {numero}",
             f"{admin.nome or admin.email} ha aggiunto un evento sulla pratica {numero}:\n\n"
             f"{titolo} — {data.strftime('%d/%m/%Y')}\n\n"
@@ -1267,6 +1278,7 @@ def _upload_pratica_admin(
             settings,
             numero,
             costruisci_messaggio=lambda: (
+                f"Nuovi file · Pratica {numero}",
                 f"[LYS Hub] Nuovi file sulla pratica {numero}",
                 f"{admin.nome or admin.email} ha caricato {len(salvati)} file "
                 f"({categoria}) sulla pratica {numero}: {', '.join(salvati)}\n\n"
@@ -1601,6 +1613,7 @@ async def cessione_upload_signed(
         settings,
         numero,
         costruisci_messaggio=lambda: (
+            f"Cessione firmata · Pratica {numero}",
             f"[LYS Hub] Cessione del credito firmata caricata sulla pratica {numero}",
             f"{admin.nome or admin.email} ha caricato la cessione del credito firmata "
             f"sulla pratica {numero}.\n\n"
