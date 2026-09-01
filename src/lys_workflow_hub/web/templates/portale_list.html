@@ -21,6 +21,32 @@
   </div>
 </header>
 
+{% if reminder_pendenti %}
+  <section class="card">
+    <h2>Notifiche in attesa <span class="tag">{{ reminder_pendenti|length }}</span></h2>
+    <p class="meta" style="margin-top:-6px">
+      Attività dell'admin su cui non hai ancora agito (nota, evento, stato o
+      upload). Se non le gestisci né le silenzi, torna a ricordartele ogni 24h.
+    </p>
+    <ul class="files-list">
+      {% for r in reminder_pendenti %}
+      <li>
+        <span style="display:flex; flex-direction:column; gap:2px; min-width:0;">
+          <a class="file-name" href="/portale/pratiche/{{ r.pratica_numero }}">{{ r.titolo }}</a>
+          <span class="file-meta">
+            {{ r.creato_il.strftime("%d/%m/%Y %H:%M") if r.creato_il else "—" }}
+          </span>
+        </span>
+        <form method="post" action="/portale/pratiche/{{ r.pratica_numero }}/reminder/silenzia">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <button type="submit" class="btn btn-sm">Segna come vista</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+{% endif %}
+
 {% if prossimi_eventi %}
   <section class="card">
     <h2>Prossimi appuntamenti <span class="tag">{{ prossimi_eventi|length }}</span></h2>

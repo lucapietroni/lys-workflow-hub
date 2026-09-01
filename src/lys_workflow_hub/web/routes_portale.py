@@ -28,6 +28,9 @@ from lys_workflow_hub.config import Settings, get_settings
 from lys_workflow_hub.core.admin_pratica_reminder_repository import (
     AdminPraticaReminderRepository,
 )
+from lys_workflow_hub.core.esterno_pratica_reminder_repository import (
+    EsternoPraticaReminderRepository,
+)
 from lys_workflow_hub.core.pratica_assegnazioni_repository import (
     PraticaAssegnazioniRepository,
 )
@@ -173,6 +176,22 @@ def portale_list(
     except Exception as exc:  # noqa: BLE001
         logger.warning("Portale: impossibile leggere stato pratiche: %s", exc)
         context["stati_pratiche"] = {}
+
+    # Reminder pratiche non gestite (simmetrico al widget admin, v4.16.0):
+    # attività dell'admin su cui nessun collaboratore assegnato ha ancora
+    # agito né silenziato manualmente — vedi EsternoPraticaReminderRepository,
+    # popolato da _notifica_esterni_assegnati. Mai per il supervisore: è in
+    # sola lettura e non può mai risolverli (vedi _richiedi_permesso_scrittura).
+    context["reminder_pendenti"] = []
+    if current_user and current_user.ruolo != "supervisore":
+        try:
+            reminder_repo = EsternoPraticaReminderRepository(db_path=settings.app_db_path)
+            numeri_set = set(numeri)
+            context["reminder_pendenti"] = [
+                r for r in reminder_repo.list_attivi() if r.pratica_numero in numeri_set
+            ]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Portale: impossibile leggere i reminder pratiche pendenti: %s", exc)
 
     # Prossimi appuntamenti (v3.0 fase 5) — solo pratiche assegnate a questo utente.
     # Esclude gli eventi delle pratiche già "periziata": l'appuntamento (es. perizia)
@@ -549,6 +568,12 @@ def _upload_pratica(
     )
 
     if salvati:
+        try:
+            EsternoPraticaReminderRepository(db_path=settings.app_db_path).risolvi_per_pratica(
+                numero, risolto_da="azione"
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Impossibile risolvere reminder esterno pratica %s: %s", numero, exc)
         _notifica_admin(
             request,
             settings,
@@ -665,6 +690,12 @@ def portale_aggiungi_nota(
         repo.add(numero, utente.id, utente.nome or utente.email, testo)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+    try:
+        EsternoPraticaReminderRepository(db_path=settings.app_db_path).risolvi_per_pratica(
+            numero, risolto_da="azione"
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Impossibile risolvere reminder esterno pratica %s: %s", numero, exc)
     _notifica_admin(
         request,
         settings,
@@ -699,6 +730,12 @@ def portale_aggiungi_evento(
         repo.add(numero, titolo, data, utente.id, utente.nome or utente.email)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+    try:
+        EsternoPraticaReminderRepository(db_path=settings.app_db_path).risolvi_per_pratica(
+            numero, risolto_da="azione"
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Impossibile risolvere reminder esterno pratica %s: %s", numero, exc)
     _notifica_admin(
         request,
         settings,
@@ -750,6 +787,12 @@ def portale_cambia_stato(
     stato_repo.set_stato(
         numero, stato, changed_by=utente.nome or utente.email, note=note.strip()
     )
+    try:
+        EsternoPraticaReminderRepository(db_path=settings.app_db_path).risolvi_per_pratica(
+            numero, risolto_da="azione"
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Impossibile risolvere reminder esterno pratica %s: %s", numero, exc)
     _notifica_admin(
         request,
         settings,
@@ -763,6 +806,26 @@ def portale_cambia_stato(
         ),
     )
     return RedirectResponse(url=f"/portale/pratiche/{numero}?stato_aggiornato=1", status_code=303)
+
+
+@router.post("/portale/pratiche/{numero}/reminder/silenzia")
+def portale_reminder_silenzia(
+    numero: int,
+    current_user: Utente | None = Depends(get_current_user),
+    assegnazioni_repo: PraticaAssegnazioniRepository = Depends(get_assegnazioni_repo),
+    settings: Settings = Depends(get_portale_settings),
+) -> RedirectResponse:
+    """Silenzia manualmente il reminder ricorrente di questa pratica (widget
+    "Notifiche in attesa" nella home portale), simmetrico a
+    `pratica_reminder_silenzia` lato admin — l'esterno può averla già
+    gestita altrove (telefono, di persona)."""
+    utente = _require_user(current_user)
+    _verifica_accesso(utente, numero, assegnazioni_repo)
+    _richiedi_permesso_scrittura(utente)
+    EsternoPraticaReminderRepository(db_path=settings.app_db_path).risolvi_per_pratica(
+        numero, risolto_da="manuale"
+    )
+    return RedirectResponse(url="/portale", status_code=303)
 
 
 def get_utenti_repo(request: Request) -> UtentiRepository:

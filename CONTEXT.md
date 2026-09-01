@@ -890,10 +890,41 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 
 ## Stato attuale
 
-Versione **4.20.0**, tutto su branch `main`, in produzione su
+Versione **4.21.0**, tutto su branch `main`, in produzione su
 `https://hub.lysauto.it`. Changelog per-commit in `git log`; le decisioni
 tecniche non ovvie dal codice (formati, gotcha, cause di bug reali) restano
 documentate nelle sezioni sopra, per sottosistema.
+
+**4.21.0 — Reminder ricorrente per notifiche esterni non gestite**:
+simmetrico al reminder admin del 4.16.0, lato collaboratore esterno. Se
+l'admin agisce su una pratica (nota/evento/upload/cessione firmata) e nessun
+collaboratore assegnato agisce a sua volta (nota/evento/stato/upload) entro
+24h né lo silenzia manualmente, il reminder viene rimandato ad ogni ciclo di
+`run_polling.py` finché non viene risolto. Nuovo
+`core/esterno_pratica_reminder_repository.py`
+(`EsternoPraticaReminderRepository`, tabella separata
+`esterno_pratica_reminder` nello stesso DB — indici col nome distinto da
+quelli admin, altrimenti `CREATE INDEX IF NOT EXISTS` su un nome già
+occupato salterebbe silenziosamente la creazione e romperebbe l'unicità del
+reminder attivo, coperto da test dedicato). File duplicato di proposito
+invece di parametrizzare una classe condivisa per il nome tabella — stesso
+stile già scelto per `fcm_token`/`fcm_token_web`.
+
+Creato/aggiornato da `_notifica_esterni_assegnati` (`web/routes.py`, stesso
+punto dove notifica gli esterni), risolto da ognuna delle azioni scrittura
+del portale esterno (`_upload_pratica`, `portale_aggiungi_nota`,
+`portale_aggiungi_evento`, `portale_cambia_stato` in
+`web/routes_portale.py`) o manualmente dal bottone "Segna come vista" nel
+nuovo widget "Notifiche in attesa" in home portale (`portale_list.html`,
+stesso markup del widget admin), POST a nuova route
+`/portale/pratiche/{numero}/reminder/silenzia` — nascosto e non
+raggiungibile dal ruolo "supervisore" (sola lettura, non può mai risolverlo
+agendo). Resend in `run_polling.py` (nuovo blocco 7, dopo quello admin)
+rilegge gli assegnati CORRENTI della pratica ad ogni resend (non quelli al
+momento della creazione) via `PraticaAssegnazioniRepository`, per seguire
+eventuali riassegnazioni; se una pratica finisce senza alcun assegnato il
+reminder si auto-risolve invece di rimanere "attivo" all'infinito senza che
+nessuno possa vederlo o silenziarlo.
 
 **4.20.0 — Export CSV pratiche (admin + portale esterno, solo browser)**:
 nuova voce di menu "Esporta" — nascosta in app (`html.is-app

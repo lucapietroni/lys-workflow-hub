@@ -40,6 +40,12 @@ from lys_workflow_hub.config import get_settings  # noqa: E402
 from lys_workflow_hub.core.admin_pratica_reminder_repository import (  # noqa: E402
     AdminPraticaReminderRepository,
 )
+from lys_workflow_hub.core.esterno_pratica_reminder_repository import (  # noqa: E402
+    EsternoPraticaReminderRepository,
+)
+from lys_workflow_hub.core.pratica_assegnazioni_repository import (  # noqa: E402
+    PraticaAssegnazioniRepository,
+)
 from lys_workflow_hub.core.compagnie_repository import CompagnieRepository  # noqa: E402
 from lys_workflow_hub.core.draft_repository import DraftRepository  # noqa: E402
 from lys_workflow_hub.core.mail_in_repository import (  # noqa: E402
@@ -70,6 +76,7 @@ from lys_workflow_hub.integrations.ai_classifier import classify  # noqa: E402
 from lys_workflow_hub.integrations.imap_fetcher import ImapFetcher  # noqa: E402
 from lys_workflow_hub.integrations.notifier import (  # noqa: E402
     notify_batch,
+    notify_esterno_nuova_attivita,
     notify_fcm_nuova_attivita,
     notify_push_nuova_attivita,
 )
@@ -756,6 +763,89 @@ def run_once() -> int:
                         )
             except Exception as exc:  # noqa: BLE001
                 log.warning("Controllo reminder pratiche fallito (non blocca): %s", exc)
+
+            # 7) Reminder pratiche non gestite da 24h+ lato esterno (simmetrico
+            # al punto 6): attività dell'admin su cui nessun collaboratore
+            # assegnato ha ancora agito né silenziato manualmente — vedi
+            # EsternoPraticaReminderRepository, popolato da
+            # _notifica_esterni_assegnati in web/routes.py. Gli assegnati sono
+            # riletti ORA (non salvati sul reminder): se nel frattempo la
+            # pratica è stata riassegnata, il resend segue l'assegnazione
+            # corrente, non quella di quando è stato creato il reminder.
+            try:
+                reminder_repo_esterno = EsternoPraticaReminderRepository(
+                    db_path=settings.app_db_path
+                )
+                utenti_repo_esterno = UtentiRepository(db_path=settings.app_db_path)
+                assegnazioni_repo_esterno = PraticaAssegnazioniRepository(
+                    db_path=settings.app_db_path
+                )
+                scaduti_esterno = reminder_repo_esterno.list_scaduti(soglia_ore=24)
+                log.info("Reminder esterno pratiche scaduti da rimandare: %d", len(scaduti_esterno))
+                for rem in scaduti_esterno:
+                    try:
+                        assegnati_ids = set(
+                            assegnazioni_repo_esterno.list_utente_ids_per_pratica(
+                                rem.pratica_numero
+                            )
+                        )
+                        if not assegnati_ids:
+                            # Pratica riassegnata/deassegnata dopo la creazione
+                            # del reminder: nessuno a cui rimandarlo, e nessuno
+                            # potrebbe mai risolverlo agendo — risolviamo qui
+                            # per non farlo ricomparire in eterno in
+                            # list_scaduti() senza che sia visibile a nessuno.
+                            reminder_repo_esterno.risolvi_per_pratica(
+                                rem.pratica_numero, risolto_da="nessun_assegnato"
+                            )
+                            continue
+                        for u in utenti_repo_esterno.list_all():
+                            if u.id not in assegnati_ids or not u.attivo:
+                                continue
+                            if u.notify_email_enabled and u.email:
+                                notify_esterno_nuova_attivita(
+                                    smtp_host=settings.smtp_host,
+                                    smtp_port=settings.smtp_port,
+                                    smtp_user=settings.smtp_user,
+                                    smtp_password=settings.smtp_password,
+                                    smtp_sender=settings.smtp_from,
+                                    recipient=u.email,
+                                    subject=rem.titolo,
+                                    body_text=rem.messaggio,
+                                    smtp_tls=settings.smtp_tls,
+                                    disabled=settings.notify_disabled,
+                                )
+                            if u.notify_push_enabled and u.ntfy_topic:
+                                notify_push_nuova_attivita(
+                                    ntfy_server=settings.ntfy_server,
+                                    ntfy_topic=u.ntfy_topic,
+                                    titolo=rem.titolo,
+                                    messaggio=rem.messaggio,
+                                    disabled=settings.notify_disabled,
+                                )
+                            for token in (u.fcm_token, u.fcm_token_web):
+                                if token:
+                                    notify_fcm_nuova_attivita(
+                                        fcm_project_id=settings.fcm_project_id,
+                                        fcm_credentials_path=str(settings.fcm_credentials_path or ""),
+                                        fcm_token=token,
+                                        titolo=rem.titolo,
+                                        messaggio=rem.messaggio,
+                                        click_path=f"/portale/pratiche/{rem.pratica_numero}",
+                                        disabled=settings.notify_disabled,
+                                    )
+                        reminder_repo_esterno.segna_rimandato(rem.id)
+                        log.info(
+                            "Reminder esterno rimandato: pratica=%s (id=%s)",
+                            rem.pratica_numero, rem.id,
+                        )
+                    except Exception as _exc:  # noqa: BLE001
+                        log.warning(
+                            "Resend reminder esterno pratica %s fallito: %s",
+                            rem.pratica_numero, _exc,
+                        )
+            except Exception as exc:  # noqa: BLE001
+                log.warning("Controllo reminder esterno pratiche fallito (non blocca): %s", exc)
 
             log.info("=== Fine ciclo polling ===")
             return 0

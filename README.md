@@ -43,7 +43,10 @@ via PEC/email, classifica le risposte con AI e genera alert mirati.
   cambio stato, upload foto/documenti.
 - Notifiche in tempo reale (email, push ntfy.sh, push FCM su app Android e
   browser) configurabili self-service da ogni utente esterno, reminder
-  automatici per gli appuntamenti di calendario.
+  automatici per gli appuntamenti di calendario. Reminder ricorrente per le
+  notifiche non gestite (nota/evento/stato/upload), sia lato admin che lato
+  collaboratore esterno: se nessuno agisce né la silenzia manualmente entro
+  24h, la notifica torna finché la pratica non viene aggiornata.
 - App Android companion **LYSApp** (wrapper del portale esterno): notifiche
   push native, scatto foto, galleria con zoom/selezione multipla/scarica/
   condividi.

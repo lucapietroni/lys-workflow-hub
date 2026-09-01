@@ -29,6 +29,9 @@ from lys_workflow_hub.config import Settings, get_settings
 from lys_workflow_hub.core.admin_pratica_reminder_repository import (
     AdminPraticaReminderRepository,
 )
+from lys_workflow_hub.core.esterno_pratica_reminder_repository import (
+    EsternoPraticaReminderRepository,
+)
 from lys_workflow_hub.core.draft_repository import (
     DraftRepository,
     STATUS_PENDING,
@@ -850,6 +853,14 @@ def _notifica_esterni_assegnati(
             _notifica_fcm_tutti_i_canali(
                 u, settings, subject=subject, body_text=body_text, numero=numero
             )
+        # Reminder ricorrente lato esterno (simmetrico a quello admin, v4.16.0
+        # — vedi EsternoPraticaReminderRepository): se nessun assegnato agisce
+        # sulla pratica (nota/evento/stato/upload, vedi routes_portale.py)
+        # entro 24h, run_polling.py rimanda questa stessa notifica finché non
+        # viene risolta o silenziata manualmente.
+        EsternoPraticaReminderRepository(db_path=settings.app_db_path).upsert_attivo(
+            numero, titolo=subject, messaggio=body_text
+        )
     except Exception as exc:  # noqa: BLE001
         logger.warning("Impossibile notificare esterni assegnati a %s: %s", numero, exc)
 
