@@ -890,10 +890,36 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 
 ## Stato attuale
 
-Versione **4.21.2**, tutto su branch `main`, in produzione su
+Versione **4.21.3**, tutto su branch `main`, in produzione su
 `https://hub.lysauto.it`. Changelog per-commit in `git log`; le decisioni
 tecniche non ovvie dal codice (formati, gotcha, cause di bug reali) restano
 documentate nelle sezioni sopra, per sottosistema.
+
+**4.21.3 — Fix: token FCM condiviso tra due account sullo stesso device**:
+segnalato dall'utente admin — riceveva push anche delle proprie note,
+instradate come se fossero dirette a un collaboratore esterno. Causa:
+`UtentiRepository.set_fcm_token()`/`set_fcm_token_web()` scrivevano il
+token SOLO sulla riga dell'utente che si stava registrando, senza mai
+toglierlo a un altro utente che lo avesse già — se lo stesso telefono
+viene usato prima per un account esterno di test poi per il login admin
+(`PushNotifications.register()` in `base.html` gira ad ogni apertura
+pagina, stesso token fisico), i due account restavano registrati con lo
+stesso token per sempre: ciascuno riceveva anche le push dell'altro. Fix:
+prima di scrivere il nuovo token sulla riga dell'utente corrente, lo si
+toglie (`UPDATE ... SET fcm_token = ''`) da qualunque ALTRO utente che lo
+avesse — un token fisico appartiene a un solo utente alla volta, non solo
+il contrario. Autorisolutivo lato utente: basta riaprire l'app da loggato
+(anche solo una navigazione) perché la registrazione seguente ripulisca lo
+stato duplicato, nessun intervento manuale sul DB necessario. Test di
+regressione aggiunti in `test_notifiche_preferenze.py`.
+
+**Chiusura suggerita dal code-review**: `/logout` (`web/routes_auth.py`)
+prima puliva solo la sessione, mai il token FCM — un device disconnesso
+restava comunque registrato e continuava a ricevere push su pratiche non
+più visibili, finché non arrivava la prossima registrazione (self-healing
+ma non deterministico). Ora `/logout` azzera esplicitamente sia
+`fcm_token` sia `fcm_token_web` dell'utente uscito, best-effort (un errore
+qui non deve mai impedire il logout). Test in `test_auth.py`.
 
 **4.21.2 — Fix: cambio stato admin non notificava l'esterno**: segnalato
 dall'utente ("ho aggiornato lo stato senza scrivere nulla e non è arrivata

@@ -341,6 +341,59 @@ def test_set_fcm_token_stringa_vuota_cancella(utenti_repo: UtentiRepository) -> 
     assert utenti_repo.get(esterno.id).fcm_token == ""
 
 
+def test_set_fcm_token_toglie_il_token_a_chi_lo_aveva_prima(utenti_repo: UtentiRepository) -> None:
+    """Regressione: stesso telefono usato prima per un account esterno di
+    test, poi per il login admin — senza deduplica cross-utente entrambi
+    restavano registrati con lo stesso token fisico per sempre, e ciascuno
+    riceveva anche le push destinate all'altro (bug reale osservato:
+    l'admin vedeva le notifiche delle proprie stesse note)."""
+    esterno = utenti_repo.create(
+        email="agenzia@esempio.it", password="password1234", ruolo="esterno"
+    )
+    admin = utenti_repo.create(
+        email="admin2@esempio.it", password="password1234", ruolo="admin"
+    )
+    utenti_repo.set_fcm_token(esterno.id, "stesso-telefono-token")
+    assert utenti_repo.get(esterno.id).fcm_token == "stesso-telefono-token"
+
+    utenti_repo.set_fcm_token(admin.id, "stesso-telefono-token")
+
+    assert utenti_repo.get(admin.id).fcm_token == "stesso-telefono-token"
+    assert utenti_repo.get(esterno.id).fcm_token == ""
+
+
+def test_set_fcm_token_web_toglie_il_token_a_chi_lo_aveva_prima(
+    utenti_repo: UtentiRepository,
+) -> None:
+    esterno = utenti_repo.create(
+        email="agenzia@esempio.it", password="password1234", ruolo="esterno"
+    )
+    admin = utenti_repo.create(
+        email="admin2@esempio.it", password="password1234", ruolo="admin"
+    )
+    utenti_repo.set_fcm_token_web(esterno.id, "stesso-browser-token")
+    utenti_repo.set_fcm_token_web(admin.id, "stesso-browser-token")
+
+    assert utenti_repo.get(admin.id).fcm_token_web == "stesso-browser-token"
+    assert utenti_repo.get(esterno.id).fcm_token_web == ""
+
+
+def test_set_fcm_token_stringa_vuota_non_ruba_token_da_altri(
+    utenti_repo: UtentiRepository,
+) -> None:
+    """Cancellare il PROPRIO token (stringa vuota) non deve toccare i token
+    registrati da altri utenti — la deduplica scatta solo su un token non
+    vuoto che coincide davvero."""
+    a = utenti_repo.create(email="a@esempio.it", password="password1234", ruolo="esterno")
+    b = utenti_repo.create(email="b@esempio.it", password="password1234", ruolo="esterno")
+    utenti_repo.set_fcm_token(a.id, "token-a")
+
+    utenti_repo.set_fcm_token(b.id, "")
+
+    assert utenti_repo.get(a.id).fcm_token == "token-a"
+    assert utenti_repo.get(b.id).fcm_token == ""
+
+
 # --------------------------------------------------------------------------- #
 #  POST /portale/fcm-token
 # --------------------------------------------------------------------------- #

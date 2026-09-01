@@ -353,9 +353,25 @@ class UtentiRepository:
         sovrascrive il vecchio (niente multi-device fan-out in questa fase).
         Colonna separata da `fcm_token_web` (vedi `set_fcm_token_web`): un
         utente può avere sia l'app Android sia il portale in browser attivi
-        contemporaneamente, senza che l'uno cancelli il token dell'altro."""
+        contemporaneamente, senza che l'uno cancelli il token dell'altro.
+
+        Un token fisico appartiene a UN solo utente alla volta, non solo il
+        contrario: se lo stesso device era già registrato su un ALTRO
+        account (es. lo stesso telefono usato prima per testare come
+        collaboratore esterno, poi per il login admin), quel vecchio account
+        deve perderlo qui — altrimenti entrambi gli utenti restano
+        registrati con lo stesso token per sempre, e ciascuno riceve anche
+        le push destinate all'altro (bug reale osservato: un admin vedeva le
+        notifiche delle proprie stesse note, instradate tramite un vecchio
+        account esterno di test rimasto con lo stesso token sul suo
+        telefono)."""
         fcm_token = (fcm_token or "").strip()
         with self._connect() as conn:
+            if fcm_token:
+                conn.execute(
+                    "UPDATE utenti SET fcm_token = '' WHERE fcm_token = ? AND id != ?",
+                    (fcm_token, int(utente_id)),
+                )
             conn.execute(
                 "UPDATE utenti SET fcm_token = ? WHERE id = ?",
                 (fcm_token, int(utente_id)),
@@ -364,9 +380,15 @@ class UtentiRepository:
     def set_fcm_token_web(self, utente_id: int, fcm_token_web: str) -> None:
         """Come `set_fcm_token`, ma per il token Web Push registrato dal
         browser del portale (Firebase Web SDK) invece che dall'app Android —
-        colonna indipendente, stesso motivo: coesistenza app+browser."""
+        colonna indipendente, stesso motivo: coesistenza app+browser. Stessa
+        deduplica cross-utente di `set_fcm_token` (vedi lì per il perché)."""
         fcm_token_web = (fcm_token_web or "").strip()
         with self._connect() as conn:
+            if fcm_token_web:
+                conn.execute(
+                    "UPDATE utenti SET fcm_token_web = '' WHERE fcm_token_web = ? AND id != ?",
+                    (fcm_token_web, int(utente_id)),
+                )
             conn.execute(
                 "UPDATE utenti SET fcm_token_web = ? WHERE id = ?",
                 (fcm_token_web, int(utente_id)),

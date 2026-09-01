@@ -186,6 +186,25 @@ def test_login_success_then_logout(authenticated_app) -> None:
     assert resp.headers["location"].startswith("/login")
 
 
+def test_logout_ripulisce_il_token_fcm(authenticated_app) -> None:
+    """Regressione (v4.21.3): un token FCM lasciato registrato dopo il
+    logout continuerebbe a ricevere push su pratiche non più visibili,
+    finché non arriva la prossima registrazione da un altro login sullo
+    stesso device — meglio pulirlo subito."""
+    admin = authenticated_app.get_by_email(ADMIN_EMAIL)
+    authenticated_app.set_fcm_token(admin.id, "device-token-xyz")
+    authenticated_app.set_fcm_token_web(admin.id, "browser-token-xyz")
+
+    client = TestClient(app, follow_redirects=False)
+    login_as_admin(client)
+    resp = client.post("/logout", data={"csrf_token": get_csrf(client, "/")})
+    assert resp.status_code == 303
+
+    aggiornato = authenticated_app.get(admin.id)
+    assert aggiornato.fcm_token == ""
+    assert aggiornato.fcm_token_web == ""
+
+
 def test_login_esterno_senza_next_atterra_su_portale(authenticated_app) -> None:
     """"/" è admin-only: un esterno senza `next` esplicito deve finire su
     /portale, non su "/" (altrimenti prenderebbe un 403, vedi bug in prod)."""

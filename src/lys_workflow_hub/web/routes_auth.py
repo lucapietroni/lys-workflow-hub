@@ -117,6 +117,20 @@ async def login_submit(
 
 
 @router.post("/logout")
-def logout(request: Request) -> RedirectResponse:
+def logout(request: Request, repo: UtentiRepository = Depends(get_utenti_repo)) -> RedirectResponse:
+    """Pulisce anche il token FCM del device prima di svuotare la sessione —
+    altrimenti resta registrato sull'account appena disconnesso finché non
+    arriva la prossima registrazione (prossimo login, anche di un altro
+    utente sullo stesso device: `set_fcm_token`/`set_fcm_token_web` fanno
+    comunque dedupe cross-utente, ma nel frattempo l'account disconnesso
+    continuerebbe a ricevere push su pratiche che non vede più). Best-effort:
+    un errore qui non deve mai impedire il logout."""
+    user_id = request.session.get("user_id")
+    if user_id is not None:
+        try:
+            repo.set_fcm_token(user_id, "")
+            repo.set_fcm_token_web(user_id, "")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Impossibile ripulire il token FCM al logout (utente %s): %s", user_id, exc)
     request.session.clear()
     return RedirectResponse(url="/login", status_code=303)
