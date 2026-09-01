@@ -29,12 +29,17 @@ from lys_workflow_hub.core.categoria_policy_repository import (
     POLICY_LABELS,
     CategoriaPolicyRepository,
 )
+from lys_workflow_hub.core.admin_pratica_reminder_repository import (
+    AdminPraticaReminderRepository,
+)
 from lys_workflow_hub.core.pratica_stato_repository import (
     STATI,
     STATO_LABELS,
     PraticaStatoRepository,
 )
+from lys_workflow_hub.core.utenti_repository import Utente
 from lys_workflow_hub.web.auth import require_admin, template_context_processor
+from lys_workflow_hub.web.routes import _notifica_esterni_assegnati
 
 
 logger = logging.getLogger(__name__)
@@ -330,9 +335,19 @@ async def auto_cortesia_elimina(
 async def pratica_cambia_stato(
     numero: int,
     request: Request,
+    admin: Utente = Depends(require_admin),
     settings: Settings = Depends(get_settings_dep),
 ) -> RedirectResponse:
-    """Aggiorna lo stato di una pratica (azione operatore dalla UI)."""
+    """Aggiorna lo stato di una pratica (admin, dalla UI di dettaglio
+    pratica). Simmetrico a `pratica_aggiungi_nota`/`_upload_pratica_admin`
+    in `web/routes.py`: risolve il reminder admin pendente e notifica gli
+    esterni assegnati — mancava in origine perché questa route è stata
+    scritta prima che quel sistema di notifiche/reminder esistesse, in un
+    file diverso (`routes_impostazioni.py`, non `routes.py`), e non è mai
+    stata riallineata. `changed_by` usava il nome generico "operatore"
+    invece dell'admin autenticato (nessun `Depends(require_admin)`
+    esplicito, solo il gate a livello di router) — ora usa il nome vero,
+    necessario anche per comporre il messaggio di notifica."""
     form = await request.form()
     nuovo_stato = str(form.get("stato", "")).strip()
     note = str(form.get("note", "")).strip()
@@ -346,11 +361,32 @@ async def pratica_cambia_stato(
         stato_repo.set_stato(
             numero,
             nuovo_stato,
-            changed_by="operatore",
+            changed_by=admin.nome or admin.email,
             note=note,
         )
-        logger.info("Pratica %s: stato → %s (operatore)", numero, nuovo_stato)
+        logger.info("Pratica %s: stato → %s (%s)", numero, nuovo_stato, admin.email)
     except Exception as exc:  # noqa: BLE001
         logger.exception("Errore cambio stato pratica %s: %s", numero, exc)
+        return RedirectResponse(url=f"/pratiche/{numero}?stato_aggiornato=1", status_code=303)
+
+    try:
+        AdminPraticaReminderRepository(db_path=settings.app_db_path).risolvi_per_pratica(
+            numero, risolto_da="azione"
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Impossibile risolvere reminder pratica %s: %s", numero, exc)
+    _notifica_esterni_assegnati(
+        request,
+        settings,
+        numero,
+        costruisci_messaggio=lambda: (
+            f"Stato aggiornato · Pratica {numero}",
+            f"[LYS Hub] Stato aggiornato sulla pratica {numero}",
+            f"{admin.nome or admin.email} ha impostato lo stato "
+            f"\"{STATO_LABELS.get(nuovo_stato, nuovo_stato)}\" sulla pratica {numero}"
+            + (f": {note}" if note else "")
+            + f"\n\nApri la pratica: {settings.public_url(f'/portale/pratiche/{numero}')}",
+        ),
+    )
 
     return RedirectResponse(url=f"/pratiche/{numero}?stato_aggiornato=1", status_code=303)

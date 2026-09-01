@@ -43,6 +43,7 @@ from lys_workflow_hub.integrations.notifier import (
 )
 from lys_workflow_hub.main import app
 from lys_workflow_hub.web.routes import get_app_settings, get_repository
+from lys_workflow_hub.web.routes_impostazioni import get_settings_dep
 from lys_workflow_hub.web.routes_portale import (
     get_assegnazioni_repo,
     get_portale_settings,
@@ -227,6 +228,12 @@ def admin_client(tmp_path: Path, authenticated_app):
 
     app.dependency_overrides[get_repository] = lambda: repo
     app.dependency_overrides[get_app_settings] = lambda: settings
+    # routes_impostazioni.py (dove vive /pratiche/{numero}/stato) ha una
+    # propria Settings dependency separata da get_app_settings, stesso
+    # pattern di get_portale_settings — va sovrascritta anche questa
+    # altrimenti quella route userebbe le Settings globali reali invece del
+    # DB temporaneo di questo fixture.
+    app.dependency_overrides[get_settings_dep] = lambda: settings
     client = TestClient(app, follow_redirects=False)
     login_as_admin(client)
     try:
@@ -234,6 +241,7 @@ def admin_client(tmp_path: Path, authenticated_app):
     finally:
         app.dependency_overrides.pop(get_repository, None)
         app.dependency_overrides.pop(get_app_settings, None)
+        app.dependency_overrides.pop(get_settings_dep, None)
 
 
 @pytest.fixture
@@ -356,6 +364,80 @@ def test_admin_carica_documento_notifica_esterno_assegnato(admin_client, authent
         mock_notify.assert_called_once()
         assert mock_notify.call_args.kwargs["recipient"] == "agenzia@esempio.it"
         assert "766" in mock_notify.call_args.kwargs["subject"]
+
+
+def test_admin_cambia_stato_notifica_esterno_assegnato(admin_client, authenticated_app) -> None:
+    """Regressione: `/pratiche/{numero}/stato` (route in
+    `web/routes_impostazioni.py`, non `web/routes.py`) non chiamava affatto
+    `_notifica_esterni_assegnati` — un admin che cambiava stato senza
+    scrivere una nota non generava alcuna notifica per il collaboratore
+    assegnato, a differenza di nota/upload/cessione."""
+    client, settings = admin_client
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    assegnazioni_repo = PraticaAssegnazioniRepository(db_path=settings.app_db_path)
+    assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
+
+    with patch("lys_workflow_hub.web.routes.notify_esterno_nuova_attivita") as mock_notify:
+        resp = client.post(
+            "/pratiche/766/stato",
+            data={"stato": "periziata", "csrf_token": get_csrf(client, "/pratiche/766")},
+        )
+        assert resp.status_code == 303
+        mock_notify.assert_called_once()
+        assert mock_notify.call_args.kwargs["recipient"] == "agenzia@esempio.it"
+        assert "766" in mock_notify.call_args.kwargs["subject"]
+
+
+def test_admin_cambia_stato_crea_reminder_esterno_titolo_breve(
+    admin_client, authenticated_app
+) -> None:
+    client, settings = admin_client
+    esterno = authenticated_app.create(
+        email="agenzia@esempio.it", password="password1234", nome="Agenzia", ruolo="esterno"
+    )
+    assegnazioni_repo = PraticaAssegnazioniRepository(db_path=settings.app_db_path)
+    assegnazioni_repo.assegna(766, esterno.id, assegnato_da=1)
+
+    with patch("lys_workflow_hub.web.routes.notify_esterno_nuova_attivita"):
+        resp = client.post(
+            "/pratiche/766/stato",
+            data={"stato": "periziata", "csrf_token": get_csrf(client, "/pratiche/766")},
+        )
+        assert resp.status_code == 303
+
+    reminder_repo = EsternoPraticaReminderRepository(db_path=settings.app_db_path)
+    attivi = reminder_repo.list_attivi()
+    assert len(attivi) == 1
+    assert attivi[0].titolo == "Stato aggiornato · Pratica 766"
+
+
+def test_admin_cambia_stato_risolve_reminder_admin_pendente(admin_client) -> None:
+    client, settings = admin_client
+    reminder_repo = AdminPraticaReminderRepository(db_path=settings.app_db_path)
+    reminder_repo.upsert_attivo(766, titolo="Nuova nota", messaggio="Agenzia: preso app.to")
+    assert len(reminder_repo.list_attivi()) == 1
+
+    with patch("lys_workflow_hub.web.routes.notify_esterno_nuova_attivita"):
+        resp = client.post(
+            "/pratiche/766/stato",
+            data={"stato": "periziata", "csrf_token": get_csrf(client, "/pratiche/766")},
+        )
+        assert resp.status_code == 303
+
+    assert reminder_repo.list_attivi() == []
+
+
+def test_admin_cambia_stato_non_notifica_se_nessun_assegnato(admin_client) -> None:
+    client, _ = admin_client
+    with patch("lys_workflow_hub.web.routes.notify_esterno_nuova_attivita") as mock_notify:
+        resp = client.post(
+            "/pratiche/766/stato",
+            data={"stato": "periziata", "csrf_token": get_csrf(client, "/pratiche/766")},
+        )
+        assert resp.status_code == 303
+        mock_notify.assert_not_called()
 
 
 def test_admin_carica_foto_non_notifica_se_nessun_assegnato(admin_client) -> None:

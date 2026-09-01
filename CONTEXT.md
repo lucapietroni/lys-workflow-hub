@@ -890,10 +890,34 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 
 ## Stato attuale
 
-Versione **4.21.1**, tutto su branch `main`, in produzione su
+Versione **4.21.2**, tutto su branch `main`, in produzione su
 `https://hub.lysauto.it`. Changelog per-commit in `git log`; le decisioni
 tecniche non ovvie dal codice (formati, gotcha, cause di bug reali) restano
 documentate nelle sezioni sopra, per sottosistema.
+
+**4.21.2 — Fix: cambio stato admin non notificava l'esterno**: segnalato
+dall'utente ("ho aggiornato lo stato senza scrivere nulla e non è arrivata
+nessuna notifica"). Causa: `POST /pratiche/{numero}/stato` non vive in
+`web/routes.py` insieme a nota/upload/cessione (dove sta tutta la logica di
+notifica/reminder), ma in `web/routes_impostazioni.py` — una route scritta
+prima che quel sistema esistesse e mai riallineata dopo. Non chiamava
+`_notifica_esterni_assegnati`, non creava il reminder esterno, non
+risolveva il reminder admin pendente; usava perfino `changed_by="operatore"`
+hardcoded invece del nome dell'admin autenticato (nessun `Depends
+(require_admin)` esplicito, solo il gate a livello di router — l'identità
+non era mai stata necessaria finché non serviva comporre un messaggio di
+notifica). Fix: aggiunto `admin: Utente = Depends(require_admin)`,
+importata `_notifica_esterni_assegnati` da `routes.py` (nessun import
+circolare, stesso pattern già usato da `routes_portale.py`), aggiunte le
+stesse chiamate di risoluzione/notifica delle altre azioni admin. Zero test
+coprivano questa route prima d'ora — aggiunta copertura in
+`test_notifiche_collaborazione.py`. Nel farlo, scoperto (e sistemato) un
+gap distinto nel fixture di test `admin_client`: `routes_impostazioni.py`
+ha una propria `get_settings_dep` separata da `get_app_settings` (stesso
+pattern di `get_portale_settings`) mai stata overridata nei test — un primo
+giro di test è finito per sbaglio a scrivere stato reale sul
+`data/lys_hub.db` di sviluppo invece che su un DB temporaneo, ripulito a
+mano dopo essersene accorti.
 
 **4.21.1 — Fix titolo reminder esterno**: segnalato dall'utente via
 screenshot — il widget "Notifiche in attesa" lato esterno mostrava titoli
