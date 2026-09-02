@@ -164,15 +164,32 @@ informativa.
   anche `get_app_settings` su DB temp (prima le route `/pratiche/{numero}`
   scrivevano su `data/lys_hub.db` di sviluppo — vedi nota igiene test 4.21.2).
 
-**Fasi successive (non ancora fatte)**:
-- Fase 3 — `integrations/sdi.py` (client astratto: `invia_fattura`,
-  `ricevi_fatture`, `ottieni_pdf`; provider scelto: **Openapi**),
-  `scripts/run_sdi_poll.py` gemello di `run_polling.py`. Fatture attive:
-  generate da WinCar in `C:\WinCar\FattureElettroniche\<piva>\Attive`,
-  importate qui e inoltrate a SDI. Passive: da SDI → riga fattura +
-  movimento proposto in uscita.
-- Fase 4 — coda fatture passive da smistare + dashboard costi/ricavi per
-  categoria/periodo.
+**Fase 3 (fatta, v4.24.0)** — integrazione SDI:
+- `integrations/sdi.py` — interfaccia `SdiClient` (`invia_fattura` /
+  `ricevi_fatture` / `ottieni_pdf`). `FakeSdiClient` (default, nessuna rete) +
+  `OpenapiSdiClient` (endpoint REST da validare in sandbox — isolati qui).
+  `build_sdi_client(settings)`. Config `.env`: `SDI_PROVIDER` (fake|openapi),
+  `SDI_API_KEY`, `SDI_BASE_URL`, `SDI_TEST_MODE`, `SDI_PIVA_AZIENDA`
+  (14521721002), `SDI_WINCAR_ATTIVE_DIR`, `APP_ARCHIVIO_FATTURE`,
+  `SDI_FETCH_SINCE` (2026-01-01), `SDI_INVIO_DISABILITATO`.
+- `workflows/contabilita/sdi_import.py` — parser XML FatturaPA minimale
+  (numero/data/controparte/importi complessivi, gestisce 1 Body per file,
+  note di credito TD04/TD08 → segno movimento invertito). `importa_attive_da_dir`
+  (WinCar XML → riga fattura `da_inviare`, idempotente), `invia_attive_pendenti`
+  (→ SDI, stato `inviata`, + movimento proposto entrata), `sincronizza_passive`
+  (SDI → riga fattura passiva + movimento proposto uscita, senza categoria/pratica).
+- `scripts/run_sdi_poll.py` — ciclo singolo, gemello di `run_polling.py`, lock
+  file `sdi_poll.lock` dedicato, push ntfy di riepilogo. Task Scheduler 1x/giorno.
+  Riusa `PollingLock` / `_setup_logging` da `run_polling.py`.
+- UI `/contabilita/fatture` (admin): lista fatture + bottoni "importa attive",
+  "invia a SDI", "sincronizza passive". Coda passive non collegate evidenziata
+  (UI di smistamento vera = Fase 4).
+- Movimenti generati da fattura: `origine='da_fattura_sdi'`, `stato='proposto'`,
+  esclusi dal margine finché non confermati. Idempotenti per `fattura_id`.
+
+**Fase successiva (non ancora fatta)**:
+- Fase 4 — coda fatture passive da smistare (assegnazione categoria/pratica,
+  eventuale split) + dashboard costi/ricavi per categoria/periodo.
 
 ---
 
@@ -953,6 +970,12 @@ Sviluppo contabilità gestionale + SDI (**4.22.0**) sul branch
 `feature/contabilita-sdi`, non ancora in produzione. Changelog per-commit in
 `git log`; le decisioni tecniche non ovvie dal codice (formati, gotcha, cause
 di bug reali) restano documentate nelle sezioni sopra, per sottosistema.
+
+**4.24.0 — Contabilità gestionale, Fase 3 (branch `feature/contabilita-sdi`)**:
+integrazione SDI — `integrations/sdi.py` (client astratto, Fake + Openapi),
+`workflows/contabilita/sdi_import.py` (parser XML FatturaPA + import attive da
+WinCar / invio SDI / sync passive), `scripts/run_sdi_poll.py`, UI
+`/contabilita/fatture`. Vedi sezione dedicata sopra.
 
 **4.23.0 — Contabilità gestionale, Fase 2 (branch `feature/contabilita-sdi`)**:
 scheda economica pratica (entrate/uscite/margine + ripartizione per categoria

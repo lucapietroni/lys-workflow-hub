@@ -485,6 +485,64 @@ Get-Content C:\LYSApp\logs\event_reminders.log -Tail 20
 
 ---
 
+## 5.7 Task Scheduler per il ciclo SDI (contabilità gestionale, Fase 3)
+
+Quarto task, opzionale: attivo solo quando si usa la fatturazione elettronica
+SDI. Gira **una volta al giorno**: importa gli XML delle fatture attive
+generate da WinCar, li inoltra allo SDI e scarica le fatture passive ricevute.
+
+### Prerequisiti in `.env`
+
+```
+SDI_PROVIDER=openapi
+SDI_API_KEY=<chiave del provider>
+SDI_BASE_URL=https://api.openapi.com          # o l'URL sandbox
+SDI_TEST_MODE=true                            # false solo a rodaggio finito
+SDI_PIVA_AZIENDA=14521721002
+SDI_WINCAR_ATTIVE_DIR=C:\WinCar\FattureElettroniche\14521721002\Attive
+APP_ARCHIVIO_FATTURE=C:\LYSApp\Fatture
+SDI_FETCH_SINCE=2026-01-01
+SDI_INVIO_DISABILITATO=false                  # true = importa e basta, non invia
+```
+
+Con `SDI_PROVIDER=fake` (default) il ciclo gira ma non fa chiamate di rete:
+utile per verificare l'import degli XML attivi senza toccare lo SDI.
+
+### Script di lancio
+
+`run_sdi_poll.bat` è già incluso nel repository, stesso pattern di
+`run_polling.bat`:
+
+```bat
+@echo off
+cd /d C:\LYSApp\lys-workflow-hub
+set PYTHONPATH=%CD%\src
+.venv\Scripts\pythonw.exe scripts\run_sdi_poll.py
+```
+
+Log in `C:\LYSApp\logs\sdi_poll.log` (rotazione 5 MB × 5). Lock file dedicato
+(`sdi_poll.lock`), indipendente da quello di `run_polling.py`. Idempotente: se
+il task gira più volte, le fatture già importate non vengono duplicate.
+
+### Task Scheduler
+
+**Utilità di pianificazione** → **Crea attività…**
+
+- **Generale**: nome `LYS Ciclo SDI`, ✅ "Esegui solo se l'utente ha
+  effettuato l'accesso", ✅ "Esegui con privilegi più elevati".
+- **Trigger**: "Ogni giorno alle 08:00" (aggiusta a piacere).
+- **Azioni**: avvia `C:\LYSApp\lys-workflow-hub\run_sdi_poll.bat`,
+  "Inizia in" = `C:\LYSApp\lys-workflow-hub`.
+- **Condizioni**: togli la spunta a "Avvia attività solo se il computer è
+  alimentato da rete elettrica".
+- **Impostazioni**: ✅ "Consenti esecuzione su richiesta".
+
+Le stesse azioni sono disponibili a mano dalla pagina
+`/contabilita/fatture` (bottoni "Importa attive", "Invia allo SDI",
+"Sincronizza passive").
+
+---
+
 ## 6. Firewall LAN
 
 Per permettere ai tablet aziendali di raggiungere `http://<ip-pc>:8000`,

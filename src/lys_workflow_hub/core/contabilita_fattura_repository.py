@@ -304,6 +304,47 @@ class ContabilitaFatturaRepository:
             ).fetchone()
         return self._row_to_fattura(row) if row else None
 
+    def find(
+        self,
+        *,
+        tipo: str,
+        numero: str = "",
+        anno: int = 0,
+        controparte_piva: str = "",
+        sdi_id: str = "",
+    ) -> Fattura | None:
+        """Cerca una fattura per sdi_id o per chiave naturale. None se assente."""
+        return self._find_duplicato(
+            tipo=tipo,
+            numero=(numero or "").strip(),
+            anno=int(anno),
+            piva=(controparte_piva or "").strip(),
+            sdi_id=(sdi_id or "").strip(),
+        )
+
+    def aggiorna_stato_sdi(
+        self, fattura_id: int, *, stato_sdi: str, sdi_id: str = ""
+    ) -> Fattura | None:
+        with self._connect() as conn:
+            if sdi_id:
+                conn.execute(
+                    "UPDATE contabilita_fattura SET stato_sdi = ?, sdi_id = ? WHERE id = ?",
+                    ((stato_sdi or "").strip(), sdi_id.strip(), int(fattura_id)),
+                )
+            else:
+                conn.execute(
+                    "UPDATE contabilita_fattura SET stato_sdi = ? WHERE id = ?",
+                    ((stato_sdi or "").strip(), int(fattura_id)),
+                )
+        return self.get(fattura_id)
+
+    def aggiorna_pdf_path(self, fattura_id: int, pdf_path: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE contabilita_fattura SET pdf_path = ? WHERE id = ?",
+                ((pdf_path or "").strip(), int(fattura_id)),
+            )
+
     # ----------------------------------------------------------------- query -
 
     def get(self, fattura_id: int) -> Fattura | None:

@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Fatture elettroniche · LYS Workflow Hub{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb">
+  <a href="/contabilita/movimenti">← Movimenti</a>
+</nav>
+
+<header class="pratica-header">
+  <div>
+    <div class="hero-eyebrow">Contabilità gestionale</div>
+    <h1>Fatture elettroniche (SDI)</h1>
+    <p class="meta">
+      Specchio delle fatture che transitano dallo SDI. Le attive sono generate
+      da WinCar (<code>{{ sdi_dir }}</code>), importate qui e inoltrate allo SDI;
+      le passive arrivano dal provider. Non è un registro IVA fiscale.
+      Provider: <strong>{{ sdi_provider }}</strong>{% if sdi_test_mode %} <span class="badge badge-yellow">modalità test</span>{% endif %}.
+    </p>
+  </div>
+</header>
+
+{% if esito %}
+  <div class="alert alert-info">{{ esito }}</div>
+{% endif %}
+
+{% if coda_passive %}
+  <div class="alert alert-warn">
+    <strong>{{ coda_passive }}</strong> fattur{{ "a passiva" if coda_passive == 1 else "e passive" }}
+    senza pratica né categoria — da smistare (UI dedicata in arrivo).
+  </div>
+{% endif %}
+
+<section class="card">
+  <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px;">
+    <form method="post" action="/contabilita/fatture/importa-attive" style="display:inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <button type="submit" class="btn">Importa attive da WinCar</button>
+    </form>
+    <form method="post" action="/contabilita/fatture/invia-sdi" style="display:inline"
+          onsubmit='return confirm("Inoltrare allo SDI tutte le fatture attive in stato «da inviare»?");'>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <button type="submit" class="btn btn-primary">Invia attive allo SDI</button>
+    </form>
+    <form method="post" action="/contabilita/fatture/sincronizza-passive" style="display:inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <button type="submit" class="btn">Sincronizza passive</button>
+    </form>
+  </div>
+
+  <form method="get" action="/contabilita/fatture"
+        style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; margin-bottom:16px;">
+    <div class="form-field" style="margin:0;">
+      <label for="f_tipo">Tipo</label>
+      <select id="f_tipo" name="tipo">
+        <option value="">— tutte —</option>
+        <option value="attiva" {% if filtri.tipo == "attiva" %}selected{% endif %}>Attive</option>
+        <option value="passiva" {% if filtri.tipo == "passiva" %}selected{% endif %}>Passive</option>
+      </select>
+    </div>
+    <div class="form-field" style="margin:0;">
+      <label for="f_anno">Anno</label>
+      <input id="f_anno" name="anno" type="number" inputmode="numeric"
+             value="{{ filtri.anno }}" style="width:9ch;" />
+    </div>
+    <button type="submit" class="btn">Filtra</button>
+    <a href="/contabilita/fatture" class="btn btn-link">Azzera</a>
+  </form>
+
+  {% if not fatture %}
+    <p class="meta" style="margin:0">Nessuna fattura registrata.</p>
+  {% else %}
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Tipo</th><th>Numero</th><th>Data</th><th>Controparte</th>
+          <th style="text-align:right;">Imponibile</th>
+          <th style="text-align:right;">IVA</th>
+          <th style="text-align:right;">Totale</th>
+          <th>Stato SDI</th><th>Pratiche</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in fatture %}
+        <tr>
+          <td>{{ "Attiva" if f.tipo == "attiva" else "Passiva" }}</td>
+          <td>{{ f.numero }}/{{ f.anno }}</td>
+          <td>{{ f.data.strftime("%d/%m/%Y") }}</td>
+          <td>{{ f.controparte_nome or f.controparte_piva or "—" }}</td>
+          <td style="text-align:right;">€ {{ "%.2f"|format(f.imponibile) }}</td>
+          <td style="text-align:right;">€ {{ "%.2f"|format(f.importo_iva) }}</td>
+          <td style="text-align:right;"><strong>€ {{ "%.2f"|format(f.importo_totale) }}</strong></td>
+          <td>
+            {% if f.stato_sdi == "scartata" %}
+              <span class="badge badge-warn">scartata</span>
+            {% elif f.stato_sdi %}
+              <span class="badge badge-gray">{{ f.stato_sdi }}</span>
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            {% set n = pratiche_count.get(f.id, 0) %}
+            {% if n %}<a href="/contabilita/movimenti?fattura={{ f.id }}">{{ n }}</a>{% else %}—{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</section>
+{% endblock %}

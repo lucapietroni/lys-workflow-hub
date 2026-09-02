@@ -31,6 +31,11 @@ from lys_workflow_hub.core.contabilita_categoria_repository import (
     ContabilitaCategoriaRepository,
     TIPI as CATEGORIA_TIPI,
 )
+from lys_workflow_hub.core.contabilita_fattura_repository import (
+    TIPO_ATTIVA,
+    TIPO_PASSIVA,
+    ContabilitaFatturaRepository,
+)
 from lys_workflow_hub.core.contabilita_movimento_repository import (
     ORIGINE_MANUALE,
     STATI as MOVIMENTO_STATI,
@@ -39,6 +44,12 @@ from lys_workflow_hub.core.contabilita_movimento_repository import (
     TIPO_ENTRATA,
     TIPO_USCITA,
     ContabilitaMovimentoRepository,
+)
+from lys_workflow_hub.integrations.sdi import build_sdi_client
+from lys_workflow_hub.workflows.contabilita.sdi_import import (
+    importa_attive_da_dir,
+    invia_attive_pendenti,
+    sincronizza_passive,
 )
 from lys_workflow_hub.web.auth import require_admin, template_context_processor
 
@@ -72,6 +83,12 @@ def get_movimento_repo(
     settings: Settings = Depends(get_contabilita_settings),
 ) -> ContabilitaMovimentoRepository:
     return ContabilitaMovimentoRepository(db_path=settings.app_db_path)
+
+
+def get_fattura_repo(
+    settings: Settings = Depends(get_contabilita_settings),
+) -> ContabilitaFatturaRepository:
+    return ContabilitaFatturaRepository(db_path=settings.app_db_path)
 
 
 # --------------------------------------------------------------------------- #
@@ -125,6 +142,7 @@ def movimenti_list(
     request: Request,
     categoria_id: str | None = None,
     pratica_id: str | None = None,
+    fattura: str | None = None,
     tipo: str | None = None,
     stato: str | None = None,
     dal: str | None = None,
@@ -134,6 +152,7 @@ def movimenti_list(
 ) -> HTMLResponse:
     f_categoria = _int_or_none(categoria_id)
     f_pratica = _int_or_none(pratica_id)
+    f_fattura = _int_or_none(fattura)
     f_tipo = tipo if tipo in MOVIMENTO_TIPI else None
     f_stato = stato if stato in MOVIMENTO_STATI else None
     f_dal = _str_or_none(dal)
@@ -144,6 +163,7 @@ def movimenti_list(
         movimenti = mov_repo.list(
             categoria_id=f_categoria,
             pratica_id=f_pratica,
+            fattura_id=f_fattura,
             tipo=f_tipo,
             stato=f_stato,
             dal=f_dal,
@@ -152,6 +172,7 @@ def movimenti_list(
         totali = mov_repo.totali(
             categoria_id=f_categoria,
             pratica_id=f_pratica,
+            fattura_id=f_fattura,
             stato=f_stato,
             dal=f_dal,
             al=f_al,
@@ -424,3 +445,110 @@ def categoria_delete(
             status_code=303,
         )
     return RedirectResponse(url="/contabilita/categorie", status_code=303)
+
+
+# --------------------------------------------------------------------------- #
+#  Fatture SDI (Fase 3)
+# --------------------------------------------------------------------------- #
+
+
+@router.get("/contabilita/fatture", response_class=HTMLResponse)
+def fatture_list(
+    request: Request,
+    tipo: str | None = None,
+    anno: str | None = None,
+    esito: str | None = None,
+    fat_repo: ContabilitaFatturaRepository = Depends(get_fattura_repo),
+    settings: Settings = Depends(get_contabilita_settings),
+) -> HTMLResponse:
+    f_tipo = tipo if tipo in (TIPO_ATTIVA, TIPO_PASSIVA) else None
+    f_anno = _int_or_none(anno)
+    fatture = fat_repo.list(tipo=f_tipo, anno=f_anno, limit=1000)
+    pratiche_count = {f.id: len(fat_repo.list_pratiche(f.id)) for f in fatture}
+    coda_passive = len(fat_repo.list_non_collegate(tipo=TIPO_PASSIVA))
+
+    context = _ctx()
+    context.update(
+        fatture=fatture,
+        pratiche_count=pratiche_count,
+        coda_passive=coda_passive,
+        filtri={"tipo": tipo or "", "anno": anno or ""},
+        esito=esito,
+        sdi_provider=settings.sdi_provider,
+        sdi_test_mode=settings.sdi_test_mode,
+        sdi_dir=str(settings.sdi_wincar_attive_dir),
+    )
+    return templates.TemplateResponse(request, "contabilita_fatture.html", context)
+
+
+@router.post("/contabilita/fatture/importa-attive")
+def fatture_importa_attive(
+    fat_repo: ContabilitaFatturaRepository = Depends(get_fattura_repo),
+    settings: Settings = Depends(get_contabilita_settings),
+) -> RedirectResponse:
+    s = importa_attive_da_dir(
+        Path(settings.sdi_wincar_attive_dir),
+        piva_azienda=settings.sdi_piva_azienda,
+        fattura_repo=fat_repo,
+        archivio_dir=Path(settings.app_archivio_fatture),
+    )
+    msg = f"Import attive: {s.nuove} nuove, {s.duplicate} già presenti, {len(s.errori)} errori."
+    if s.errori:
+        msg += " " + " · ".join(s.errori[:3])
+    return RedirectResponse(url=f"/contabilita/fatture?esito={msg}", status_code=303)
+
+
+@router.post("/contabilita/fatture/invia-sdi")
+def fatture_invia_sdi(
+    fat_repo: ContabilitaFatturaRepository = Depends(get_fattura_repo),
+    mov_repo: ContabilitaMovimentoRepository = Depends(get_movimento_repo),
+    settings: Settings = Depends(get_contabilita_settings),
+) -> RedirectResponse:
+    client = build_sdi_client(settings)
+    s = invia_attive_pendenti(
+        client=client,
+        fattura_repo=fat_repo,
+        movimento_repo=mov_repo,
+        disabilitato=bool(settings.sdi_invio_disabilitato),
+    )
+    msg = (
+        f"Invio SDI ({settings.sdi_provider}"
+        f"{', test' if settings.sdi_test_mode else ''}): "
+        f"{s.inviate} inviate, {s.scartate} scartate, {s.movimenti_creati} movimenti proposti."
+    )
+    if settings.sdi_invio_disabilitato:
+        msg = "Invio SDI disabilitato da configurazione (SDI_INVIO_DISABILITATO)."
+    if s.errori:
+        msg += " " + " · ".join(s.errori[:3])
+    return RedirectResponse(url=f"/contabilita/fatture?esito={msg}", status_code=303)
+
+
+@router.post("/contabilita/fatture/sincronizza-passive")
+def fatture_sincronizza_passive(
+    fat_repo: ContabilitaFatturaRepository = Depends(get_fattura_repo),
+    mov_repo: ContabilitaMovimentoRepository = Depends(get_movimento_repo),
+    settings: Settings = Depends(get_contabilita_settings),
+) -> RedirectResponse:
+    from datetime import date as _date
+
+    since = None
+    if (settings.sdi_fetch_since or "").strip():
+        try:
+            since = _date.fromisoformat(settings.sdi_fetch_since.strip())
+        except ValueError:
+            since = None
+    client = build_sdi_client(settings)
+    s = sincronizza_passive(
+        client=client,
+        fattura_repo=fat_repo,
+        movimento_repo=mov_repo,
+        piva_azienda=settings.sdi_piva_azienda,
+        since=since,
+        archivio_dir=Path(settings.app_archivio_fatture),
+    )
+    msg = (
+        f"Sync passive ({settings.sdi_provider}): {s.nuove} nuove, "
+        f"{s.duplicate} già presenti, {s.movimenti_creati} movimenti proposti, "
+        f"{len(s.errori)} errori."
+    )
+    return RedirectResponse(url=f"/contabilita/fatture?esito={msg}", status_code=303)

@@ -128,3 +128,48 @@ def test_route_riservata_ad_admin(tmp_path: Path, authenticated_app):
     resp = c.get("/contabilita/movimenti")
     assert resp.status_code == 303
     assert "/login" in resp.headers["location"]
+
+
+# --------------------------------------------------------------------------- #
+#  Fatture SDI (Fase 3)
+# --------------------------------------------------------------------------- #
+
+
+def test_fatture_list_vuota(client):
+    c, _ = client
+    resp = c.get("/contabilita/fatture")
+    assert resp.status_code == 200
+    assert "Fatture elettroniche" in resp.text
+    assert "Nessuna fattura registrata" in resp.text
+
+
+def test_fatture_importa_attive_dir_mancante(client):
+    c, _ = client
+    token = get_csrf(c, "/contabilita/fatture")
+    resp = c.post(
+        "/contabilita/fatture/importa-attive", data={"csrf_token": token}
+    )
+    assert resp.status_code == 303
+    assert "esito=" in resp.headers["location"]
+
+
+def test_fatture_invia_sdi_nessuna_pendente(client):
+    c, _ = client
+    token = get_csrf(c, "/contabilita/fatture")
+    resp = c.post("/contabilita/fatture/invia-sdi", data={"csrf_token": token})
+    assert resp.status_code == 303
+    resp2 = c.get(resp.headers["location"], follow_redirects=False)
+    assert resp2.status_code == 200
+
+
+def test_fatture_sincronizza_passive_fake_provider(client):
+    c, settings = client
+    # provider di default in test = "fake" → inbox vuota, nessun errore
+    assert settings.sdi_provider == "fake"
+    token = get_csrf(c, "/contabilita/fatture")
+    resp = c.post(
+        "/contabilita/fatture/sincronizza-passive", data={"csrf_token": token}
+    )
+    assert resp.status_code == 303
+    assert "/contabilita/fatture?esito=" in resp.headers["location"]
+    assert "passive" in resp.headers["location"]
