@@ -136,8 +136,8 @@ class Settings(BaseSettings):
     # Contabilità gestionale: importa fatture attive generate da WinCar e le
     # inoltra allo SDI; riceve le passive dallo SDI. NON è contabilità fiscale.
     #
-    # Provider: "openapi" (default, openapi.com) o "fake" (nessuna chiamata di
-    # rete: usato in sviluppo/test — invii simulati, nessuna passiva).
+    # Provider: "fake" (default — nessuna chiamata di rete: invii simulati,
+    # nessuna passiva; per sviluppo/rodaggio) o "openapi" (openapi.com).
     sdi_provider: str = Field(default="fake")
     sdi_api_key: str = Field(default="")
     # Base URL API del provider. Openapi: prod vs sandbox.

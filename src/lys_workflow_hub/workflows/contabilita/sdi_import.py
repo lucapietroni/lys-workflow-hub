@@ -133,9 +133,20 @@ def _piva(dati_anagrafici: ET.Element | None) -> str:
     return _text(_child(dati_anagrafici, "CodiceFiscale"))
 
 
+# FatturaPA non usa mai DTD o entità: la loro presenza in un XML "fattura" da
+# fonte esterna è o un errore o un tentativo di entity-expansion (billion
+# laughs). Li rifiutiamo prima del parse (xml.etree espande le entità interne).
+_MAX_XML_BYTES = 8 * 1024 * 1024
+
+
 def parse_fattura_xml(xml_bytes: bytes) -> FatturaXML:
     """Estrae i campi essenziali da un XML FatturaPA. Solleva ``ValueError``
     se il file non è una fattura elettronica riconoscibile."""
+    if len(xml_bytes) > _MAX_XML_BYTES:
+        raise ValueError(f"XML troppo grande ({len(xml_bytes)} byte).")
+    head = xml_bytes[:4096].lower()
+    if b"<!doctype" in head or b"<!entity" in xml_bytes.lower():
+        raise ValueError("XML con DTD/entità non ammesso per una fattura elettronica.")
     try:
         root = ET.fromstring(xml_bytes)
     except ET.ParseError as exc:
@@ -145,9 +156,17 @@ def parse_fattura_xml(xml_bytes: bytes) -> FatturaXML:
         raise ValueError(f"Root inatteso: {_lname(root.tag)!r} (atteso FatturaElettronica).")
 
     header = _child(root, "FatturaElettronicaHeader")
-    body = _child(root, "FatturaElettronicaBody")
+    bodies = [c for c in list(root) if _lname(c.tag) == "FatturaElettronicaBody"]
+    body = bodies[0] if bodies else None
     if header is None or body is None:
         raise ValueError("XML privo di Header o Body FatturaPA.")
+    if len(bodies) > 1:
+        logger.warning(
+            "Fattura con %d body (lotto multi-fattura): importato solo il primo "
+            "(numero %s).",
+            len(bodies),
+            _text(_path(bodies[0], "DatiGenerali", "DatiGeneraliDocumento", "Numero")),
+        )
 
     ced_da = _path(header, "CedentePrestatore", "DatiAnagrafici")
     cess_da = _path(header, "CessionarioCommittente", "DatiAnagrafici")
@@ -258,9 +277,14 @@ def _crea_fattura_da_xml(
 def _archivia_xml(archivio_dir: Path | None, anno: int, filename: str, xml_bytes: bytes) -> str:
     if archivio_dir is None:
         return ""
+    # `filename` può arrivare dal JSON del provider: prendi solo il basename e
+    # rifiuta valori insidiosi (path traversal / path assoluto).
+    safe = Path(str(filename)).name
+    if not safe or safe in (".", "..") or safe.startswith("."):
+        safe = "fattura.xml"
     dest_dir = Path(archivio_dir) / str(anno)
     dest_dir.mkdir(parents=True, exist_ok=True)
-    dest = dest_dir / filename
+    dest = dest_dir / safe
     try:
         dest.write_bytes(xml_bytes)
     except OSError as exc:

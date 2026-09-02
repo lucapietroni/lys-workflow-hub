@@ -48,7 +48,7 @@
   {% else %}
     {% for c in categorie %}
     <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;
-                padding:10px 0; border-bottom:1px solid var(--lys-border, #e2e2e2);">
+                padding:10px 0; border-bottom:1px solid var(--border);">
       <form method="post" action="/contabilita/categorie/{{ c.id }}/modifica"
             style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; flex:1;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />

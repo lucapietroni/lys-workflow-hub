@@ -43,7 +43,11 @@ from lys_workflow_hub.core.contabilita_fattura_repository import (  # noqa: E402
 from lys_workflow_hub.core.contabilita_movimento_repository import (  # noqa: E402
     ContabilitaMovimentoRepository,
 )
-from lys_workflow_hub.integrations.notifier import notify_push_nuova_attivita  # noqa: E402
+from lys_workflow_hub.core.utenti_repository import UtentiRepository  # noqa: E402
+from lys_workflow_hub.integrations.notifier import (  # noqa: E402
+    notify_fcm_nuova_attivita,
+    notify_push_nuova_attivita,
+)
 from lys_workflow_hub.integrations.sdi import build_sdi_client  # noqa: E402
 from lys_workflow_hub.workflows.contabilita.sdi_import import (  # noqa: E402
     importa_attive_da_dir,
@@ -148,17 +152,38 @@ def _notifica(settings, imp, inv, sync, log) -> None:
         righe.append(f"⚠️ {inv.scartate} scartate dallo SDI")
     if sync.nuove:
         righe.append(f"{sync.nuove} fatture passive ricevute (da smistare)")
+    titolo = "Contabilità — ciclo SDI"
+    messaggio = "\n".join(righe)
     try:
         notify_push_nuova_attivita(
             ntfy_server=settings.ntfy_server,
             ntfy_topic=settings.ntfy_topic,
-            titolo="Contabilità — ciclo SDI",
-            messaggio="\n".join(righe),
+            titolo=titolo,
+            messaggio=messaggio,
             click_url=settings.public_url("/contabilita/fatture"),
             disabled=settings.notify_disabled,
         )
     except Exception as exc:  # noqa: BLE001
-        log.warning("Push riepilogo SDI fallito: %s", exc)
+        log.warning("Push ntfy riepilogo SDI fallito: %s", exc)
+    # FCM all'admin loggato in app / browser (stesso pattern di run_polling.py).
+    try:
+        utenti_repo = UtentiRepository(db_path=settings.app_db_path)
+        for u in utenti_repo.list_all():
+            if not (u.is_admin and u.attivo):
+                continue
+            for token in (u.fcm_token, u.fcm_token_web):
+                if token:
+                    notify_fcm_nuova_attivita(
+                        fcm_project_id=settings.fcm_project_id,
+                        fcm_credentials_path=str(settings.fcm_credentials_path or ""),
+                        fcm_token=token,
+                        titolo=titolo,
+                        messaggio=messaggio,
+                        click_path="/contabilita/fatture",
+                        disabled=settings.notify_disabled,
+                    )
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Push FCM riepilogo SDI fallito: %s", exc)
 
 
 if __name__ == "__main__":

@@ -128,6 +128,54 @@ def test_smista_idempotente_su_ripetizione(setup):
     assert {r.pratica_id for r in fat.list_pratiche(f.id)} == {999}
 
 
+def test_re_smistamento_fattura_attiva_non_inverte_il_segno(tmp_path: Path):
+    """Bug review #2: al 2° smistamento non ci sono più 'proposto'; il tipo
+    del movimento va ricavato dai movimenti SDI a prescindere dallo stato,
+    non dal fallback 'uscita'."""
+    db = tmp_path / "app.db"
+    cat = ContabilitaCategoriaRepository(db_path=db)
+    fat = ContabilitaFatturaRepository(db_path=db)
+    mov = ContabilitaMovimentoRepository(db_path=db)
+    f = fat.create(
+        tipo="attiva", numero="A-1", anno=2026, data="2026-05-01",
+        controparte_nome="Cliente", controparte_piva="09876543210",
+        importo_totale="1000",
+    )
+    mov.create(  # come la lascia invia_attive_pendenti: entrata proposta
+        data="2026-05-01", importo="1000", tipo="entrata", fattura_id=f.id,
+        origine="da_fattura_sdi", stato="proposto",
+    )
+    ric = next(c for c in cat.list_all() if c.nome == "Riparazioni carrozzeria")
+
+    smista_fattura(fattura_repo=fat, movimento_repo=mov, fattura_id=f.id,
+                   categoria_id=ric.id,
+                   assegnazioni=[Assegnazione(pratica_id=1, importo=1000.0)])
+    assert mov.list_by_fattura(f.id)[0].tipo == "entrata"
+
+    # secondo smistamento: nessun 'proposto' residuo
+    smista_fattura(fattura_repo=fat, movimento_repo=mov, fattura_id=f.id,
+                   categoria_id=ric.id,
+                   assegnazioni=[Assegnazione(pratica_id=2, importo=1000.0)])
+    movimenti = mov.list_by_fattura(f.id)
+    assert len(movimenti) == 1
+    assert movimenti[0].tipo == "entrata"  # NON ribaltato a 'uscita'
+
+
+def test_smista_dedup_stessa_pratica_somma_importi(setup):
+    _db, _cat, fat, mov, f, ric = setup
+    creati = smista_fattura(
+        fattura_repo=fat, movimento_repo=mov, fattura_id=f.id,
+        categoria_id=ric.id,
+        assegnazioni=[
+            Assegnazione(pratica_id=5, importo=600.0),
+            Assegnazione(pratica_id=5, importo=620.0),
+        ],
+    )
+    assert len(creati) == 1
+    assert creati[0].pratica_id == 5 and creati[0].importo == 1220.0
+    assert [r.importo_assegnato for r in fat.list_pratiche(f.id)] == [1220.0]
+
+
 def test_smista_non_tocca_movimenti_gia_confermati(setup):
     _db, _cat, fat, mov, f, ric = setup
     # un movimento manuale confermato sulla stessa fattura non va perso

@@ -113,6 +113,40 @@ def test_parse_xml_non_fattura():
         parse_fattura_xml(b"<html><body>ciao</body></html>")
 
 
+def test_parse_rifiuta_xml_con_entita_o_doctype():
+    billion_laughs = (
+        b'<?xml version="1.0"?><!DOCTYPE lolz [<!ENTITY lol "lol">]>'
+        b"<p:FatturaElettronica xmlns:p=\"x\">&lol;</p:FatturaElettronica>"
+    )
+    with pytest.raises(ValueError, match="DTD|entità"):
+        parse_fattura_xml(billion_laughs)
+
+
+def test_parse_multi_body_usa_il_primo():
+    body = (
+        "<FatturaElettronicaBody><DatiGenerali><DatiGeneraliDocumento>"
+        "<TipoDocumento>TD01</TipoDocumento><Data>2026-05-10</Data>"
+        "<Numero>{n}</Numero><ImportoTotaleDocumento>10.00</ImportoTotaleDocumento>"
+        "</DatiGeneraliDocumento></DatiGenerali><DatiBeniServizi><DatiRiepilogo>"
+        "<ImponibileImporto>10.00</ImponibileImporto><Imposta>0.00</Imposta>"
+        "</DatiRiepilogo></DatiBeniServizi></FatturaElettronicaBody>"
+    )
+    xml = (
+        '<?xml version="1.0"?><p:FatturaElettronica '
+        'xmlns:p="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2">'
+        "<FatturaElettronicaHeader><CedentePrestatore><DatiAnagrafici>"
+        f"<IdFiscaleIVA><IdCodice>{PIVA_LYS}</IdCodice></IdFiscaleIVA>"
+        "<Anagrafica><Denominazione>LYS</Denominazione></Anagrafica>"
+        "</DatiAnagrafici></CedentePrestatore><CessionarioCommittente><DatiAnagrafici>"
+        f"<IdFiscaleIVA><IdCodice>{PIVA_CLIENTE}</IdCodice></IdFiscaleIVA>"
+        "</DatiAnagrafici></CessionarioCommittente></FatturaElettronicaHeader>"
+        + body.format(n="1") + body.format(n="2")
+        + "</p:FatturaElettronica>"
+    ).encode()
+    fx = parse_fattura_xml(xml)
+    assert fx.numero == "1"
+
+
 def test_classifica_tipo():
     attiva = parse_fattura_xml(_xml(ced_piva=PIVA_LYS, cess_piva=PIVA_CLIENTE))
     passiva = parse_fattura_xml(_xml(ced_piva=PIVA_FORNITORE, cess_piva=PIVA_LYS))

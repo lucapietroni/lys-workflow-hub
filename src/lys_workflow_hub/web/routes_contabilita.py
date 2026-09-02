@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -134,6 +135,12 @@ def _form_str(form, key: str) -> str:
     return v.strip() if isinstance(v, str) else ""
 
 
+def _redir(path: str, **params: str) -> RedirectResponse:
+    """RedirectResponse con query string correttamente url-encoded."""
+    qs = urlencode({k: v for k, v in params.items() if v})
+    return RedirectResponse(url=f"{path}?{qs}" if qs else path, status_code=303)
+
+
 # --------------------------------------------------------------------------- #
 #  Movimenti — lista
 # --------------------------------------------------------------------------- #
@@ -166,6 +173,7 @@ def movimenti_list(
     f_al = _str_or_none(al)
 
     filtro_err: str | None = None
+    proposti_n = 0
     try:
         movimenti = mov_repo.list(
             categoria_id=f_categoria,
@@ -176,17 +184,28 @@ def movimenti_list(
             dal=f_dal,
             al=f_al,
         )
+        # I totali in testata contano solo i movimenti confermati (i 'proposto'
+        # da fatture SDI non sono ancora dato reale), a meno che non si stia
+        # filtrando esplicitamente per stato.
         totali = mov_repo.totali(
             categoria_id=f_categoria,
             pratica_id=f_pratica,
             fattura_id=f_fattura,
-            stato=f_stato,
+            stato=f_stato or STATO_CONFERMATO,
             dal=f_dal,
             al=f_al,
         )
+        if f_stato is None:
+            proposti_n = len(
+                mov_repo.list(
+                    categoria_id=f_categoria, pratica_id=f_pratica,
+                    fattura_id=f_fattura, stato="proposto",
+                    dal=f_dal, al=f_al, limit=10000,
+                )
+            )
     except ValueError as exc:
         # Filtro data malformato: mostra lista vuota + errore, non 500.
-        movimenti, totali = [], mov_repo.totali()
+        movimenti, totali = [], mov_repo.totali(stato=STATO_CONFERMATO)
         filtro_err = str(exc)
 
     categorie = cat_repo.list_all()
@@ -198,6 +217,7 @@ def movimenti_list(
         totali=totali,
         categorie=categorie,
         cat_by_id=cat_by_id,
+        proposti_n=proposti_n,
         filtri={
             "categoria_id": categoria_id or "",
             "pratica_id": pratica_id or "",
@@ -409,9 +429,7 @@ async def categoria_new(
     try:
         cat_repo.create(nome=_form_str(form, "nome"), tipo=_form_str(form, "tipo"))
     except ValueError as exc:
-        return RedirectResponse(
-            url=f"/contabilita/categorie?error={exc}", status_code=303
-        )
+        return _redir("/contabilita/categorie", error=str(exc))
     return RedirectResponse(url="/contabilita/categorie", status_code=303)
 
 
@@ -430,9 +448,7 @@ async def categoria_edit(
             attiva=_form_str(form, "attiva") == "1",
         )
     except ValueError as exc:
-        return RedirectResponse(
-            url=f"/contabilita/categorie?error={exc}", status_code=303
-        )
+        return _redir("/contabilita/categorie", error=str(exc))
     return RedirectResponse(url="/contabilita/categorie", status_code=303)
 
 
@@ -446,10 +462,9 @@ def categoria_delete(
     if not cat_repo.delete(categoria_id):
         # Referenziata da movimenti: disattiva invece di cancellare.
         cat_repo.set_attiva(categoria_id, False)
-        return RedirectResponse(
-            url="/contabilita/categorie?error=Categoria usata da movimenti esistenti: "
-            "è stata disattivata invece di eliminata.",
-            status_code=303,
+        return _redir(
+            "/contabilita/categorie",
+            error="Categoria usata da movimenti esistenti: è stata disattivata invece di eliminata.",
         )
     return RedirectResponse(url="/contabilita/categorie", status_code=303)
 
@@ -503,7 +518,7 @@ def fatture_importa_attive(
     msg = f"Import attive: {s.nuove} nuove, {s.duplicate} già presenti, {len(s.errori)} errori."
     if s.errori:
         msg += " " + " · ".join(s.errori[:3])
-    return RedirectResponse(url=f"/contabilita/fatture?esito={msg}", status_code=303)
+    return _redir("/contabilita/fatture", esito=msg)
 
 
 @router.post("/contabilita/fatture/invia-sdi")
@@ -528,7 +543,7 @@ def fatture_invia_sdi(
         msg = "Invio SDI disabilitato da configurazione (SDI_INVIO_DISABILITATO)."
     if s.errori:
         msg += " " + " · ".join(s.errori[:3])
-    return RedirectResponse(url=f"/contabilita/fatture?esito={msg}", status_code=303)
+    return _redir("/contabilita/fatture", esito=msg)
 
 
 @router.post("/contabilita/fatture/sincronizza-passive")
@@ -559,7 +574,7 @@ def fatture_sincronizza_passive(
         f"{s.duplicate} già presenti, {s.movimenti_creati} movimenti proposti, "
         f"{len(s.errori)} errori."
     )
-    return RedirectResponse(url=f"/contabilita/fatture?esito={msg}", status_code=303)
+    return _redir("/contabilita/fatture", esito=msg)
 
 
 # --------------------------------------------------------------------------- #

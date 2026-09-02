@@ -79,6 +79,14 @@
     <div><span class="meta">Saldo</span><br>
       <strong>€ {{ "%.2f"|format(totali.saldo) }}</strong></div>
   </div>
+  {% if proposti_n and not filtri.stato %}
+    <p class="meta" style="margin:-8px 0 16px;">
+      Totali sui soli movimenti confermati. {{ proposti_n }}
+      moviment{{ "o proposto" if proposti_n == 1 else "i proposti" }}
+      (fatture SDI da smistare) non incluso —
+      <a href="/contabilita/movimenti?stato=proposto{% if filtri.pratica_id %}&pratica_id={{ filtri.pratica_id }}{% endif %}">vedi</a>.
+    </p>
+  {% endif %}
 
   {% if not movimenti %}
     <p class="meta" style="margin:0">Nessun movimento con i filtri correnti.</p>

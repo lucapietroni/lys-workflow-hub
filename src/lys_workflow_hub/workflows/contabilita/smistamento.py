@@ -18,6 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from lys_workflow_hub.core.contabilita_fattura_repository import (
+    TIPO_ATTIVA,
     ContabilitaFatturaRepository,
     Fattura,
 )
@@ -25,6 +26,7 @@ from lys_workflow_hub.core.contabilita_movimento_repository import (
     ORIGINE_FATTURA_SDI,
     STATO_CONFERMATO,
     STATO_PROPOSTO,
+    TIPO_ENTRATA,
     TIPO_USCITA,
     ContabilitaMovimentoRepository,
     Movimento,
@@ -83,6 +85,11 @@ def smista_fattura(
     if fattura is None:
         raise SmistamentoError(f"Fattura id={fattura_id} non trovata.")
 
+    # Dedup: più righe sulla stessa pratica → una sola, importi sommati
+    # (altrimenti la tabella ponte terrebbe solo l'ultimo importo mentre i
+    # movimenti li conterebbero tutti).
+    assegnazioni = _dedup(assegnazioni)
+
     totale = round(fattura.importo_totale, 2)
     somma = round(sum(a.importo for a in assegnazioni), 2)
     if any(a.importo < 0 for a in assegnazioni):
@@ -95,12 +102,18 @@ def smista_fattura(
     if any(a.pratica_id <= 0 for a in assegnazioni):
         raise SmistamentoError("Numero pratica non valido in una delle assegnazioni.")
 
-    # Direzione del movimento: dalla riga proposta esistente (che porta già la
-    # gestione delle note di credito), altrimenti 'uscita' per una passiva.
+    # Direzione/data del movimento: dai movimenti generati da SDI per questa
+    # fattura (proposti O già smistati — l'`origine` li identifica a
+    # prescindere dallo stato, così un ri-smistamento non ribalta il segno di
+    # una fattura attiva o di una nota di credito). Fallback sul tipo fattura.
     esistenti = movimento_repo.list_by_fattura(fattura_id)
-    proposti = [m for m in esistenti if m.stato == STATO_PROPOSTO]
-    tipo_mov = proposti[0].tipo if proposti else TIPO_USCITA
-    data_mov = proposti[0].data if proposti else fattura.data
+    sdi_movs = [m for m in esistenti if m.origine == ORIGINE_FATTURA_SDI]
+    if sdi_movs:
+        tipo_mov = sdi_movs[0].tipo
+        data_mov = sdi_movs[0].data
+    else:
+        tipo_mov = TIPO_ENTRATA if fattura.tipo == TIPO_ATTIVA else TIPO_USCITA
+        data_mov = fattura.data
 
     # 1) via i movimenti generati da SDI (proposti o già smistati), via le
     #    vecchie righe ponte. I movimenti manuali sulla fattura restano.
@@ -162,6 +175,13 @@ def smista_fattura(
         )
 
     return creati
+
+
+def _dedup(assegnazioni: list[Assegnazione]) -> list[Assegnazione]:
+    acc: dict[int, float] = {}
+    for a in assegnazioni:
+        acc[a.pratica_id] = round(acc.get(a.pratica_id, 0.0) + a.importo, 2)
+    return [Assegnazione(pratica_id=p, importo=i) for p, i in acc.items()]
 
 
 def _descr(fattura: Fattura, tipo_mov: str) -> str:

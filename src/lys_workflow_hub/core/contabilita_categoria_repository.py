@@ -101,9 +101,11 @@ class ContabilitaCategoriaRepository:
             ).fetchone()["n"]
             if not n:
                 now = _iso_now()
+                # OR IGNORE: se due processi inizializzano un DB nuovo in
+                # parallelo, il secondo non deve sollevare IntegrityError qui.
                 conn.executemany(
-                    "INSERT INTO contabilita_categoria (nome, tipo, attiva, created_at) "
-                    "VALUES (?, ?, 1, ?)",
+                    "INSERT OR IGNORE INTO contabilita_categoria "
+                    "(nome, tipo, attiva, created_at) VALUES (?, ?, 1, ?)",
                     [(nome, tipo, now) for nome, tipo in _SEED_CATEGORIE],
                 )
                 logger.info(

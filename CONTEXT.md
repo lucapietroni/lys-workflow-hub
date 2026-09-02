@@ -206,6 +206,22 @@ informativa.
 Ciclo delle 4 fasi completo. Manca solo: apertura account Openapi +
 validazione endpoint reali in sandbox prima di `SDI_PROVIDER=openapi` in prod.
 
+**Fix post code-review (v4.25.1)**:
+- `smista_fattura`: la direzione del movimento si ricava dai movimenti
+  `origine='da_fattura_sdi'` (a prescindere dallo stato), non dal fallback
+  `uscita` — un ri-smistamento di una fattura attiva / nota di credito non
+  ribalta più il segno. Dedup delle assegnazioni sulla stessa pratica.
+- `parse_fattura_xml`: rifiuta XML con DTD/entità (anti entity-expansion),
+  cap 8 MB, warning su lotti multi-body (importato solo il primo).
+- `_archivia_xml`: basename-only sul `filename` del provider (anti path
+  traversal).
+- `ContabilitaFatturaRepository.delete`: rimuove anche i movimenti SDI legati
+  e scollega quelli manuali (niente più righe orfane).
+- Totali in `/contabilita/movimenti`: solo movimenti confermati, i proposti
+  contati a parte in una nota.
+- Redirect con query param url-encoded; seed categorie `INSERT OR IGNORE`;
+  `run_sdi_poll.py` notifica anche via FCM (come `run_polling.py`).
+
 ---
 
 ## Workflow D — Verbali cortesia

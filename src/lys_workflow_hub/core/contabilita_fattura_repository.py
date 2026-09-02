@@ -396,11 +396,31 @@ class ContabilitaFatturaRepository:
         return [self._row_to_fattura(r) for r in rows]
 
     def delete(self, fattura_id: int) -> bool:
+        """Elimina fattura + righe ponte + movimenti generati da SDI legati.
+
+        I movimenti inseriti a mano dall'operatore su quella fattura
+        (``origine='manuale'``) vengono solo scollegati (``fattura_id`` a
+        NULL), non cancellati."""
         with self._connect() as conn:
             conn.execute(
                 "DELETE FROM contabilita_fattura_pratica WHERE fattura_id = ?",
                 (int(fattura_id),),
             )
+            try:
+                conn.execute(
+                    "DELETE FROM contabilita_movimento "
+                    "WHERE fattura_id = ? AND origine = 'da_fattura_sdi'",
+                    (int(fattura_id),),
+                )
+                conn.execute(
+                    "UPDATE contabilita_movimento SET fattura_id = NULL "
+                    "WHERE fattura_id = ?",
+                    (int(fattura_id),),
+                )
+            except sqlite3.OperationalError:
+                # Tabella movimenti non ancora creata in questo DB: niente da
+                # ripulire.
+                pass
             cur = conn.execute(
                 "DELETE FROM contabilita_fattura WHERE id = ?",
                 (int(fattura_id),),
