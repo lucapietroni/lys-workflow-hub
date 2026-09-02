@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}
+  {% if movimento %}Modifica movimento{% else %}Nuovo movimento{% endif %} · LYS Workflow Hub
+{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb">
+  <a href="/contabilita/movimenti">← Torna ai movimenti</a>
+</nav>
+
+<header class="pratica-header">
+  <div>
+    <span class="badge">Contabilità gestionale</span>
+    <h1>{% if movimento %}Modifica movimento{% else %}Nuovo movimento{% endif %}</h1>
+    <p class="meta">
+      Inserimento manuale (stipendi, F24, rimborsi, spese generali…). I movimenti
+      generati automaticamente dalle fatture SDI arriveranno nelle fasi successive.
+    </p>
+  </div>
+</header>
+
+{% if error %}
+  <div class="alert alert-warn"><strong>Errore:</strong> {{ error }}</div>
+{% endif %}
+
+<form method="post"
+      action="{% if movimento %}/contabilita/movimenti/{{ movimento.id }}/modifica{% else %}/contabilita/movimenti/nuovo{% endif %}"
+      class="cessione-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+
+  <section class="card">
+    <div class="form-grid">
+      <div class="form-field">
+        <label for="f_data">Data <span class="req">*</span></label>
+        <input id="f_data" name="data" type="date" value="{{ values.data }}" required />
+      </div>
+      <div class="form-field">
+        <label for="f_tipo">Tipo <span class="req">*</span></label>
+        <select id="f_tipo" name="tipo" required>
+          <option value="uscita" {% if values.tipo == "uscita" %}selected{% endif %}>Uscita (costo)</option>
+          <option value="entrata" {% if values.tipo == "entrata" %}selected{% endif %}>Entrata (ricavo)</option>
+        </select>
+      </div>
+      <div class="form-field">
+        <label for="f_importo">Importo € <span class="req">*</span></label>
+        <input id="f_importo" name="importo" type="text" inputmode="decimal"
+               value="{{ values.importo }}" placeholder="0.00" required autocomplete="off" />
+      </div>
+      <div class="form-field">
+        <label for="f_iva">di cui IVA € <small class="meta">(informativo)</small></label>
+        <input id="f_iva" name="importo_iva" type="text" inputmode="decimal"
+               value="{{ values.importo_iva }}" placeholder="—" autocomplete="off" />
+      </div>
+      <div class="form-field">
+        <label for="f_categoria">Categoria</label>
+        <select id="f_categoria" name="categoria_id">
+          <option value="">— nessuna —</option>
+          {% for c in categorie %}
+            <option value="{{ c.id }}" {% if values.categoria_id == c.id|string %}selected{% endif %}>
+              {{ c.nome }} ({{ c.tipo_label|lower }})
+            </option>
+          {% endfor %}
+        </select>
+        <small class="hint">Gestisci l'elenco in <a href="/contabilita/categorie">Categorie</a>.</small>
+      </div>
+      <div class="form-field">
+        <label for="f_pratica">Numero pratica WinCar</label>
+        <input id="f_pratica" name="pratica_id" type="number" inputmode="numeric"
+               value="{{ values.pratica_id }}" autocomplete="off" />
+        <small class="hint">Lascia vuoto per spese non legate a una pratica (affitto, utenze, assicurazioni…).</small>
+      </div>
+    </div>
+    <div class="form-field">
+      <label for="f_descr">Descrizione</label>
+      <textarea id="f_descr" name="descrizione" rows="2">{{ values.descrizione }}</textarea>
+    </div>
+    {% if movimento and movimento.stato == "proposto" %}
+      <div class="form-field">
+        <label>
+          <input type="checkbox" name="stato" value="confermato" checked />
+          Conferma il movimento (proposto da fattura SDI)
+        </label>
+      </div>
+    {% else %}
+      <input type="hidden" name="stato" value="{{ values.stato }}" />
+    {% endif %}
+  </section>
+
+  <div class="form-actions">
+    <a href="/contabilita/movimenti" class="btn">Annulla</a>
+    <button type="submit" class="btn btn-primary">
+      {% if movimento %}Salva modifiche{% else %}Crea movimento{% endif %}
+    </button>
+  </div>
+</form>
+{% endblock %}

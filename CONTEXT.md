@@ -62,6 +62,9 @@ App Android (Capacitor, wrapper del portale esterno /portale)
 - `pec_sla_reminder` — tracking escalation SLA già inviati
 - `foto_lavorazioni` — log foto processate dal watcher
 - `utenti` — account applicativi: email, password_hash (bcrypt), ruolo (admin/esterno/supervisore)
+- `contabilita_categoria` — etichette ricavo/costo (contabilità gestionale, Fase 1)
+- `contabilita_movimento` — entrate/uscite, `pratica_id` nullable, `stato` proposto/confermato
+- `contabilita_fattura` + `contabilita_fattura_pratica` — specchio fatture SDI + ponte fattura↔pratica (split)
 
 ---
 
@@ -94,11 +97,12 @@ src/lys_workflow_hub/
 │   │   └── assets/                 Firma pre-apposta (PNG)
 │   ├── risarcimento_vandalismo/    Workflow B (data.py, pec_generator.py, invio_pec.py)
 │   ├── risposte/                   Workflow C (matcher.py, body_generator.py, ...)
-│   └── verbale_cortesia/           Workflow D
-│       ├── data.py                 VerbaleData dataclass + from_pratica()
-│       ├── generator.py            DOCX uscita/rientro (logo LYS, tabelle bordate)
-│       ├── archive.py              Salva PDF in Pratiche/<n>/Pubblici/Allegati/
-│       └── assets/logo_lys.png     Logo LYS Auto Carrozzeria & Noleggio
+│   ├── verbale_cortesia/           Workflow D
+│   │   ├── data.py                 VerbaleData dataclass + from_pratica()
+│   │   ├── generator.py            DOCX uscita/rientro (logo LYS, tabelle bordate)
+│   │   ├── archive.py              Salva PDF in Pratiche/<n>/Pubblici/Allegati/
+│   │   └── assets/logo_lys.png     Logo LYS Auto Carrozzeria & Noleggio
+│   └── contabilita/                Contabilità gestionale + SDI (logica di dominio)
 └── web/
     ├── auth.py                     Sessione, AuthMiddleware, require_admin, CSRF
     ├── routes_auth.py              GET/POST /login, POST /logout
@@ -110,11 +114,55 @@ src/lys_workflow_hub/
     ├── routes_foto.py              Workflow E — log foto /foto (admin-only)
     ├── routes_compagnie.py         CRUD compagnie (admin-only)
     ├── routes_impostazioni.py      Statistiche + policy editor (admin-only)
+    ├── routes_contabilita.py       Movimenti + categorie contabilità (admin-only)
     └── templates/ + static/
 scripts/
 ├── run_polling.py                  Ciclo polling completo
 └── create_admin.py                 Bootstrap primo utente admin
 ```
+
+Repository contabilità in `core/contabilita_categoria_repository.py`,
+`core/contabilita_movimento_repository.py`,
+`core/contabilita_fattura_repository.py`.
+
+---
+
+## Contabilità gestionale + fatturazione SDI (branch `feature/contabilita-sdi`)
+
+Livello **analitico/gestionale**, NON fiscale: nessuna partita doppia, nessun
+registro IVA, nessun bilancio, nessun vincolo dare/avere. Serve a leggere il
+margine reale per pratica e la spesa per categoria. Non sostituisce il
+software del commercialista. L'IVA nei movimenti (`importo_iva`) è solo
+informativa.
+
+**Fase 1 (fatta)** — modello dati + CRUD:
+- `contabilita_categoria` (ricavo/costo, seed iniziale tipico carrozzeria,
+  CRUD; una categoria usata da movimenti si disattiva, non si elimina).
+- `contabilita_movimento` — entrata/uscita, `categoria_id` e `pratica_id`
+  nullable (`pratica_id` = `F_NUMPRA` WinCar, intero sciolto senza FK, come
+  nel resto del progetto), `fattura_id` nullable, `origine`
+  (manuale / da_fattura_sdi), `stato` (proposto / confermato — i proposti
+  da SDI restano fuori dai totali finché non confermati).
+- `contabilita_fattura` — specchio di comodo delle fatture SDI (importi
+  complessivi, nessun dettaglio per aliquota). Idempotente su `sdi_id` e
+  sulla chiave naturale `(tipo, numero, anno, controparte_piva)`.
+- `contabilita_fattura_pratica` — ponte fattura↔pratica con
+  `importo_assegnato`: 1:1 oppure split su più pratiche.
+- UI: `/contabilita/movimenti` (lista filtrabile categoria/tipo/stato/
+  pratica/periodo + totali), form manuale, `/contabilita/categorie`.
+
+**Fasi successive (non ancora fatte)**:
+- Fase 2 — scheda economica pratica (query aggregata su `contabilita_movimento`
+  + `contabilita_fattura_pratica`; tab admin-only in `pratica_detail.html`,
+  MAI nel portale esterno).
+- Fase 3 — `integrations/sdi.py` (client astratto: `invia_fattura`,
+  `ricevi_fatture`, `ottieni_pdf`; provider scelto: **Openapi**),
+  `scripts/run_sdi_poll.py` gemello di `run_polling.py`. Fatture attive:
+  generate da WinCar in `C:\WinCar\FattureElettroniche\<piva>\Attive`,
+  importate qui e inoltrate a SDI. Passive: da SDI → riga fattura +
+  movimento proposto in uscita.
+- Fase 4 — coda fatture passive da smistare + dashboard costi/ricavi per
+  categoria/periodo.
 
 ---
 
@@ -890,10 +938,15 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 
 ## Stato attuale
 
-Versione **4.21.3**, tutto su branch `main`, in produzione su
-`https://hub.lysauto.it`. Changelog per-commit in `git log`; le decisioni
-tecniche non ovvie dal codice (formati, gotcha, cause di bug reali) restano
-documentate nelle sezioni sopra, per sottosistema.
+Versione **4.21.3** in produzione su `main` / `https://hub.lysauto.it`.
+Sviluppo contabilità gestionale + SDI (**4.22.0**) sul branch
+`feature/contabilita-sdi`, non ancora in produzione. Changelog per-commit in
+`git log`; le decisioni tecniche non ovvie dal codice (formati, gotcha, cause
+di bug reali) restano documentate nelle sezioni sopra, per sottosistema.
+
+**4.22.0 — Contabilità gestionale, Fase 1 (branch `feature/contabilita-sdi`)**:
+modello dati + CRUD di categorie e movimenti (entrate/uscite analitiche per
+pratica e categoria). Nessuna contabilità fiscale. Vedi sezione dedicata sopra.
 
 **4.21.3 — Fix: token FCM condiviso tra due account sullo stesso device**:
 segnalato dall'utente admin — riceveva push anche delle proprie note,
