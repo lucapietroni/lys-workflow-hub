@@ -24,9 +24,10 @@
 {% endif %}
 
 {% if coda_passive %}
-  <div class="alert alert-warn">
-    <strong>{{ coda_passive }}</strong> fattur{{ "a passiva" if coda_passive == 1 else "e passive" }}
-    senza pratica né categoria — da smistare (UI dedicata in arrivo).
+  <div class="alert alert-warn" style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+    <span><strong>{{ coda_passive }}</strong>
+      fattur{{ "a passiva" if coda_passive == 1 else "e passive" }} senza pratica né categoria.</span>
+    <a class="btn btn-sm" href="/contabilita/fatture/passive/da-collegare">Vai allo smistamento</a>
   </div>
 {% endif %}
 

@@ -46,10 +46,17 @@ from lys_workflow_hub.core.contabilita_movimento_repository import (
     ContabilitaMovimentoRepository,
 )
 from lys_workflow_hub.integrations.sdi import build_sdi_client
+from lys_workflow_hub.workflows.contabilita.report import costruisci_report
 from lys_workflow_hub.workflows.contabilita.sdi_import import (
     importa_attive_da_dir,
     invia_attive_pendenti,
     sincronizza_passive,
+)
+from lys_workflow_hub.workflows.contabilita.smistamento import (
+    Assegnazione,
+    SmistamentoError,
+    coda_passive,
+    smista_fattura,
 )
 from lys_workflow_hub.web.auth import require_admin, template_context_processor
 
@@ -459,19 +466,20 @@ def fatture_list(
     anno: str | None = None,
     esito: str | None = None,
     fat_repo: ContabilitaFatturaRepository = Depends(get_fattura_repo),
+    mov_repo: ContabilitaMovimentoRepository = Depends(get_movimento_repo),
     settings: Settings = Depends(get_contabilita_settings),
 ) -> HTMLResponse:
     f_tipo = tipo if tipo in (TIPO_ATTIVA, TIPO_PASSIVA) else None
     f_anno = _int_or_none(anno)
     fatture = fat_repo.list(tipo=f_tipo, anno=f_anno, limit=1000)
     pratiche_count = {f.id: len(fat_repo.list_pratiche(f.id)) for f in fatture}
-    coda_passive = len(fat_repo.list_non_collegate(tipo=TIPO_PASSIVA))
+    da_smistare = len(mov_repo.fattura_ids_con_proposti())
 
     context = _ctx()
     context.update(
         fatture=fatture,
         pratiche_count=pratiche_count,
-        coda_passive=coda_passive,
+        coda_passive=da_smistare,
         filtri={"tipo": tipo or "", "anno": anno or ""},
         esito=esito,
         sdi_provider=settings.sdi_provider,
@@ -552,3 +560,143 @@ def fatture_sincronizza_passive(
         f"{len(s.errori)} errori."
     )
     return RedirectResponse(url=f"/contabilita/fatture?esito={msg}", status_code=303)
+
+
+# --------------------------------------------------------------------------- #
+#  Coda smistamento fatture passive (Fase 4)
+# --------------------------------------------------------------------------- #
+
+
+@router.get("/contabilita/fatture/passive/da-collegare", response_class=HTMLResponse)
+def coda_smistamento(
+    request: Request,
+    fat_repo: ContabilitaFatturaRepository = Depends(get_fattura_repo),
+    mov_repo: ContabilitaMovimentoRepository = Depends(get_movimento_repo),
+) -> HTMLResponse:
+    context = _ctx()
+    context["coda"] = coda_passive(fat_repo, mov_repo)
+    return templates.TemplateResponse(request, "contabilita_smistamento_coda.html", context)
+
+
+def _render_smista_form(
+    request: Request,
+    *,
+    fattura,
+    movimento,
+    cat_repo: ContabilitaCategoriaRepository,
+    error: str | None = None,
+    righe: list[dict] | None = None,
+) -> HTMLResponse:
+    context = _ctx()
+    context.update(
+        fattura=fattura,
+        movimento=movimento,
+        categorie=cat_repo.list_all(solo_attive=True),
+        error=error,
+        righe=righe or [{"pratica_id": "", "importo": ""}],
+        categoria_id=(movimento.categoria_id if movimento else None),
+    )
+    return templates.TemplateResponse(request, "contabilita_smistamento_form.html", context)
+
+
+@router.get("/contabilita/fatture/{fattura_id}/smista", response_class=HTMLResponse)
+def smista_form(
+    fattura_id: int,
+    request: Request,
+    fat_repo: ContabilitaFatturaRepository = Depends(get_fattura_repo),
+    mov_repo: ContabilitaMovimentoRepository = Depends(get_movimento_repo),
+    cat_repo: ContabilitaCategoriaRepository = Depends(get_categoria_repo),
+) -> HTMLResponse:
+    fattura = fat_repo.get(fattura_id)
+    if fattura is None:
+        raise HTTPException(404, f"Fattura id={fattura_id} non trovata.")
+    proposti = [m for m in mov_repo.list_by_fattura(fattura_id) if m.stato == "proposto"]
+    movimento = proposti[0] if proposti else None
+    righe = [
+        {"pratica_id": str(r.pratica_id), "importo": f"{r.importo_assegnato:.2f}"}
+        for r in fat_repo.list_pratiche(fattura_id)
+    ] or None
+    return _render_smista_form(
+        request, fattura=fattura, movimento=movimento, cat_repo=cat_repo, righe=righe
+    )
+
+
+@router.post("/contabilita/fatture/{fattura_id}/smista")
+async def smista_submit(
+    fattura_id: int,
+    request: Request,
+    fat_repo: ContabilitaFatturaRepository = Depends(get_fattura_repo),
+    mov_repo: ContabilitaMovimentoRepository = Depends(get_movimento_repo),
+    cat_repo: ContabilitaCategoriaRepository = Depends(get_categoria_repo),
+):
+    fattura = fat_repo.get(fattura_id)
+    if fattura is None:
+        raise HTTPException(404, f"Fattura id={fattura_id} non trovata.")
+    form = await request.form()
+    categoria_id = _int_or_none(_form_str(form, "categoria_id"))
+    try:
+        praticas = form.getlist("pratica_id")
+        importi = form.getlist("importo")
+    except AttributeError:  # pragma: no cover
+        praticas, importi = [], []
+
+    righe_raw = [
+        {"pratica_id": (p or "").strip(), "importo": (i or "").strip()}
+        for p, i in zip(praticas, importi)
+    ]
+    assegnazioni: list[Assegnazione] = []
+    for r in righe_raw:
+        if not r["pratica_id"]:
+            continue
+        pid = _int_or_none(r["pratica_id"])
+        try:
+            imp = round(float((r["importo"] or "0").replace(",", ".")), 2)
+        except ValueError:
+            imp = -1.0
+        if pid is None:
+            continue
+        assegnazioni.append(Assegnazione(pratica_id=pid, importo=imp))
+
+    proposti = [m for m in mov_repo.list_by_fattura(fattura_id) if m.stato == "proposto"]
+    movimento = proposti[0] if proposti else None
+    try:
+        smista_fattura(
+            fattura_repo=fat_repo,
+            movimento_repo=mov_repo,
+            fattura_id=fattura_id,
+            categoria_id=categoria_id,
+            assegnazioni=assegnazioni,
+        )
+    except SmistamentoError as exc:
+        return _render_smista_form(
+            request, fattura=fattura, movimento=movimento, cat_repo=cat_repo,
+            error=str(exc), righe=righe_raw or None,
+        )
+    return RedirectResponse(
+        url="/contabilita/fatture/passive/da-collegare", status_code=303
+    )
+
+
+# --------------------------------------------------------------------------- #
+#  Dashboard costi/ricavi (Fase 4)
+# --------------------------------------------------------------------------- #
+
+
+@router.get("/contabilita/report", response_class=HTMLResponse)
+def report_dashboard(
+    request: Request,
+    dal: str | None = None,
+    al: str | None = None,
+    settings: Settings = Depends(get_contabilita_settings),
+) -> HTMLResponse:
+    f_dal = _str_or_none(dal)
+    f_al = _str_or_none(al)
+    error: str | None = None
+    try:
+        report = costruisci_report(settings.app_db_path, dal=f_dal, al=f_al)
+    except ValueError as exc:
+        error = str(exc)
+        report = costruisci_report(settings.app_db_path)
+    context = _ctx()
+    context.update(report=report, filtri={"dal": dal or "", "al": al or ""}, error=error)
+    return templates.TemplateResponse(request, "contabilita_report.html", context)

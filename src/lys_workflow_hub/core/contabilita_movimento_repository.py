@@ -370,6 +370,68 @@ class ContabilitaMovimentoRepository:
     def list_by_fattura(self, fattura_id: int) -> list[Movimento]:
         return self.list(fattura_id=fattura_id, limit=1000)
 
+    def fattura_ids_con_proposti(self) -> set[int]:
+        """Id delle fatture che hanno almeno un movimento in stato 'proposto'.
+
+        Alimenta la coda "fatture passive da smistare" (Fase 4)."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT DISTINCT fattura_id FROM contabilita_movimento "
+                "WHERE stato = ? AND fattura_id IS NOT NULL",
+                (STATO_PROPOSTO,),
+            ).fetchall()
+        return {int(r["fattura_id"]) for r in rows}
+
+    def riepilogo_per_categoria(
+        self,
+        *,
+        stato: str | None = STATO_CONFERMATO,
+        dal: Any = None,
+        al: Any = None,
+    ) -> list[dict[str, Any]]:
+        """Entrate/uscite aggregate per categoria_id sul periodo.
+
+        Ritorna righe ``{categoria_id, entrate, uscite}`` (categoria_id può
+        essere None per i movimenti senza categoria). Per la dashboard
+        costi/ricavi della Fase 4."""
+        where, params = self._where(
+            categoria_id=None, pratica_id=None, fattura_id=None,
+            tipo=None, stato=stato, dal=dal, al=al,
+        )
+        sql = (
+            "SELECT categoria_id, "
+            " COALESCE(SUM(CASE WHEN tipo = 'entrata' THEN importo END), 0) AS entrate, "
+            " COALESCE(SUM(CASE WHEN tipo = 'uscita'  THEN importo END), 0) AS uscite "
+            "FROM contabilita_movimento" + where + " GROUP BY categoria_id"
+        )
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [
+            {
+                "categoria_id": r["categoria_id"],
+                "entrate": round(float(r["entrate"]), 2),
+                "uscite": round(float(r["uscite"]), 2),
+            }
+            for r in rows
+        ]
+
+    def delete_by_fattura(self, fattura_id: int, *, solo_sdi: bool = True) -> int:
+        """Elimina i movimenti legati a una fattura. Ritorna quanti eliminati.
+
+        Con ``solo_sdi`` (default) tocca solo i movimenti generati
+        automaticamente (``origine = 'da_fattura_sdi'``), sia proposti sia
+        confermati — così un (ri)smistamento sostituisce i propri movimenti
+        ma NON tocca quelli inseriti a mano dall'operatore sulla stessa
+        fattura."""
+        sql = "DELETE FROM contabilita_movimento WHERE fattura_id = ?"
+        params: list[Any] = [int(fattura_id)]
+        if solo_sdi:
+            sql += " AND origine = ?"
+            params.append(ORIGINE_FATTURA_SDI)
+        with self._connect() as conn:
+            cur = conn.execute(sql, params)
+            return cur.rowcount
+
     # ---------------------------------------------------------------- mutate -
 
     def update(

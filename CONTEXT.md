@@ -187,9 +187,24 @@ informativa.
 - Movimenti generati da fattura: `origine='da_fattura_sdi'`, `stato='proposto'`,
   esclusi dal margine finché non confermati. Idempotenti per `fattura_id`.
 
-**Fase successiva (non ancora fatta)**:
-- Fase 4 — coda fatture passive da smistare (assegnazione categoria/pratica,
-  eventuale split) + dashboard costi/ricavi per categoria/periodo.
+**Fase 4 (fatta, v4.25.0)** — coda smistamento + reportistica:
+- `workflows/contabilita/smistamento.py` — `coda_passive` (fatture con ≥1
+  movimento `proposto`), `smista_fattura(fattura_id, categoria_id,
+  assegnazioni)`: sostituisce i movimenti `origine='da_fattura_sdi'` (proposti
+  o già smistati — NON quelli manuali) con movimenti `confermato`, uno per
+  pratica assegnata + uno per il residuo (totale − somma) senza pratica;
+  riscrive `contabilita_fattura_pratica`. Valida somma ≤ totale.
+- `workflows/contabilita/report.py` — `costruisci_report(db_path, dal, al)` →
+  aggregato per categoria (solo movimenti `confermato`), ricavi/costi/margine.
+- Routes admin: `/contabilita/fatture/passive/da-collegare` (coda),
+  `/contabilita/fatture/{id}/smista` (form split dinamico),
+  `/contabilita/report` (dashboard). Link "Report" / "Fatture" / "Categorie"
+  nella testata di `/contabilita/movimenti`.
+- `movimento_repo`: `fattura_ids_con_proposti`, `riepilogo_per_categoria`,
+  `delete_by_fattura(solo_sdi=)`.
+
+Ciclo delle 4 fasi completo. Manca solo: apertura account Openapi +
+validazione endpoint reali in sandbox prima di `SDI_PROVIDER=openapi` in prod.
 
 ---
 
@@ -970,6 +985,11 @@ Sviluppo contabilità gestionale + SDI (**4.22.0**) sul branch
 `feature/contabilita-sdi`, non ancora in produzione. Changelog per-commit in
 `git log`; le decisioni tecniche non ovvie dal codice (formati, gotcha, cause
 di bug reali) restano documentate nelle sezioni sopra, per sottosistema.
+
+**4.25.0 — Contabilità gestionale, Fase 4 (branch `feature/contabilita-sdi`)**:
+coda smistamento fatture passive (assegnazione categoria/pratica + split,
+`/contabilita/fatture/passive/da-collegare`) + dashboard costi/ricavi per
+categoria/periodo (`/contabilita/report`). Ciclo contabilità completo.
 
 **4.24.0 — Contabilità gestionale, Fase 3 (branch `feature/contabilita-sdi`)**:
 integrazione SDI — `integrations/sdi.py` (client astratto, Fake + Openapi),

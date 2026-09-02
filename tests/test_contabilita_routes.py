@@ -173,3 +173,107 @@ def test_fatture_sincronizza_passive_fake_provider(client):
     assert resp.status_code == 303
     assert "/contabilita/fatture?esito=" in resp.headers["location"]
     assert "passive" in resp.headers["location"]
+
+
+# --------------------------------------------------------------------------- #
+#  Smistamento + report (Fase 4)
+# --------------------------------------------------------------------------- #
+
+
+def _fattura_passiva_proposta(settings):
+    from lys_workflow_hub.core.contabilita_fattura_repository import (
+        ContabilitaFatturaRepository,
+    )
+    from lys_workflow_hub.core.contabilita_movimento_repository import (
+        ContabilitaMovimentoRepository,
+    )
+
+    fat = ContabilitaFatturaRepository(db_path=settings.app_db_path)
+    mov = ContabilitaMovimentoRepository(db_path=settings.app_db_path)
+    f = fat.create(
+        tipo="passiva", numero="F-77", anno=2026, data="2026-04-01",
+        controparte_nome="Fornitore X", controparte_piva="01234567890",
+        importo_totale="1220",
+    )
+    mov.create(
+        data="2026-04-01", importo="1220", tipo="uscita", fattura_id=f.id,
+        origine="da_fattura_sdi", stato="proposto",
+    )
+    return f
+
+
+def test_coda_smistamento_vuota(client):
+    c, _ = client
+    resp = c.get("/contabilita/fatture/passive/da-collegare")
+    assert resp.status_code == 200
+    assert "Niente da smistare" in resp.text
+
+
+def test_smista_fattura_flow(client):
+    c, settings = client
+    f = _fattura_passiva_proposta(settings)
+
+    resp = c.get("/contabilita/fatture/passive/da-collegare")
+    assert "F-77/2026" in resp.text
+
+    form = c.get(f"/contabilita/fatture/{f.id}/smista")
+    assert form.status_code == 200
+    token = get_csrf(c, f"/contabilita/fatture/{f.id}/smista")
+
+    from lys_workflow_hub.core.contabilita_categoria_repository import (
+        ContabilitaCategoriaRepository,
+    )
+    cat = ContabilitaCategoriaRepository(db_path=settings.app_db_path)
+    ricambi = next(x for x in cat.list_all() if x.nome == "Ricambi")
+
+    resp = c.post(
+        f"/contabilita/fatture/{f.id}/smista",
+        data={
+            "csrf_token": token,
+            "categoria_id": str(ricambi.id),
+            "pratica_id": "766",
+            "importo": "1220",
+        },
+    )
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/contabilita/fatture/passive/da-collegare"
+
+    from lys_workflow_hub.core.contabilita_movimento_repository import (
+        ContabilitaMovimentoRepository,
+    )
+    mov = ContabilitaMovimentoRepository(db_path=settings.app_db_path)
+    movimenti = mov.list_by_fattura(f.id)
+    assert len(movimenti) == 1
+    assert movimenti[0].stato == "confermato"
+    assert movimenti[0].pratica_id == 766
+    assert movimenti[0].categoria_id == ricambi.id
+
+
+def test_smista_somma_eccedente_mostra_errore(client):
+    c, settings = client
+    f = _fattura_passiva_proposta(settings)
+    token = get_csrf(c, f"/contabilita/fatture/{f.id}/smista")
+    resp = c.post(
+        f"/contabilita/fatture/{f.id}/smista",
+        data={"csrf_token": token, "categoria_id": "",
+              "pratica_id": "1", "importo": "5000"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 200
+    assert "supera" in resp.text
+
+
+def test_report_dashboard(client):
+    c, settings = client
+    from lys_workflow_hub.core.contabilita_movimento_repository import (
+        ContabilitaMovimentoRepository,
+    )
+    mov = ContabilitaMovimentoRepository(db_path=settings.app_db_path)
+    mov.create(data="2026-03-01", importo="1000", tipo="entrata")
+    mov.create(data="2026-03-02", importo="400", tipo="uscita")
+
+    resp = c.get("/contabilita/report")
+    assert resp.status_code == 200
+    assert "Report costi / ricavi" in resp.text
+    assert "€ 1000.00" in resp.text
+    assert "€ 600.00" in resp.text  # margine

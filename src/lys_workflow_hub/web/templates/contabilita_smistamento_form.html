@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Smista fattura {{ fattura.numero }} · LYS Workflow Hub{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb">
+  <a href="/contabilita/fatture/passive/da-collegare">← Coda da smistare</a>
+</nav>
+
+<header class="pratica-header">
+  <div>
+    <span class="badge">Contabilità gestionale</span>
+    <h1>Smista fattura {{ fattura.numero }}/{{ fattura.anno }}</h1>
+    <p class="meta">
+      {{ "Attiva" if fattura.tipo == "attiva" else "Passiva" }} ·
+      {{ fattura.controparte_nome or fattura.controparte_piva or "—" }} ·
+      {{ fattura.data.strftime("%d/%m/%Y") }} ·
+      totale <strong>€ {{ "%.2f"|format(fattura.importo_totale) }}</strong>
+      (imponibile € {{ "%.2f"|format(fattura.imponibile) }} + IVA € {{ "%.2f"|format(fattura.importo_iva) }})
+    </p>
+  </div>
+</header>
+
+{% if error %}
+  <div class="alert alert-warn"><strong>Errore:</strong> {{ error }}</div>
+{% endif %}
+
+<form method="post" action="/contabilita/fatture/{{ fattura.id }}/smista" class="cessione-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+
+  <section class="card">
+    <div class="form-field">
+      <label for="f_categoria">Categoria <span class="req">*</span></label>
+      <select id="f_categoria" name="categoria_id">
+        <option value="">— nessuna —</option>
+        {% for c in categorie %}
+          <option value="{{ c.id }}" {% if categoria_id == c.id %}selected{% endif %}>
+            {{ c.nome }} ({{ c.tipo_label|lower }})
+          </option>
+        {% endfor %}
+      </select>
+      <small class="hint">Vale per tutta la fattura.</small>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Pratiche</h2>
+    <p class="meta">
+      Assegna una quota della fattura a una o più pratiche WinCar. Lascia vuoto
+      per una spesa non legata a pratiche (affitto, utenze…). Il residuo
+      (totale − somma assegnata) resta come movimento senza pratica.
+    </p>
+    <div id="righe">
+      {% for r in righe %}
+      <div class="riga-smista" style="display:flex; gap:10px; margin-bottom:8px; flex-wrap:wrap;">
+        <input name="pratica_id" type="number" inputmode="numeric" placeholder="N. pratica"
+               value="{{ r.pratica_id }}" style="width:12ch;" />
+        <input name="importo" type="text" inputmode="decimal" placeholder="€ importo"
+               value="{{ r.importo }}" style="width:14ch;" />
+        <button type="button" class="btn btn-sm" onclick="this.parentNode.remove()">−</button>
+      </div>
+      {% endfor %}
+    </div>
+    <button type="button" class="btn btn-sm" id="add-riga">+ Aggiungi pratica</button>
+  </section>
+
+  <div class="form-actions">
+    <a href="/contabilita/fatture/passive/da-collegare" class="btn">Annulla</a>
+    <button type="submit" class="btn btn-primary">Smista e conferma</button>
+  </div>
+</form>
+
+<script>
+  document.getElementById("add-riga").addEventListener("click", function () {
+    var wrap = document.createElement("div");
+    wrap.className = "riga-smista";
+    wrap.style.cssText = "display:flex;gap:10px;margin-bottom:8px;flex-wrap:wrap;";
+    wrap.innerHTML =
+      '<input name="pratica_id" type="number" inputmode="numeric" placeholder="N. pratica" style="width:12ch;" />' +
+      '<input name="importo" type="text" inputmode="decimal" placeholder="€ importo" style="width:14ch;" />' +
+      '<button type="button" class="btn btn-sm">−</button>';
+    wrap.querySelector("button").addEventListener("click", function () { wrap.remove(); });
+    document.getElementById("righe").appendChild(wrap);
+  });
+</script>
+{% endblock %}
