@@ -18,6 +18,7 @@
   <a href="#attivita" class="quick-nav-link">Attività</a>
   <a href="#note" class="quick-nav-link">Note</a>
   <a href="#calendario" class="quick-nav-link">Calendario</a>
+  <a href="#economia" class="quick-nav-link">Economia</a>
   <a href="#foto" class="quick-nav-link">Foto</a>
   <a href="#documenti" class="quick-nav-link">Documenti</a>
 </nav>
@@ -431,6 +432,101 @@
     {{ row("Numero polizza", pratica.assicurazione_cliente.numero_polizza) }}
     {{ row("Agenzia", pratica.assicurazione_cliente.agenzia) }}
   </div>
+</section>
+
+<section class="card" id="economia">
+  <h2>Scheda economica <span class="tag">contabilità gestionale</span></h2>
+  {% set se = scheda_economica %}
+  {% if se is none %}
+    <p class="meta" style="margin:0">Contabilità non disponibile.</p>
+  {% else %}
+    <div style="display:flex; gap:24px; flex-wrap:wrap; margin-bottom:12px;">
+      <div><span class="meta">Entrate</span><br>
+        <strong style="color: var(--lys-success);">€ {{ "%.2f"|format(se.entrate_tot) }}</strong></div>
+      <div><span class="meta">Uscite</span><br>
+        <strong style="color: var(--lys-danger);">€ {{ "%.2f"|format(se.uscite_tot) }}</strong></div>
+      <div><span class="meta">Margine</span><br>
+        <strong style="color: {% if se.margine >= 0 %}var(--lys-success){% else %}var(--lys-danger){% endif %};">
+          € {{ "%.2f"|format(se.margine) }}</strong></div>
+    </div>
+
+    {% if se.movimenti_proposti_n %}
+      <p class="meta" style="margin:0 0 12px;">
+        ⚠️ {{ se.movimenti_proposti_n }} moviment{{ "o" if se.movimenti_proposti_n == 1 else "i" }}
+        propost{{ "o" if se.movimenti_proposti_n == 1 else "i" }} da fatture SDI, non ancora
+        confermat{{ "o" if se.movimenti_proposti_n == 1 else "i" }} (esclus{{ "o" if se.movimenti_proposti_n == 1 else "i" }} dal margine).
+      </p>
+    {% endif %}
+
+    {% if not se.ha_dati %}
+      <p class="meta" style="margin:0">
+        Nessun movimento collegato a questa pratica.
+        <a href="/contabilita/movimenti/nuovo?pratica_id={{ pratica.numero }}">Aggiungine uno</a>.
+      </p>
+    {% else %}
+      {% if se.per_categoria %}
+        <table class="table" style="margin-bottom:12px;">
+          <thead><tr><th>Categoria</th><th style="text-align:right;">Saldo</th></tr></thead>
+          <tbody>
+            {% for r in se.per_categoria %}
+            <tr>
+              <td>{{ r.nome }}{% if r.tipo %} <span class="meta">({{ r.tipo }})</span>{% endif %}</td>
+              <td style="text-align:right; white-space:nowrap;
+                         color: {% if r.totale >= 0 %}var(--lys-success){% else %}var(--lys-danger){% endif %};">
+                € {{ "%.2f"|format(r.totale) }}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% endif %}
+
+      <details style="margin-bottom:8px;">
+        <summary class="meta">Dettaglio movimenti ({{ se.movimenti|length }})</summary>
+        <table class="table" style="margin-top:8px;">
+          <thead><tr><th>Data</th><th>Descrizione</th><th style="text-align:right;">Importo</th></tr></thead>
+          <tbody>
+            {% for m in se.movimenti %}
+            <tr>
+              <td>{{ m.data.strftime("%d/%m/%Y") }}</td>
+              <td><a href="/contabilita/movimenti/{{ m.id }}/modifica">{{ m.descrizione or "—" }}</a></td>
+              <td style="text-align:right; white-space:nowrap;
+                         color: {% if m.tipo == 'entrata' %}var(--lys-success){% else %}var(--lys-danger){% endif %};">
+                {{ "+" if m.tipo == "entrata" else "−" }} € {{ "%.2f"|format(m.importo) }}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </details>
+
+      {% if se.fatture %}
+        <details>
+          <summary class="meta">Fatture collegate ({{ se.fatture|length }})</summary>
+          <table class="table" style="margin-top:8px;">
+            <thead><tr><th>Tipo</th><th>Numero</th><th>Data</th><th>Controparte</th>
+              <th style="text-align:right;">Assegnato</th></tr></thead>
+            <tbody>
+              {% for fc in se.fatture %}
+              <tr>
+                <td>{{ fc.fattura.tipo_label }}</td>
+                <td>{{ fc.fattura.numero }}/{{ fc.fattura.anno }}</td>
+                <td>{{ fc.fattura.data.strftime("%d/%m/%Y") }}</td>
+                <td>{{ fc.fattura.controparte_nome or "—" }}</td>
+                <td style="text-align:right; white-space:nowrap;">€ {{ "%.2f"|format(fc.importo_assegnato) }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </details>
+      {% endif %}
+    {% endif %}
+
+    <p style="margin:12px 0 0;">
+      <a class="btn btn-sm" href="/contabilita/movimenti/nuovo?pratica_id={{ pratica.numero }}">+ Movimento su questa pratica</a>
+      <a class="btn btn-sm" href="/contabilita/movimenti?pratica_id={{ pratica.numero }}">Apri in contabilità</a>
+    </p>
+  {% endif %}
 </section>
 
 <section class="card" id="foto">

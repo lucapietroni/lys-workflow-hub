@@ -75,6 +75,9 @@ from lys_workflow_hub.workflows.cessione_credito import (
     list_signed_pdfs,
     save_signed_pdf,
 )
+from lys_workflow_hub.workflows.contabilita.scheda_economica import (
+    costruisci_scheda_economica,
+)
 from lys_workflow_hub.workflows.verbale_cortesia.archive import list_verbali
 from lys_workflow_hub.web.auth import require_admin, template_context_processor, verify_csrf
 
@@ -668,6 +671,16 @@ def pratica_detail(
     except Exception as exc:  # noqa: BLE001
         logger.warning("Impossibile caricare solleciti per %s: %s", numero, exc)
         context["solleciti_questa"] = []
+    # Scheda economica pratica (Fase 2): entrate/uscite/margine dalla
+    # contabilità gestionale. Admin-only (questa route lo è già); MAI nel
+    # portale esterno.
+    try:
+        context["scheda_economica"] = costruisci_scheda_economica(
+            settings.app_db_path, numero
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Impossibile caricare scheda economica per %s: %s", numero, exc)
+        context["scheda_economica"] = None
     # Parametro URL per conferma cambio stato
     context["stato_aggiornato"] = bool(request.query_params.get("stato_aggiornato"))
     # Verbali cortesia già generati per questa pratica

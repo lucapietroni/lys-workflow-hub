@@ -135,7 +135,7 @@ margine reale per pratica e la spesa per categoria. Non sostituisce il
 software del commercialista. L'IVA nei movimenti (`importo_iva`) è solo
 informativa.
 
-**Fase 1 (fatta)** — modello dati + CRUD:
+**Fase 1 (fatta, v4.22.0)** — modello dati + CRUD:
 - `contabilita_categoria` (ricavo/costo, seed iniziale tipico carrozzeria,
   CRUD; una categoria usata da movimenti si disattiva, non si elimina).
 - `contabilita_movimento` — entrata/uscita, `categoria_id` e `pratica_id`
@@ -151,10 +151,20 @@ informativa.
 - UI: `/contabilita/movimenti` (lista filtrabile categoria/tipo/stato/
   pratica/periodo + totali), form manuale, `/contabilita/categorie`.
 
+**Fase 2 (fatta, v4.23.0)** — scheda economica pratica:
+- `workflows/contabilita/scheda_economica.py::costruisci_scheda_economica`
+  (db_path, pratica_numero) → `SchedaEconomica`: entrate/uscite/margine
+  (solo movimenti `confermato`), ripartizione per categoria, conteggio
+  movimenti `proposto` a parte, elenco fatture collegate (non sommate nel
+  margine, per non contarle due volte).
+- Sezione `#economia` in `pratica_detail.html` (route admin
+  `/pratiche/{numero}` in `web/routes.py`). **Non** in
+  `portale_pratica_detail.html` / `routes_portale.py`.
+- Fixture `client_with_mock_repo` in `tests/test_web_routes.py` ora isola
+  anche `get_app_settings` su DB temp (prima le route `/pratiche/{numero}`
+  scrivevano su `data/lys_hub.db` di sviluppo — vedi nota igiene test 4.21.2).
+
 **Fasi successive (non ancora fatte)**:
-- Fase 2 — scheda economica pratica (query aggregata su `contabilita_movimento`
-  + `contabilita_fattura_pratica`; tab admin-only in `pratica_detail.html`,
-  MAI nel portale esterno).
 - Fase 3 — `integrations/sdi.py` (client astratto: `invia_fattura`,
   `ricevi_fatture`, `ottieni_pdf`; provider scelto: **Openapi**),
   `scripts/run_sdi_poll.py` gemello di `run_polling.py`. Fatture attive:
@@ -943,6 +953,11 @@ Sviluppo contabilità gestionale + SDI (**4.22.0**) sul branch
 `feature/contabilita-sdi`, non ancora in produzione. Changelog per-commit in
 `git log`; le decisioni tecniche non ovvie dal codice (formati, gotcha, cause
 di bug reali) restano documentate nelle sezioni sopra, per sottosistema.
+
+**4.23.0 — Contabilità gestionale, Fase 2 (branch `feature/contabilita-sdi`)**:
+scheda economica pratica (entrate/uscite/margine + ripartizione per categoria
++ fatture collegate) come sezione admin-only in `pratica_detail.html`, mai nel
+portale esterno. Vedi sezione dedicata sopra.
 
 **4.22.0 — Contabilità gestionale, Fase 1 (branch `feature/contabilita-sdi`)**:
 modello dati + CRUD di categorie e movimenti (entrate/uscite analitiche per
