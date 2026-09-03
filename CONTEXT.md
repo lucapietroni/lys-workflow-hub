@@ -263,6 +263,23 @@ validazione endpoint reali in sandbox prima di `SDI_PROVIDER=openapi` in prod.
 - Categoria attive = "Riparazioni carrozzeria" automatica; "coda passive" →
   "coda da smistare" (`coda_da_smistare`, include anche le attive).
 
+**Categoria "Note di credito" (v4.26.1)**:
+- Seed `CATEGORIA_NOTA_CREDITO = "Note di credito"` (tipo costo; il segno lo
+  porta il movimento — uscita per NC attiva = storno ricavo, entrata per NC
+  passiva = storno costo). Garantita anche su DB già popolati (INSERT OR
+  IGNORE in `__init__`).
+- Import + `collega_attive_da_wincar`: se l'XML è una nota di credito
+  (`TipoDocumento` TD04/TD08/TD24 → `fx.is_nota_credito`) usa questa categoria
+  invece di "Riparazioni carrozzeria".
+- `collega_attive_da_wincar` ora sistema ANCHE le attive senza pratica in
+  WinCar (F_NUMPRA≤0, es. NC generiche): assegna solo la categoria + conferma.
+  Summary: `collegate` (con pratica) / `categorizzate` (solo categoria) /
+  `gia_sistemate`. Idempotenza via `_fattura_da_sistemare` (proposto o SDI-mov
+  senza categoria).
+- Descrizione movimento: "Fattura N a &lt;cliente&gt;" per le attive, "da
+  &lt;fornitore&gt;" per le passive (prima usava la direzione del movimento →
+  sbagliato per le NC attive).
+
 ---
 
 ## Workflow D — Verbali cortesia

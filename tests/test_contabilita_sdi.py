@@ -363,21 +363,46 @@ def test_collega_attive_da_wincar_one_shot(db: Path, tmp_path: Path):
         wincar_fatture_repo=FakeWinCarFatture({(40, 2026): 827}),
         categoria_id=ric.id,
     )
-    assert s.collegate == 1 and s.pratica_non_trovata == 1
+    assert s.collegate == 1 and s.categorizzate == 1
     per_numero = {f.numero: f for f in fat.list(tipo="attiva")}
     assert [r.pratica_id for r in fat.list_pratiche(per_numero["40"].id)] == [827]
     m40 = mov.list_by_fattura(per_numero["40"].id)[0]
     assert m40.pratica_id == 827 and m40.categoria_id == ric.id and m40.stato == "confermato"
-    # la 41 resta da smistare
+    # la 41: nessuna pratica in WinCar → solo categoria, confermato
     assert fat.list_pratiche(per_numero["41"].id) == []
+    m41 = mov.list_by_fattura(per_numero["41"].id)[0]
+    assert m41.categoria_id == ric.id and m41.stato == "confermato"
 
-    # idempotente: seconda passata non ricollega la 40
+    # idempotente: seconda passata non tocca nulla
     s2 = collega_attive_da_wincar(
         fattura_repo=fat, movimento_repo=mov,
         wincar_fatture_repo=FakeWinCarFatture({(40, 2026): 827}),
         categoria_id=ric.id,
     )
-    assert s2.collegate == 0 and s2.gia_collegate == 1
+    assert s2.collegate == 0 and s2.categorizzate == 0 and s2.gia_sistemate == 2
+
+
+def test_nota_credito_attiva_usa_categoria_note_di_credito(db: Path, tmp_path: Path):
+    src = tmp_path / "attive"
+    src.mkdir()
+    (src / "nc.xml").write_bytes(_xml(numero="58", data="2026-07-17", tipo_doc="TD04",
+                                     totale="20000.00", imponibile="16393.44",
+                                     imposta="3606.56"))
+    fat = ContabilitaFatturaRepository(db_path=db)
+    mov = ContabilitaMovimentoRepository(db_path=db)
+    cat = ContabilitaCategoriaRepository(db_path=db)
+    ric = next(c for c in cat.list_all() if c.nome == "Riparazioni carrozzeria")
+    nc = next(c for c in cat.list_all() if c.nome == "Note di credito")
+
+    importa_attive_da_dir(
+        src, piva_azienda=PIVA_LYS, fattura_repo=fat, movimento_repo=mov,
+        wincar_fatture_repo=FakeWinCarFatture({}), anno=2026,
+        categoria_id=ric.id, categoria_nc_id=nc.id,
+    )
+    m = mov.list_by_fattura(fat.list(tipo="attiva")[0].id)[0]
+    assert m.categoria_id == nc.id
+    assert m.tipo == "uscita"  # NC attiva = storno di ricavo
+    assert m.stato == "confermato"
 
 
 # --------------------------------------------------------------------------- invio

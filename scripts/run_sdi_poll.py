@@ -96,11 +96,7 @@ def run_once() -> int:
             # commercialista). Anno corrente + cutoff .env. Categoria fissa
             # "Riparazioni carrozzeria" e legame pratica letto da wcFatture.mdb.
             cat_repo = ContabilitaCategoriaRepository(db_path=settings.app_db_path)
-            cat_ric = next(
-                (c.id for c in cat_repo.list_all()
-                 if c.nome.strip().lower() == "riparazioni carrozzeria"),
-                None,
-            )
+            _cats = {c.nome.strip().lower(): c.id for c in cat_repo.list_all()}
             imp = importa_attive_da_dir(
                 Path(settings.sdi_wincar_attive_dir),
                 piva_azienda=piva,
@@ -110,7 +106,8 @@ def run_once() -> int:
                 anno=date.today().year,
                 since=_parse_since(settings.sdi_attive_import_since),
                 come_storico=True,
-                categoria_id=cat_ric,
+                categoria_id=_cats.get("riparazioni carrozzeria"),
+                categoria_nc_id=_cats.get("note di credito"),
                 archivio_dir=archivio,
             )
             log.info(

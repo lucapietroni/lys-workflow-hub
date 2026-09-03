@@ -29,6 +29,7 @@ from fastapi.templating import Jinja2Templates
 from lys_workflow_hub import __version__
 from lys_workflow_hub.config import Settings, get_settings
 from lys_workflow_hub.core.contabilita_categoria_repository import (
+    CATEGORIA_NOTA_CREDITO,
     ContabilitaCategoriaRepository,
     TIPI as CATEGORIA_TIPI,
 )
@@ -516,12 +517,20 @@ def fatture_list(
 CATEGORIA_ATTIVE_DEFAULT = "Riparazioni carrozzeria"
 
 
-def _categoria_attive_id(cat_repo: ContabilitaCategoriaRepository) -> int | None:
-    """id della categoria di default per le fatture attive WinCar."""
+def _categoria_id_per_nome(cat_repo: ContabilitaCategoriaRepository, nome: str) -> int | None:
     for c in cat_repo.list_all():
-        if c.nome.strip().lower() == CATEGORIA_ATTIVE_DEFAULT.lower():
+        if c.nome.strip().lower() == nome.strip().lower():
             return c.id
     return None
+
+
+def _categoria_attive_id(cat_repo: ContabilitaCategoriaRepository) -> int | None:
+    """id della categoria di default per le fatture attive WinCar."""
+    return _categoria_id_per_nome(cat_repo, CATEGORIA_ATTIVE_DEFAULT)
+
+
+def _categoria_nc_id(cat_repo: ContabilitaCategoriaRepository) -> int | None:
+    return _categoria_id_per_nome(cat_repo, CATEGORIA_NOTA_CREDITO)
 
 
 @router.post("/contabilita/fatture/importa-attive")
@@ -558,6 +567,7 @@ async def fatture_importa_attive(
         since=since,
         come_storico=come_storico,
         categoria_id=categoria_id,
+        categoria_nc_id=_categoria_nc_id(cat_repo),
         archivio_dir=Path(settings.app_archivio_fatture),
     )
     stato_txt = "storico (non verranno inviate)" if come_storico else "da inviare"
@@ -593,11 +603,12 @@ def fatture_collega_pratiche(
         movimento_repo=mov_repo,
         wincar_fatture_repo=wincar,
         categoria_id=_categoria_attive_id(cat_repo),
+        categoria_nc_id=_categoria_nc_id(cat_repo),
     )
     msg = (
-        f"Collegamento pratiche: {s.collegate} collegate, "
-        f"{s.gia_collegate} già collegate, {s.pratica_non_trovata} senza pratica "
-        f"in WinCar, {len(s.errori)} errori."
+        f"Sistemate attive: {s.collegate} con pratica, "
+        f"{s.categorizzate} solo categoria (pratica non in WinCar), "
+        f"{s.gia_sistemate} già a posto, {len(s.errori)} errori."
     )
     if s.errori:
         msg += " " + " · ".join(s.errori[:3])

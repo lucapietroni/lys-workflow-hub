@@ -310,6 +310,7 @@ def importa_attive_da_dir(
     since: date | None = None,
     come_storico: bool = True,
     categoria_id: int | None = None,
+    categoria_nc_id: int | None = None,
     archivio_dir: Path | None = None,
 ) -> ImportSummary:
     """Legge gli XML delle fatture attive dalla cartella WinCar.
@@ -361,26 +362,27 @@ def importa_attive_da_dir(
             if movimento_repo is not None:
                 pratica_id = _pratica_da_wincar(wincar_fatture_repo, fx)
                 mov_tipo = TIPO_USCITA if fx.is_nota_credito else TIPO_ENTRATA
-                if pratica_id is not None and categoria_id is not None:
+                eff_cat = categoria_nc_id if fx.is_nota_credito else categoria_id
+                if pratica_id is not None and eff_cat is not None:
                     # legame pieno: riga ponte + movimento confermato su pratica
                     fattura_repo.link_pratica(
                         fattura.id, pratica_id, importo_assegnato=fattura.importo_totale
                     )
                     _crea_movimento_proposto(
                         movimento_repo, fattura=fattura, tipo=mov_tipo,
-                        stato=STATO_CONFERMATO, categoria_id=categoria_id,
+                        stato=STATO_CONFERMATO, categoria_id=eff_cat,
                         pratica_id=pratica_id,
                     )
                     summary.collegate_pratica += 1
                 else:
                     mov_stato = (
                         STATO_CONFERMATO
-                        if (come_storico and categoria_id is not None)
+                        if (come_storico and eff_cat is not None)
                         else STATO_PROPOSTO
                     )
                     _crea_movimento_proposto(
                         movimento_repo, fattura=fattura, tipo=mov_tipo,
-                        stato=mov_stato, categoria_id=categoria_id,
+                        stato=mov_stato, categoria_id=eff_cat,
                     )
         except Exception as exc:  # noqa: BLE001
             summary.errori.append(f"{xml_file.name}: {exc}")
@@ -407,10 +409,34 @@ def _pratica_da_wincar(wincar_fatture_repo, fx: FatturaXML) -> int | None:
 @dataclass
 class CollegamentoSummary:
     esaminate: int = 0
-    collegate: int = 0
-    pratica_non_trovata: int = 0
-    gia_collegate: int = 0
+    collegate: int = 0          # categoria + pratica
+    categorizzate: int = 0      # solo categoria (nessuna pratica in WinCar)
+    gia_sistemate: int = 0
     errori: list[str] = field(default_factory=list)
+
+
+def _fattura_e_nota_credito_row(fattura: Fattura) -> bool:
+    if fattura.xml_path and Path(fattura.xml_path).is_file():
+        try:
+            return parse_fattura_xml(Path(fattura.xml_path).read_bytes()).is_nota_credito
+        except Exception:  # noqa: BLE001
+            pass
+    return False
+
+
+def _fattura_da_sistemare(
+    movimento_repo: ContabilitaMovimentoRepository, fattura_id: int
+) -> bool:
+    """True se la fattura ha ancora movimenti SDI da smistare: nessun
+    movimento, oppure un movimento ``proposto``, oppure un movimento SDI
+    senza categoria."""
+    sdi_movs = [
+        m for m in movimento_repo.list_by_fattura(fattura_id)
+        if m.origine == ORIGINE_FATTURA_SDI
+    ]
+    if not sdi_movs:
+        return True
+    return any(m.stato == STATO_PROPOSTO or m.categoria_id is None for m in sdi_movs)
 
 
 def collega_attive_da_wincar(
@@ -419,12 +445,14 @@ def collega_attive_da_wincar(
     movimento_repo: ContabilitaMovimentoRepository,
     wincar_fatture_repo,
     categoria_id: int | None,
+    categoria_nc_id: int | None = None,
     anno: int | None = None,
 ) -> CollegamentoSummary:
-    """Per ogni fattura ATTIVA non ancora legata a una pratica, cerca il
-    numero pratica in ``wcFatture.mdb`` e la smista (categoria + pratica),
-    riusando :func:`smista_fattura`. Idempotente: le fatture già collegate
-    vengono saltate. Usato una tantum per lo storico già importato."""
+    """Sistema le fatture ATTIVE già importate ma non ancora attribuite:
+    assegna la categoria ("Riparazioni carrozzeria", o "Note di credito" se
+    l'XML è una NC) e — se il numero pratica è in ``wcFatture.mdb`` — la
+    collega alla pratica. Riusa :func:`smista_fattura`. Idempotente: salta le
+    fatture già legate a una pratica. Una tantum per lo storico."""
     from lys_workflow_hub.workflows.contabilita.smistamento import (
         Assegnazione,
         smista_fattura,
@@ -433,24 +461,28 @@ def collega_attive_da_wincar(
     summary = CollegamentoSummary()
     for fattura in fattura_repo.list(tipo=TIPO_ATTIVA, anno=anno, limit=100000):
         summary.esaminate += 1
-        if fattura_repo.list_pratiche(fattura.id):
-            summary.gia_collegate += 1
+        if not _fattura_da_sistemare(movimento_repo, fattura.id):
+            summary.gia_sistemate += 1
             continue
+        cat = categoria_nc_id if _fattura_e_nota_credito_row(fattura) else categoria_id
         pratica_id = _pratica_da_wincar_fattura(wincar_fatture_repo, fattura)
-        if pratica_id is None:
-            summary.pratica_non_trovata += 1
-            continue
+        assegnazioni = (
+            [Assegnazione(pratica_id=pratica_id, importo=fattura.importo_totale)]
+            if pratica_id is not None
+            else []
+        )
         try:
             smista_fattura(
                 fattura_repo=fattura_repo,
                 movimento_repo=movimento_repo,
                 fattura_id=fattura.id,
-                categoria_id=categoria_id,
-                assegnazioni=[
-                    Assegnazione(pratica_id=pratica_id, importo=fattura.importo_totale)
-                ],
+                categoria_id=cat,
+                assegnazioni=assegnazioni,
             )
-            summary.collegate += 1
+            if pratica_id is not None:
+                summary.collegate += 1
+            else:
+                summary.categorizzate += 1
         except Exception as exc:  # noqa: BLE001
             summary.errori.append(f"Fattura {fattura.numero}/{fattura.anno}: {exc}")
     return summary
@@ -619,7 +651,7 @@ def _crea_movimento_proposto(
     entra subito nei report (usato per l'import dello storico attive)."""
     if movimento_repo.list_by_fattura(fattura.id):
         return
-    verso = "da" if tipo == TIPO_USCITA else "a"
+    verso = "a" if fattura.tipo == TIPO_ATTIVA else "da"
     descr = f"Fattura {fattura.numero}/{fattura.anno} {verso} {fattura.controparte_nome}".strip()
     movimento_repo.create(
         data=fattura.data,

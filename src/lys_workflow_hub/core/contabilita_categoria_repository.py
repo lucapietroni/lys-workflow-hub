@@ -33,10 +33,16 @@ TIPO_LABELS = {
     TIPO_COSTO: "Costo",
 }
 
+# Nome della categoria per le note di credito (TipoDocumento TD04/TD08/TD24
+# nell'XML). Il segno lo porta il movimento (uscita per una NC attiva =
+# storno di ricavo, entrata per una NC passiva = storno di costo).
+CATEGORIA_NOTA_CREDITO = "Note di credito"
+
 # Categorie inserite al primo avvio (tabella vuota). (nome, tipo).
 _SEED_CATEGORIE: tuple[tuple[str, str], ...] = (
     ("Riparazioni carrozzeria", TIPO_RICAVO),
     ("Rivalse e franchigie", TIPO_RICAVO),
+    (CATEGORIA_NOTA_CREDITO, TIPO_COSTO),
     ("Ricambi", TIPO_COSTO),
     ("Manodopera", TIPO_COSTO),
     ("Verniciatura", TIPO_COSTO),
@@ -99,8 +105,8 @@ class ContabilitaCategoriaRepository:
             n = conn.execute(
                 "SELECT COUNT(*) AS n FROM contabilita_categoria"
             ).fetchone()["n"]
+            now = _iso_now()
             if not n:
-                now = _iso_now()
                 # OR IGNORE: se due processi inizializzano un DB nuovo in
                 # parallelo, il secondo non deve sollevare IntegrityError qui.
                 conn.executemany(
@@ -111,6 +117,13 @@ class ContabilitaCategoriaRepository:
                 logger.info(
                     "contabilita_categoria: inserite %d categorie di partenza",
                     len(_SEED_CATEGORIE),
+                )
+            else:
+                # Categorie aggiunte dopo il primo rilascio su DB già popolati.
+                conn.execute(
+                    "INSERT OR IGNORE INTO contabilita_categoria "
+                    "(nome, tipo, attiva, created_at) VALUES (?, ?, 1, ?)",
+                    (CATEGORIA_NOTA_CREDITO, TIPO_COSTO, now),
                 )
 
     @contextmanager

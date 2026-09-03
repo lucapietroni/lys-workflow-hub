@@ -185,5 +185,5 @@ def _dedup(assegnazioni: list[Assegnazione]) -> list[Assegnazione]:
 
 
 def _descr(fattura: Fattura, tipo_mov: str) -> str:
-    verso = "da" if tipo_mov == TIPO_USCITA else "a"
+    verso = "a" if fattura.tipo == TIPO_ATTIVA else "da"
     return f"Fattura {fattura.numero}/{fattura.anno} {verso} {fattura.controparte_nome}".strip()
