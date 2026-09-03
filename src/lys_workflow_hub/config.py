@@ -152,6 +152,15 @@ class Settings(BaseSettings):
     sdi_wincar_attive_dir: Path = Field(
         default=Path(r"C:\WinCar\FattureElettroniche\14521721002\Attive")
     )
+    # Cutoff di sicurezza per l'import delle fatture attive: le fatture con
+    # data documento precedente vengono ignorate anche se si sbaglia l'anno
+    # nel form. Vuoto = nessun cutoff.
+    sdi_attive_import_since: str = Field(default="2026-01-01")
+    # Se True il ciclo run_sdi_poll.py inoltra AUTOMATICAMENTE allo SDI le
+    # fatture attive in stato 'da_inviare'. Default False: le attive le invia
+    # ancora WinCar / il commercialista, qui si importano solo (stato
+    # 'storico'); l'invio da qui resta un'azione manuale da /contabilita/fatture.
+    sdi_invio_attive_auto: bool = Field(default=False)
     # Archivio interno degli XML/PDF fattura scaricati/inoltrati (per anno).
     app_archivio_fatture: Path = Field(default=Path(r"C:\LYSApp\Fatture"))
     # Data di taglio per la sincronizzazione passive dallo SDI (YYYY-MM-DD).

@@ -222,6 +222,22 @@ validazione endpoint reali in sandbox prima di `SDI_PROVIDER=openapi` in prod.
 - Redirect con query param url-encoded; seed categorie `INSERT OR IGNORE`;
   `run_sdi_poll.py` notifica anche via FCM (come `run_polling.py`).
 
+**Import fatture attive rivisto (v4.25.2)**:
+- `importa_attive_da_dir(..., anno, since, come_storico, categoria_id,
+  movimento_repo)`: filtra per anno documento + cutoff data
+  (`SDI_ATTIVE_IMPORT_SINCE`, default 2026-01-01). Non importa più
+  indiscriminatamente tutta la cartella.
+- `come_storico=True` (default): stato fattura `storico` → **mai** re-inoltrata
+  da `invia_attive_pendenti`. Le attive le trasmette ancora WinCar/il
+  commercialista. Crea il movimento di ricavo: `confermato` (nei report) se
+  passi una categoria nel form, altrimenti `proposto` da smistare.
+- `marca_da_inviare(fattura_repo, id)` + bottone per-riga "Segna da inviare"
+  (`storico` → `da_inviare`) per le poche fatture non ancora trasmesse.
+- Form import su `/contabilita/fatture` (anno, categoria ricavo, checkbox
+  "già inviate").
+- `run_sdi_poll.py`: import attive come `storico` (anno corrente + cutoff);
+  invio attive automatico SOLO se `SDI_INVIO_ATTIVE_AUTO=true` (default false).
+
 ---
 
 ## Workflow D — Verbali cortesia

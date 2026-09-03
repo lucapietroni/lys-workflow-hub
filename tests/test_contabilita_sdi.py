@@ -177,22 +177,92 @@ def test_fake_client_invio():
 # --------------------------------------------------------------------------- import attive
 
 
-def test_importa_attive_da_dir_idempotente(db: Path, tmp_path: Path):
+def test_importa_attive_default_storico_idempotente(db: Path, tmp_path: Path):
     src = tmp_path / "wincar_attive"
     src.mkdir()
-    (src / "IT_00001.xml").write_bytes(_xml(numero="1"))
-    (src / "IT_00002.xml").write_bytes(_xml(numero="2"))
+    (src / "IT_00001.xml").write_bytes(_xml(numero="1", data="2026-03-01"))
+    (src / "IT_00002.xml").write_bytes(_xml(numero="2", data="2026-04-01"))
     fat = ContabilitaFatturaRepository(db_path=db)
+    mov = ContabilitaMovimentoRepository(db_path=db)
 
-    s1 = importa_attive_da_dir(src, piva_azienda=PIVA_LYS, fattura_repo=fat)
+    s1 = importa_attive_da_dir(
+        src, piva_azienda=PIVA_LYS, fattura_repo=fat, movimento_repo=mov, anno=2026,
+    )
     assert (s1.esaminati, s1.nuove, s1.duplicate) == (2, 2, 0)
     fatture = fat.list(tipo="attiva")
-    assert {f.numero for f in fatture} == {"1", "2"}
-    assert all(f.stato_sdi == STATO_SDI_DA_INVIARE for f in fatture)
+    assert all(f.stato_sdi == "storico" for f in fatture)  # NON re-inviate
+    # senza categoria → movimenti proposto
+    for f in fatture:
+        m = mov.list_by_fattura(f.id)[0]
+        assert m.tipo == "entrata" and m.stato == "proposto"
 
-    s2 = importa_attive_da_dir(src, piva_azienda=PIVA_LYS, fattura_repo=fat)
+    s2 = importa_attive_da_dir(
+        src, piva_azienda=PIVA_LYS, fattura_repo=fat, movimento_repo=mov, anno=2026,
+    )
     assert (s2.nuove, s2.duplicate) == (0, 2)
-    assert len(fat.list(tipo="attiva")) == 2
+
+
+def test_importa_attive_filtro_anno_e_cutoff(db: Path, tmp_path: Path):
+    from datetime import date
+
+    src = tmp_path / "attive"
+    src.mkdir()
+    (src / "a.xml").write_bytes(_xml(numero="2025", data="2025-11-30"))
+    (src / "b.xml").write_bytes(_xml(numero="2026a", data="2026-02-10"))
+    (src / "c.xml").write_bytes(_xml(numero="2026b", data="2026-07-20"))
+    fat = ContabilitaFatturaRepository(db_path=db)
+
+    s = importa_attive_da_dir(
+        src, piva_azienda=PIVA_LYS, fattura_repo=fat,
+        anno=2026, since=date(2026, 1, 1),
+    )
+    assert s.nuove == 2
+    assert s.fuori_periodo == 1  # la 2025
+    assert {f.numero for f in fat.list(tipo="attiva")} == {"2026a", "2026b"}
+
+
+def test_importa_attive_con_categoria_crea_movimento_confermato(db: Path, tmp_path: Path):
+    src = tmp_path / "attive"
+    src.mkdir()
+    (src / "a.xml").write_bytes(_xml(numero="9", data="2026-05-01", totale="1220.00"))
+    fat = ContabilitaFatturaRepository(db_path=db)
+    mov = ContabilitaMovimentoRepository(db_path=db)
+    from lys_workflow_hub.core.contabilita_categoria_repository import (
+        ContabilitaCategoriaRepository,
+    )
+    cat = ContabilitaCategoriaRepository(db_path=db)
+    ric = next(c for c in cat.list_all() if c.nome == "Riparazioni carrozzeria")
+
+    importa_attive_da_dir(
+        src, piva_azienda=PIVA_LYS, fattura_repo=fat, movimento_repo=mov,
+        anno=2026, categoria_id=ric.id,
+    )
+    m = mov.list_by_fattura(fat.list(tipo="attiva")[0].id)[0]
+    assert m.stato == "confermato" and m.categoria_id == ric.id and m.tipo == "entrata"
+
+
+def test_marca_da_inviare_poi_invio(db: Path, tmp_path: Path):
+    from lys_workflow_hub.workflows.contabilita.sdi_import import marca_da_inviare
+
+    src = tmp_path / "attive"
+    src.mkdir()
+    (src / "a.xml").write_bytes(_xml(numero="77", data="2026-05-01", totale="1220.00"))
+    fat = ContabilitaFatturaRepository(db_path=db)
+    mov = ContabilitaMovimentoRepository(db_path=db)
+    importa_attive_da_dir(
+        src, piva_azienda=PIVA_LYS, fattura_repo=fat, movimento_repo=mov, anno=2026,
+    )
+    fid = fat.list(tipo="attiva")[0].id
+
+    # storico → non viene inviata
+    assert invia_attive_pendenti(client=FakeSdiClient(), fattura_repo=fat,
+                                 movimento_repo=mov).inviate == 0
+
+    marca_da_inviare(fat, fid)
+    assert fat.get(fid).stato_sdi == STATO_SDI_DA_INVIARE
+    s = invia_attive_pendenti(client=FakeSdiClient(), fattura_repo=fat, movimento_repo=mov)
+    assert s.inviate == 1
+    assert fat.get(fid).stato_sdi == STATO_SDI_INVIATA
 
 
 def test_importa_attive_dir_mancante(db: Path, tmp_path: Path):
@@ -208,10 +278,12 @@ def test_importa_attive_dir_mancante(db: Path, tmp_path: Path):
 def test_invia_attive_pendenti_crea_movimento_proposto(db: Path, tmp_path: Path):
     src = tmp_path / "attive"
     src.mkdir()
-    (src / "a.xml").write_bytes(_xml(numero="55", totale="1220.00"))
+    (src / "a.xml").write_bytes(_xml(numero="55", data="2026-05-01", totale="1220.00"))
     fat = ContabilitaFatturaRepository(db_path=db)
     mov = ContabilitaMovimentoRepository(db_path=db)
-    importa_attive_da_dir(src, piva_azienda=PIVA_LYS, fattura_repo=fat)
+    importa_attive_da_dir(
+        src, piva_azienda=PIVA_LYS, fattura_repo=fat, anno=2026, come_storico=False,
+    )
 
     client = FakeSdiClient()
     s = invia_attive_pendenti(client=client, fattura_repo=fat, movimento_repo=mov)
@@ -233,10 +305,11 @@ def test_invia_attive_pendenti_crea_movimento_proposto(db: Path, tmp_path: Path)
 def test_invia_disabilitato_non_fa_nulla(db: Path, tmp_path: Path):
     src = tmp_path / "attive"
     src.mkdir()
-    (src / "a.xml").write_bytes(_xml(numero="1"))
+    (src / "a.xml").write_bytes(_xml(numero="1", data="2026-05-01"))
     fat = ContabilitaFatturaRepository(db_path=db)
     mov = ContabilitaMovimentoRepository(db_path=db)
-    importa_attive_da_dir(src, piva_azienda=PIVA_LYS, fattura_repo=fat)
+    importa_attive_da_dir(src, piva_azienda=PIVA_LYS, fattura_repo=fat,
+                          anno=2026, come_storico=False)
     s = invia_attive_pendenti(client=FakeSdiClient(), fattura_repo=fat,
                               movimento_repo=mov, disabilitato=True)
     assert s.tentate == 0

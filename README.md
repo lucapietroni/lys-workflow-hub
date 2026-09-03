@@ -6,7 +6,7 @@ genera documenti precompilati, monitora le risposte delle compagnie assicurative
 via PEC/email, classifica le risposte con AI e genera alert mirati.
 
 > `main`: **4.21.3** in produzione su `hub.lysauto.it` ·
-> branch `feature/contabilita-sdi`: **4.25.1** (contabilità gestionale + SDI,
+> branch `feature/contabilita-sdi`: **4.25.2** (contabilità gestionale + SDI,
 > non ancora in produzione)
 
 ---
@@ -45,10 +45,13 @@ via PEC/email, classifica le risposte con AI e genera alert mirati.
   margine, ripartizione per categoria. Visibile solo agli admin, mai nel
   portale esterno.
 - Fatturazione elettronica SDI: WinCar genera gli XML delle fatture attive,
-  la piattaforma li importa e li inoltra allo SDI (provider dietro
-  interfaccia astratta, candidato Openapi); le fatture passive ricevute dallo
-  SDI generano una riga fattura + un movimento proposto da smistare. Ciclo
-  schedulabile (`run_sdi_poll.py`) o azioni manuali da `/contabilita/fatture`.
+  la piattaforma li importa (filtro per anno + cutoff data). Di default le
+  attive sono marcate «storico» — già trasmesse da WinCar/commercialista,
+  non re-inviate — e servono solo per la contabilità; l'inoltro allo SDI da
+  qui è opzionale e manuale (provider dietro interfaccia astratta, candidato
+  Openapi). Le fatture passive ricevute dallo SDI generano una riga fattura +
+  un movimento proposto da smistare. Ciclo schedulabile (`run_sdi_poll.py`)
+  o azioni manuali da `/contabilita/fatture`.
 - Coda "fatture passive da smistare" con assegnazione categoria/pratica ed
   eventuale split su più pratiche; dashboard costi/ricavi per categoria e
   periodo.

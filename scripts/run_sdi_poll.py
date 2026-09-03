@@ -50,6 +50,7 @@ from lys_workflow_hub.integrations.notifier import (  # noqa: E402
 )
 from lys_workflow_hub.integrations.sdi import build_sdi_client  # noqa: E402
 from lys_workflow_hub.workflows.contabilita.sdi_import import (  # noqa: E402
+    InvioSummary,
     importa_attive_da_dir,
     invia_attive_pendenti,
     sincronizza_passive,
@@ -85,31 +86,46 @@ def run_once() -> int:
             piva = settings.sdi_piva_azienda
             archivio = Path(settings.app_archivio_fatture)
 
+            # Import attive: come 'storico' (le invia WinCar / il
+            # commercialista). L'anno è quello corrente; il cutoff .env
+            # protegge da import troppo indietro. Nessuna categoria → i
+            # movimenti restano 'proposto' da smistare.
             imp = importa_attive_da_dir(
                 Path(settings.sdi_wincar_attive_dir),
                 piva_azienda=piva,
                 fattura_repo=fattura_repo,
+                movimento_repo=movimento_repo,
+                anno=date.today().year,
+                since=_parse_since(settings.sdi_attive_import_since),
+                come_storico=True,
                 archivio_dir=archivio,
             )
             log.info(
-                "Attive import: esaminati=%d nuove=%d duplicate=%d errori=%d",
-                imp.esaminati, imp.nuove, imp.duplicate, len(imp.errori),
+                "Attive import: esaminati=%d nuove=%d duplicate=%d fuori_periodo=%d errori=%d",
+                imp.esaminati, imp.nuove, imp.duplicate, imp.fuori_periodo, len(imp.errori),
             )
             for e in imp.errori:
                 log.warning("import attive: %s", e)
 
-            inv = invia_attive_pendenti(
-                client=client,
-                fattura_repo=fattura_repo,
-                movimento_repo=movimento_repo,
-                disabilitato=bool(settings.sdi_invio_disabilitato),
-            )
-            log.info(
-                "Attive invio: tentate=%d inviate=%d scartate=%d movimenti=%d errori=%d",
-                inv.tentate, inv.inviate, inv.scartate, inv.movimenti_creati, len(inv.errori),
-            )
-            for e in inv.errori:
-                log.warning("invio attive: %s", e)
+            # Invio attive allo SDI: SOLO se esplicitamente abilitato
+            # (SDI_INVIO_ATTIVE_AUTO). Default: non inviamo nulla in automatico,
+            # l'invio è un'azione manuale da /contabilita/fatture.
+            inv = InvioSummary()
+            if settings.sdi_invio_attive_auto:
+                inv = invia_attive_pendenti(
+                    client=client,
+                    fattura_repo=fattura_repo,
+                    movimento_repo=movimento_repo,
+                    disabilitato=bool(settings.sdi_invio_disabilitato),
+                )
+                log.info(
+                    "Attive invio: tentate=%d inviate=%d scartate=%d movimenti=%d errori=%d",
+                    inv.tentate, inv.inviate, inv.scartate, inv.movimenti_creati, len(inv.errori),
+                )
+                for e in inv.errori:
+                    log.warning("invio attive: %s", e)
+            else:
+                log.info("Attive invio: disattivato (SDI_INVIO_ATTIVE_AUTO=false).")
 
             sync = sincronizza_passive(
                 client=client,

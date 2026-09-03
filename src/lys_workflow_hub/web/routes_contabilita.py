@@ -51,6 +51,7 @@ from lys_workflow_hub.workflows.contabilita.report import costruisci_report
 from lys_workflow_hub.workflows.contabilita.sdi_import import (
     importa_attive_da_dir,
     invia_attive_pendenti,
+    marca_da_inviare,
     sincronizza_passive,
 )
 from lys_workflow_hub.workflows.contabilita.smistamento import (
@@ -482,6 +483,7 @@ def fatture_list(
     esito: str | None = None,
     fat_repo: ContabilitaFatturaRepository = Depends(get_fattura_repo),
     mov_repo: ContabilitaMovimentoRepository = Depends(get_movimento_repo),
+    cat_repo: ContabilitaCategoriaRepository = Depends(get_categoria_repo),
     settings: Settings = Depends(get_contabilita_settings),
 ) -> HTMLResponse:
     f_tipo = tipo if tipo in (TIPO_ATTIVA, TIPO_PASSIVA) else None
@@ -490,6 +492,8 @@ def fatture_list(
     pratiche_count = {f.id: len(fat_repo.list_pratiche(f.id)) for f in fatture}
     da_smistare = len(mov_repo.fattura_ids_con_proposti())
 
+    from datetime import date as _date
+
     context = _ctx()
     context.update(
         fatture=fatture,
@@ -497,6 +501,9 @@ def fatture_list(
         coda_passive=da_smistare,
         filtri={"tipo": tipo or "", "anno": anno or ""},
         esito=esito,
+        categorie=cat_repo.list_all(solo_attive=True),
+        anno_default=_date.today().year,
+        import_since=settings.sdi_attive_import_since,
         sdi_provider=settings.sdi_provider,
         sdi_test_mode=settings.sdi_test_mode,
         sdi_dir=str(settings.sdi_wincar_attive_dir),
@@ -505,20 +512,61 @@ def fatture_list(
 
 
 @router.post("/contabilita/fatture/importa-attive")
-def fatture_importa_attive(
+async def fatture_importa_attive(
+    request: Request,
     fat_repo: ContabilitaFatturaRepository = Depends(get_fattura_repo),
+    mov_repo: ContabilitaMovimentoRepository = Depends(get_movimento_repo),
     settings: Settings = Depends(get_contabilita_settings),
 ) -> RedirectResponse:
+    from datetime import date as _date
+
+    form = await request.form()
+    anno = _int_or_none(_form_str(form, "anno")) or _date.today().year
+    categoria_id = _int_or_none(_form_str(form, "categoria_id"))
+    come_storico = _form_str(form, "come_storico") != "0"
+
+    since = None
+    if (settings.sdi_attive_import_since or "").strip():
+        try:
+            since = _date.fromisoformat(settings.sdi_attive_import_since.strip())
+        except ValueError:
+            since = None
+
     s = importa_attive_da_dir(
         Path(settings.sdi_wincar_attive_dir),
         piva_azienda=settings.sdi_piva_azienda,
         fattura_repo=fat_repo,
+        movimento_repo=mov_repo,
+        anno=anno,
+        since=since,
+        come_storico=come_storico,
+        categoria_id=categoria_id,
         archivio_dir=Path(settings.app_archivio_fatture),
     )
-    msg = f"Import attive: {s.nuove} nuove, {s.duplicate} già presenti, {len(s.errori)} errori."
+    stato_txt = "storico (non verranno inviate)" if come_storico else "da inviare"
+    msg = (
+        f"Import attive {anno} [{stato_txt}]: {s.nuove} nuove, "
+        f"{s.duplicate} già presenti, {s.fuori_periodo} fuori periodo, "
+        f"{len(s.errori)} errori."
+    )
     if s.errori:
         msg += " " + " · ".join(s.errori[:3])
     return _redir("/contabilita/fatture", esito=msg)
+
+
+@router.post("/contabilita/fatture/{fattura_id}/segna-da-inviare")
+def fattura_segna_da_inviare(
+    fattura_id: int,
+    fat_repo: ContabilitaFatturaRepository = Depends(get_fattura_repo),
+) -> RedirectResponse:
+    try:
+        marca_da_inviare(fat_repo, fattura_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    return _redir(
+        "/contabilita/fatture",
+        esito="Fattura segnata 'da inviare'. Usa 'Invia attive allo SDI' per trasmetterla.",
+    )
 
 
 @router.post("/contabilita/fatture/invia-sdi")

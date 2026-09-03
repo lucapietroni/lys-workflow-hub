@@ -17,7 +17,12 @@ from tests.conftest import get_csrf, login_as_admin
 
 @pytest.fixture
 def client(tmp_path: Path, authenticated_app):
-    settings = Settings(wincar_archivio=tmp_path, app_db_path=tmp_path / "app.db")
+    settings = Settings(
+        wincar_archivio=tmp_path,
+        app_db_path=tmp_path / "app.db",
+        sdi_wincar_attive_dir=tmp_path / "wincar_attive",
+        app_archivio_fatture=tmp_path / "archivio_fatture",
+    )
     app.dependency_overrides[get_contabilita_settings] = lambda: settings
     c = TestClient(app, follow_redirects=False)
     login_as_admin(c)
@@ -151,6 +156,61 @@ def test_fatture_importa_attive_dir_mancante(client):
     )
     assert resp.status_code == 303
     assert "esito=" in resp.headers["location"]
+
+
+def _scrivi_xml_attiva(settings, numero="10", data="2026-05-01"):
+    d = settings.sdi_wincar_attive_dir
+    d.mkdir(parents=True, exist_ok=True)
+    xml = (
+        '<?xml version="1.0"?><p:FatturaElettronica '
+        'xmlns:p="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2">'
+        "<FatturaElettronicaHeader><CedentePrestatore><DatiAnagrafici>"
+        "<IdFiscaleIVA><IdCodice>14521721002</IdCodice></IdFiscaleIVA>"
+        "<Anagrafica><Denominazione>LYS AUTO SRL</Denominazione></Anagrafica>"
+        "</DatiAnagrafici></CedentePrestatore><CessionarioCommittente><DatiAnagrafici>"
+        "<IdFiscaleIVA><IdCodice>09876543210</IdCodice></IdFiscaleIVA>"
+        "<Anagrafica><Denominazione>ROSSI MARIO</Denominazione></Anagrafica>"
+        "</DatiAnagrafici></CessionarioCommittente></FatturaElettronicaHeader>"
+        "<FatturaElettronicaBody><DatiGenerali><DatiGeneraliDocumento>"
+        f"<TipoDocumento>TD01</TipoDocumento><Data>{data}</Data><Numero>{numero}</Numero>"
+        "<ImportoTotaleDocumento>1220.00</ImportoTotaleDocumento>"
+        "</DatiGeneraliDocumento></DatiGenerali><DatiBeniServizi><DatiRiepilogo>"
+        "<ImponibileImporto>1000.00</ImponibileImporto><Imposta>220.00</Imposta>"
+        "</DatiRiepilogo></DatiBeniServizi></FatturaElettronicaBody></p:FatturaElettronica>"
+    )
+    (d / f"IT_{numero}.xml").write_text(xml, encoding="utf-8")
+
+
+def test_fatture_importa_attive_come_storico_e_segna_da_inviare(client):
+    c, settings = client
+    _scrivi_xml_attiva(settings, numero="500", data="2026-06-01")
+    _scrivi_xml_attiva(settings, numero="499", data="2025-06-01")  # fuori periodo
+
+    token = get_csrf(c, "/contabilita/fatture")
+    resp = c.post("/contabilita/fatture/importa-attive", data={
+        "csrf_token": token, "anno": "2026", "categoria_id": "", "come_storico": "1",
+    })
+    assert resp.status_code == 303
+
+    from lys_workflow_hub.core.contabilita_fattura_repository import (
+        ContabilitaFatturaRepository,
+    )
+    fat = ContabilitaFatturaRepository(db_path=settings.app_db_path)
+    attive = fat.list(tipo="attiva")
+    assert {f.numero for f in attive} == {"500"}  # 2025 esclusa dal cutoff
+    fid = attive[0].id
+    assert fat.get(fid).stato_sdi == "storico"
+
+    # storico → invio bulk non la tocca
+    token = get_csrf(c, "/contabilita/fatture")
+    c.post("/contabilita/fatture/invia-sdi", data={"csrf_token": token})
+    assert fat.get(fid).stato_sdi == "storico"
+
+    # segna da inviare
+    token = get_csrf(c, "/contabilita/fatture")
+    resp = c.post(f"/contabilita/fatture/{fid}/segna-da-inviare", data={"csrf_token": token})
+    assert resp.status_code == 303
+    assert fat.get(fid).stato_sdi == "da_inviare"
 
 
 def test_fatture_invia_sdi_nessuna_pendente(client):

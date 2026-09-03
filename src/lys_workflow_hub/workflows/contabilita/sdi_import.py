@@ -36,6 +36,7 @@ from lys_workflow_hub.core.contabilita_fattura_repository import (
 )
 from lys_workflow_hub.core.contabilita_movimento_repository import (
     ORIGINE_FATTURA_SDI,
+    STATO_CONFERMATO,
     STATO_PROPOSTO,
     TIPO_ENTRATA,
     TIPO_USCITA,
@@ -52,6 +53,9 @@ STATO_SDI_DA_INVIARE = "da_inviare"
 STATO_SDI_INVIATA = "inviata"
 STATO_SDI_SCARTATA = "scartata"
 STATO_SDI_RICEVUTA = "ricevuta"
+# Fattura attiva già trasmessa allo SDI da un altro canale (WinCar /
+# commercialista): importata solo per la contabilità, mai re-inoltrata.
+STATO_SDI_STORICO = "storico"
 
 # TipoDocumento FatturaPA che sono note di credito (segno invertito nel movimento).
 _TIPI_NOTA_CREDITO = {"TD04", "TD08"}
@@ -231,6 +235,7 @@ class ImportSummary:
     esaminati: int = 0
     nuove: int = 0
     duplicate: int = 0
+    fuori_periodo: int = 0
     errori: list[str] = field(default_factory=list)
 
 
@@ -298,15 +303,34 @@ def importa_attive_da_dir(
     *,
     piva_azienda: str,
     fattura_repo: ContabilitaFatturaRepository,
+    movimento_repo: ContabilitaMovimentoRepository | None = None,
+    anno: int | None = None,
+    since: date | None = None,
+    come_storico: bool = True,
+    categoria_id: int | None = None,
     archivio_dir: Path | None = None,
 ) -> ImportSummary:
-    """Legge gli XML delle fatture attive dalla cartella WinCar e crea le
-    righe ``contabilita_fattura`` (stato ``da_inviare``). Idempotente."""
+    """Legge gli XML delle fatture attive dalla cartella WinCar.
+
+    - ``anno`` (se dato): importa solo le fatture con quell'anno documento.
+    - ``since`` (se dato): scarta le fatture con data precedente (cutoff di
+      sicurezza, tipicamente ``SDI_ATTIVE_IMPORT_SINCE``).
+    - ``come_storico`` (default): la fattura è già stata trasmessa allo SDI da
+      un altro canale → stato ``storico``, MAI re-inoltrata da
+      ``invia_attive_pendenti``. Se ``False`` → stato ``da_inviare``.
+    - ``movimento_repo`` + ``categoria_id``: se passati, crea per ogni fattura
+      nuova un movimento di ricavo. ``confermato`` (entra nei report) se
+      storico e con categoria; altrimenti ``proposto`` da smistare.
+
+    Idempotente.
+    """
     summary = ImportSummary()
     d = Path(dir_path)
     if not d.is_dir():
         summary.errori.append(f"Cartella non trovata: {d}")
         return summary
+
+    stato_sdi = STATO_SDI_STORICO if come_storico else STATO_SDI_DA_INVIARE
 
     for xml_file in sorted(d.glob("*.xml")):
         summary.esaminati += 1
@@ -317,18 +341,51 @@ def importa_attive_da_dir(
             if tipo != TIPO_ATTIVA:
                 summary.errori.append(f"{xml_file.name}: non è una fattura attiva, saltata.")
                 continue
+            if anno is not None and fx.anno != int(anno):
+                summary.fuori_periodo += 1
+                continue
+            if since is not None and fx.data < since:
+                summary.fuori_periodo += 1
+                continue
             xml_path = _archivia_xml(archivio_dir, fx.anno, xml_file.name, xml_bytes) or str(xml_file)
-            _fattura, creata = _crea_fattura_da_xml(
+            fattura, creata = _crea_fattura_da_xml(
                 fx, tipo=TIPO_ATTIVA, fattura_repo=fattura_repo,
-                stato_sdi=STATO_SDI_DA_INVIARE, xml_path=xml_path,
+                stato_sdi=stato_sdi, xml_path=xml_path,
             )
-            if creata:
-                summary.nuove += 1
-            else:
+            if not creata:
                 summary.duplicate += 1
+                continue
+            summary.nuove += 1
+            if movimento_repo is not None:
+                mov_stato = (
+                    STATO_CONFERMATO
+                    if (come_storico and categoria_id is not None)
+                    else STATO_PROPOSTO
+                )
+                _crea_movimento_proposto(
+                    movimento_repo,
+                    fattura=fattura,
+                    tipo=TIPO_USCITA if fx.is_nota_credito else TIPO_ENTRATA,
+                    stato=mov_stato,
+                    categoria_id=categoria_id,
+                )
         except Exception as exc:  # noqa: BLE001
             summary.errori.append(f"{xml_file.name}: {exc}")
     return summary
+
+
+def marca_da_inviare(
+    fattura_repo: ContabilitaFatturaRepository, fattura_id: int
+) -> None:
+    """Sposta una fattura attiva da ``storico`` a ``da_inviare`` così che il
+    prossimo invio (bulk o ciclo) la trasmetta allo SDI. Usato per le poche
+    fatture 2026 che NON erano state inviate da WinCar."""
+    fattura = fattura_repo.get(fattura_id)
+    if fattura is None or fattura.tipo != TIPO_ATTIVA:
+        raise ValueError("Fattura attiva non trovata.")
+    if fattura.stato_sdi in (STATO_SDI_INVIATA, STATO_SDI_SCARTATA):
+        return
+    fattura_repo.aggiorna_stato_sdi(fattura_id, stato_sdi=STATO_SDI_DA_INVIARE)
 
 
 @dataclass
@@ -451,11 +508,14 @@ def _crea_movimento_proposto(
     *,
     fattura: Fattura,
     tipo: str,
+    stato: str = STATO_PROPOSTO,
+    categoria_id: int | None = None,
 ) -> None:
-    """Crea un movimento in stato ``proposto`` legato alla fattura.
+    """Crea un movimento legato alla fattura (default: ``proposto``).
 
     Idempotente: se esiste già un movimento per quella fattura, non ne aggiunge.
-    """
+    Con ``stato=STATO_CONFERMATO`` + ``categoria_id`` valorizzato il movimento
+    entra subito nei report (usato per l'import dello storico attive)."""
     if movimento_repo.list_by_fattura(fattura.id):
         return
     verso = "da" if tipo == TIPO_USCITA else "a"
@@ -464,9 +524,10 @@ def _crea_movimento_proposto(
         data=fattura.data,
         importo=fattura.importo_totale,
         tipo=tipo,
+        categoria_id=categoria_id,
         fattura_id=fattura.id,
         descrizione=descr,
         origine=ORIGINE_FATTURA_SDI,
-        stato=STATO_PROPOSTO,
+        stato=stato,
         importo_iva=fattura.importo_iva or None,
     )
