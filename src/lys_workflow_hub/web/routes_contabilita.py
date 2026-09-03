@@ -57,7 +57,7 @@ from lys_workflow_hub.workflows.contabilita.sdi_import import (
 from lys_workflow_hub.workflows.contabilita.smistamento import (
     Assegnazione,
     SmistamentoError,
-    coda_passive,
+    coda_da_smistare,
     smista_fattura,
 )
 from lys_workflow_hub.web.auth import require_admin, template_context_processor
@@ -498,7 +498,7 @@ def fatture_list(
     context.update(
         fatture=fatture,
         pratiche_count=pratiche_count,
-        coda_passive=da_smistare,
+        coda_da_smistare=da_smistare,
         filtri={"tipo": tipo or "", "anno": anno or ""},
         esito=esito,
         categorie=cat_repo.list_all(solo_attive=True),
@@ -511,18 +511,32 @@ def fatture_list(
     return templates.TemplateResponse(request, "contabilita_fatture.html", context)
 
 
+CATEGORIA_ATTIVE_DEFAULT = "Riparazioni carrozzeria"
+
+
+def _categoria_attive_id(cat_repo: ContabilitaCategoriaRepository) -> int | None:
+    """id della categoria di default per le fatture attive WinCar."""
+    for c in cat_repo.list_all():
+        if c.nome.strip().lower() == CATEGORIA_ATTIVE_DEFAULT.lower():
+            return c.id
+    return None
+
+
 @router.post("/contabilita/fatture/importa-attive")
 async def fatture_importa_attive(
     request: Request,
     fat_repo: ContabilitaFatturaRepository = Depends(get_fattura_repo),
     mov_repo: ContabilitaMovimentoRepository = Depends(get_movimento_repo),
+    cat_repo: ContabilitaCategoriaRepository = Depends(get_categoria_repo),
     settings: Settings = Depends(get_contabilita_settings),
 ) -> RedirectResponse:
     from datetime import date as _date
 
     form = await request.form()
     anno = _int_or_none(_form_str(form, "anno")) or _date.today().year
-    categoria_id = _int_or_none(_form_str(form, "categoria_id"))
+    # Le fatture attive di WinCar sono sempre lavori di carrozzeria: se il form
+    # non forza una categoria diversa, usa "Riparazioni carrozzeria".
+    categoria_id = _int_or_none(_form_str(form, "categoria_id")) or _categoria_attive_id(cat_repo)
     come_storico = _form_str(form, "come_storico") != "0"
 
     since = None
@@ -637,7 +651,7 @@ def coda_smistamento(
     mov_repo: ContabilitaMovimentoRepository = Depends(get_movimento_repo),
 ) -> HTMLResponse:
     context = _ctx()
-    context["coda"] = coda_passive(fat_repo, mov_repo)
+    context["coda"] = coda_da_smistare(fat_repo, mov_repo)
     return templates.TemplateResponse(request, "contabilita_smistamento_coda.html", context)
 
 

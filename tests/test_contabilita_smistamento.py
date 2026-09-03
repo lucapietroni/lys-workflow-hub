@@ -17,7 +17,7 @@ from lys_workflow_hub.core.contabilita_movimento_repository import (
 from lys_workflow_hub.workflows.contabilita.smistamento import (
     Assegnazione,
     SmistamentoError,
-    coda_passive,
+    coda_da_smistare,
     smista_fattura,
 )
 
@@ -44,7 +44,7 @@ def setup(tmp_path: Path):
 
 def test_coda_contiene_la_fattura_proposta(setup):
     _db, _cat, fat, mov, f, _ric = setup
-    voci = coda_passive(fat, mov)
+    voci = coda_da_smistare(fat, mov)
     assert [v.fattura.id for v in voci] == [f.id]
     assert voci[0].movimento.stato == "proposto"
 
@@ -61,7 +61,7 @@ def test_smista_singola_pratica_intero_importo(setup):
     assert m.pratica_id == 766 and m.categoria_id == ric.id
     assert m.stato == "confermato" and m.importo == 1220.0
     # niente più proposti → esce dalla coda
-    assert coda_passive(fat, mov) == []
+    assert coda_da_smistare(fat, mov) == []
     # riga ponte creata
     assert [r.pratica_id for r in fat.list_pratiche(f.id)] == [766]
 
@@ -94,7 +94,7 @@ def test_smista_spesa_generale_senza_pratiche(setup):
     assert creati[0].pratica_id is None
     assert creati[0].importo == 1220.0
     assert creati[0].categoria_id == affitto.id
-    assert coda_passive(fat, mov) == []
+    assert coda_da_smistare(fat, mov) == []
 
 
 def test_smista_rifiuta_somma_eccedente(setup):
@@ -106,7 +106,7 @@ def test_smista_rifiuta_somma_eccedente(setup):
             assegnazioni=[Assegnazione(pratica_id=1, importo=2000.0)],
         )
     # nessuna modifica: il movimento proposto è ancora lì
-    assert coda_passive(fat, mov)
+    assert coda_da_smistare(fat, mov)
 
 
 def test_smista_idempotente_su_ripetizione(setup):

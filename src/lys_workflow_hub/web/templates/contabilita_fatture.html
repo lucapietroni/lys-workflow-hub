@@ -23,10 +23,10 @@
   <div class="alert alert-info">{{ esito }}</div>
 {% endif %}
 
-{% if coda_passive %}
+{% if coda_da_smistare %}
   <div class="alert alert-warn" style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
-    <span><strong>{{ coda_passive }}</strong>
-      fattur{{ "a passiva" if coda_passive == 1 else "e passive" }} senza pratica né categoria.</span>
+    <span><strong>{{ coda_da_smistare }}</strong>
+      fattur{{ "a" if coda_da_smistare == 1 else "e" }} da smistare (categoria/pratica da assegnare).</span>
     <a class="btn btn-sm" href="/contabilita/fatture/passive/da-collegare">Vai allo smistamento</a>
   </div>
 {% endif %}
@@ -44,10 +44,12 @@
     <div class="form-field" style="margin:0;">
       <label for="i_cat">Categoria ricavo</label>
       <select id="i_cat" name="categoria_id">
-        <option value="">— da smistare —</option>
         {% for c in categorie %}
-          {% if c.tipo == "ricavo" %}<option value="{{ c.id }}">{{ c.nome }}</option>{% endif %}
+          {% if c.tipo == "ricavo" %}
+            <option value="{{ c.id }}" {% if c.nome == "Riparazioni carrozzeria" %}selected{% endif %}>{{ c.nome }}</option>
+          {% endif %}
         {% endfor %}
+        <option value="">— nessuna (da smistare) —</option>
       </select>
     </div>
     <div class="form-field checkbox-field" style="margin:0;">

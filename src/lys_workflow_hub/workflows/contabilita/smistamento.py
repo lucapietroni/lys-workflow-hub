@@ -1,7 +1,7 @@
-"""Smistamento delle fatture passive (Fase 4).
+"""Smistamento delle fatture SDI non ancora attribuite (Fase 4).
 
-Una fattura passiva arriva dallo SDI (Fase 3) con un unico movimento in stato
-``proposto``, senza categoria né pratica. Lo smistamento:
+Una fattura (tipicamente passiva, ma anche un'attiva importata senza
+categoria) resta con un movimento in stato ``proposto``. Lo smistamento:
 
   1. assegna una **categoria** (una sola, vale per tutta la fattura);
   2. la collega a 0..N **pratiche** con un importo ciascuna (split);
@@ -45,7 +45,7 @@ class Assegnazione:
     importo: float
 
 
-def coda_passive(
+def coda_da_smistare(
     fattura_repo: ContabilitaFatturaRepository,
     movimento_repo: ContabilitaMovimentoRepository,
 ) -> list[VoceCoda]:

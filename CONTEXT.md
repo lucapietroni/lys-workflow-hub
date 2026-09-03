@@ -238,6 +238,17 @@ validazione endpoint reali in sandbox prima di `SDI_PROVIDER=openapi` in prod.
 - `run_sdi_poll.py`: import attive come `storico` (anno corrente + cutoff);
   invio attive automatico SOLO se `SDI_INVIO_ATTIVE_AUTO=true` (default false).
 
+**Legame fattura↔pratica (v4.25.3, in corso)**:
+- L'XML FatturaPA di WinCar **non contiene** il numero pratica (verificato su
+  un file reale: nessun `DatiCommessaConvenzione`/`DatiOrdineAcquisto`/
+  `Causale`). Il legame vive solo in `C:\WinCar\Archivi\wcFatture.mdb`.
+- v4.25.3: categoria attive = "Riparazioni carrozzeria" in automatico
+  all'import (default nel form, resolver `_categoria_attive_id`); wording
+  "coda passive" → "coda da smistare" (`coda_da_smistare`);
+  `scripts/dump_schema_fatture.py` per ricognizione schema `wcFatture.mdb`.
+- TODO: reader ODBC read-only su `wcFatture.mdb` per `numero fattura → pratica`
+  + auto-link all'import + azione one-shot per le fatture già importate.
+
 ---
 
 ## Workflow D — Verbali cortesia
