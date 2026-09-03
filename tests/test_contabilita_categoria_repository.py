@@ -35,6 +35,22 @@ def test_seed_non_riparte_su_db_esistente(tmp_path: Path):
     assert len(r2.list_all()) == n
 
 
+def test_migra_note_di_credito_in_nota_di_credito(tmp_path: Path):
+    import sqlite3
+
+    p = tmp_path / "test.db"
+    ContabilitaCategoriaRepository(db_path=p)
+    # simula il vecchio nome
+    with sqlite3.connect(p) as conn:
+        conn.execute(
+            "UPDATE contabilita_categoria SET nome = 'Note di credito' "
+            "WHERE nome = 'Nota di credito'"
+        )
+    r = ContabilitaCategoriaRepository(db_path=p)
+    nomi = {c.nome for c in r.list_all()}
+    assert "Nota di credito" in nomi and "Note di credito" not in nomi
+
+
 def test_create_categoria(repo: ContabilitaCategoriaRepository):
     c = repo.create(nome="Smaltimento rifiuti", tipo="costo")
     assert c.id is not None

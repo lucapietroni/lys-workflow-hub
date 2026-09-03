@@ -161,6 +161,27 @@ def test_re_smistamento_fattura_attiva_non_inverte_il_segno(tmp_path: Path):
     assert movimenti[0].tipo == "entrata"  # NON ribaltato a 'uscita'
 
 
+def test_smista_propaga_iva_proporzionale(setup):
+    _db, _cat, fat, mov, f, ric = setup  # fattura F-1: totale 1220, IVA 220
+    creati = smista_fattura(
+        fattura_repo=fat, movimento_repo=mov, fattura_id=f.id, categoria_id=ric.id,
+        assegnazioni=[
+            Assegnazione(pratica_id=10, importo=610.0),
+            Assegnazione(pratica_id=20, importo=610.0),
+        ],
+    )
+    assert sorted(round(m.importo_iva, 2) for m in creati) == [110.0, 110.0]
+
+
+def test_smista_iva_intera_senza_split(setup):
+    _db, _cat, fat, mov, f, ric = setup
+    creati = smista_fattura(
+        fattura_repo=fat, movimento_repo=mov, fattura_id=f.id, categoria_id=ric.id,
+        assegnazioni=[Assegnazione(pratica_id=5, importo=1220.0)],
+    )
+    assert creati[0].importo_iva == 220.0
+
+
 def test_smista_dedup_stessa_pratica_somma_importi(setup):
     _db, _cat, fat, mov, f, ric = setup
     creati = smista_fattura(

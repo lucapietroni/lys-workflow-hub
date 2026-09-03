@@ -373,6 +373,9 @@ def test_collega_attive_da_wincar_one_shot(db: Path, tmp_path: Path):
     m41 = mov.list_by_fattura(per_numero["41"].id)[0]
     assert m41.categoria_id == ric.id and m41.stato == "confermato"
 
+    # IVA propagata sui movimenti (fattura 40: totale 854, IVA 154)
+    assert m40.importo_iva == 154.0
+
     # idempotente: seconda passata non tocca nulla
     s2 = collega_attive_da_wincar(
         fattura_repo=fat, movimento_repo=mov,
@@ -382,7 +385,42 @@ def test_collega_attive_da_wincar_one_shot(db: Path, tmp_path: Path):
     assert s2.collegate == 0 and s2.categorizzate == 0 and s2.gia_sistemate == 2
 
 
-def test_nota_credito_attiva_usa_categoria_note_di_credito(db: Path, tmp_path: Path):
+def test_collega_ripristina_iva_su_movimenti_gia_smistati(db: Path, tmp_path: Path):
+    """Movimenti smistati da una versione precedente senza IVA vengono
+    ri-sistemati (aggiunta IVA)."""
+    from lys_workflow_hub.core.contabilita_categoria_repository import (
+        ContabilitaCategoriaRepository,
+    )
+
+    src = tmp_path / "attive"
+    src.mkdir()
+    (src / "a.xml").write_bytes(_xml(numero="40", data="2026-05-28", totale="854.00",
+                                     imponibile="700.00", imposta="154.00"))
+    fat = ContabilitaFatturaRepository(db_path=db)
+    mov = ContabilitaMovimentoRepository(db_path=db)
+    ric = next(c for c in ContabilitaCategoriaRepository(db_path=db).list_all()
+               if c.nome == "Riparazioni carrozzeria")
+    importa_attive_da_dir(src, piva_azienda=PIVA_LYS, fattura_repo=fat,
+                          movimento_repo=mov, anno=2026)
+    fid = fat.list(tipo="attiva")[0].id
+    # simulа un movimento smistato "vecchio": confermato, categoria, pratica, IVA None
+    mov.delete_by_fattura(fid, solo_sdi=True)
+    fat.link_pratica(fid, 827, importo_assegnato=854.0)
+    mov.create(data="2026-05-28", importo="854", tipo="entrata", categoria_id=ric.id,
+               pratica_id=827, fattura_id=fid, origine="da_fattura_sdi",
+               stato="confermato")  # niente importo_iva
+
+    s = collega_attive_da_wincar(
+        fattura_repo=fat, movimento_repo=mov,
+        wincar_fatture_repo=FakeWinCarFatture({(40, 2026): 827}),
+        categoria_id=ric.id,
+    )
+    assert s.collegate == 1
+    m = mov.list_by_fattura(fid)[0]
+    assert m.importo_iva == 154.0 and m.pratica_id == 827
+
+
+def test_nota_credito_attiva_usa_categoria_nota_di_credito(db: Path, tmp_path: Path):
     src = tmp_path / "attive"
     src.mkdir()
     (src / "nc.xml").write_bytes(_xml(numero="58", data="2026-07-17", tipo_doc="TD04",
@@ -392,7 +430,7 @@ def test_nota_credito_attiva_usa_categoria_note_di_credito(db: Path, tmp_path: P
     mov = ContabilitaMovimentoRepository(db_path=db)
     cat = ContabilitaCategoriaRepository(db_path=db)
     ric = next(c for c in cat.list_all() if c.nome == "Riparazioni carrozzeria")
-    nc = next(c for c in cat.list_all() if c.nome == "Note di credito")
+    nc = next(c for c in cat.list_all() if c.nome == "Nota di credito")
 
     importa_attive_da_dir(
         src, piva_azienda=PIVA_LYS, fattura_repo=fat, movimento_repo=mov,

@@ -36,7 +36,8 @@ TIPO_LABELS = {
 # Nome della categoria per le note di credito (TipoDocumento TD04/TD08/TD24
 # nell'XML). Il segno lo porta il movimento (uscita per una NC attiva =
 # storno di ricavo, entrata per una NC passiva = storno di costo).
-CATEGORIA_NOTA_CREDITO = "Note di credito"
+CATEGORIA_NOTA_CREDITO = "Nota di credito"
+_CATEGORIA_NC_VECCHIO_NOME = "Note di credito"  # rinominata in v4.26.2
 
 # Categorie inserite al primo avvio (tabella vuota). (nome, tipo).
 _SEED_CATEGORIE: tuple[tuple[str, str], ...] = (
@@ -119,7 +120,15 @@ class ContabilitaCategoriaRepository:
                     len(_SEED_CATEGORIE),
                 )
             else:
-                # Categorie aggiunte dopo il primo rilascio su DB già popolati.
+                # Migrazioni categorie su DB già popolati.
+                # 1) rinomina "Note di credito" -> "Nota di credito" (v4.26.2)
+                conn.execute(
+                    "UPDATE contabilita_categoria SET nome = ? "
+                    "WHERE nome = ? AND NOT EXISTS "
+                    "(SELECT 1 FROM contabilita_categoria WHERE nome = ?)",
+                    (CATEGORIA_NOTA_CREDITO, _CATEGORIA_NC_VECCHIO_NOME, CATEGORIA_NOTA_CREDITO),
+                )
+                # 2) garantisci la categoria nota di credito.
                 conn.execute(
                     "INSERT OR IGNORE INTO contabilita_categoria "
                     "(nome, tipo, attiva, created_at) VALUES (?, ?, 1, ?)",

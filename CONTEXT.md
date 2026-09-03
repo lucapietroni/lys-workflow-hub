@@ -263,8 +263,8 @@ validazione endpoint reali in sandbox prima di `SDI_PROVIDER=openapi` in prod.
 - Categoria attive = "Riparazioni carrozzeria" automatica; "coda passive" →
   "coda da smistare" (`coda_da_smistare`, include anche le attive).
 
-**Categoria "Note di credito" (v4.26.1)**:
-- Seed `CATEGORIA_NOTA_CREDITO = "Note di credito"` (tipo costo; il segno lo
+**Categoria "Nota di credito" (v4.26.1)**:
+- Seed `CATEGORIA_NOTA_CREDITO = "Nota di credito"` (tipo costo; il segno lo
   porta il movimento — uscita per NC attiva = storno ricavo, entrata per NC
   passiva = storno costo). Garantita anche su DB già popolati (INSERT OR
   IGNORE in `__init__`).
@@ -279,6 +279,19 @@ validazione endpoint reali in sandbox prima di `SDI_PROVIDER=openapi` in prod.
 - Descrizione movimento: "Fattura N a &lt;cliente&gt;" per le attive, "da
   &lt;fornitore&gt;" per le passive (prima usava la direzione del movimento →
   sbagliato per le NC attive).
+
+**Fix IVA + rename (v4.26.2)**:
+- `smista_fattura` propaga `fattura.importo_iva` sui movimenti creati
+  (ripartita in proporzione all'importo su split). Prima i movimenti smistati
+  perdevano l'IVA (colonna "di cui IVA" vuota).
+- `collega_attive_da_wincar` ri-sistema anche le fatture già smistate se i
+  movimenti sono senza IVA (`_fattura_da_sistemare` la controlla); per quelle
+  già legate riusa la ripartizione `fattura_pratica` esistente.
+- Categoria rinominata **"Note di credito" → "Nota di credito"**: migrazione
+  UPDATE in `__init__` su DB già popolati (`_CATEGORIA_NC_VECCHIO_NOME`).
+- `/contabilita/movimenti`: conteggio "Movimenti" in testata
+  (`ContabilitaMovimentoRepository.conta`) + avviso se troncato a 500.
+  Header colonna "di cui IVA" → "IVA".
 
 ---
 

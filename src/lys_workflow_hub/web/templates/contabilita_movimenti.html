@@ -72,6 +72,8 @@
   </form>
 
   <div style="display:flex; gap:24px; flex-wrap:wrap; margin-bottom:16px;">
+    <div><span class="meta">Movimenti</span><br>
+      <strong>{{ totale_righe }}</strong></div>
     <div><span class="meta">Entrate</span><br>
       <strong style="color: var(--lys-success);">€ {{ "%.2f"|format(totali.entrate) }}</strong></div>
     <div><span class="meta">Uscite</span><br>
@@ -79,6 +81,11 @@
     <div><span class="meta">Saldo</span><br>
       <strong>€ {{ "%.2f"|format(totali.saldo) }}</strong></div>
   </div>
+  {% if totale_righe > movimenti|length %}
+    <p class="meta" style="margin:-8px 0 16px;">
+      Mostrati i primi {{ movimenti|length }} di {{ totale_righe }} — restringi il periodo per vederli tutti.
+    </p>
+  {% endif %}
   {% if proposti_n and not filtri.stato %}
     <p class="meta" style="margin:-8px 0 16px;">
       Totali sui soli movimenti confermati. {{ proposti_n }}
@@ -99,7 +106,7 @@
           <th>Pratica</th>
           <th>Descrizione</th>
           <th style="text-align:right;">Importo</th>
-          <th style="text-align:right;">di cui IVA</th>
+          <th style="text-align:right; white-space:nowrap;">IVA</th>
           <th>Origine</th>
           <th class="col-actions"></th>
         </tr>

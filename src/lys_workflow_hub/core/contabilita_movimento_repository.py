@@ -370,6 +370,27 @@ class ContabilitaMovimentoRepository:
     def list_by_fattura(self, fattura_id: int) -> list[Movimento]:
         return self.list(fattura_id=fattura_id, limit=1000)
 
+    def conta(
+        self,
+        *,
+        categoria_id: int | None = None,
+        pratica_id: int | None = None,
+        fattura_id: int | None = None,
+        tipo: str | None = None,
+        stato: str | None = None,
+        dal: Any = None,
+        al: Any = None,
+    ) -> int:
+        where, params = self._where(
+            categoria_id=categoria_id, pratica_id=pratica_id, fattura_id=fattura_id,
+            tipo=tipo, stato=stato, dal=dal, al=al,
+        )
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) AS n FROM contabilita_movimento" + where, params
+            ).fetchone()
+        return int(row["n"])
+
     def fattura_ids_con_proposti(self) -> set[int]:
         """Id delle fatture che hanno almeno un movimento in stato 'proposto'.
 

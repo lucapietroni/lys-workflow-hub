@@ -6,7 +6,7 @@ genera documenti precompilati, monitora le risposte delle compagnie assicurative
 via PEC/email, classifica le risposte con AI e genera alert mirati.
 
 > `main`: **4.21.3** in produzione su `hub.lysauto.it` ·
-> branch `feature/contabilita-sdi`: **4.26.1** (contabilità gestionale + SDI,
+> branch `feature/contabilita-sdi`: **4.26.2** (contabilità gestionale + SDI,
 > non ancora in produzione)
 
 ---

@@ -425,18 +425,22 @@ def _fattura_e_nota_credito_row(fattura: Fattura) -> bool:
 
 
 def _fattura_da_sistemare(
-    movimento_repo: ContabilitaMovimentoRepository, fattura_id: int
+    movimento_repo: ContabilitaMovimentoRepository, fattura: Fattura
 ) -> bool:
-    """True se la fattura ha ancora movimenti SDI da smistare: nessun
-    movimento, oppure un movimento ``proposto``, oppure un movimento SDI
-    senza categoria."""
+    """True se la fattura ha ancora movimenti SDI da (ri)sistemare: nessun
+    movimento, un movimento ``proposto``, un movimento SDI senza categoria,
+    oppure senza IVA quando la fattura ne ha."""
     sdi_movs = [
-        m for m in movimento_repo.list_by_fattura(fattura_id)
+        m for m in movimento_repo.list_by_fattura(fattura.id)
         if m.origine == ORIGINE_FATTURA_SDI
     ]
     if not sdi_movs:
         return True
-    return any(m.stato == STATO_PROPOSTO or m.categoria_id is None for m in sdi_movs)
+    if any(m.stato == STATO_PROPOSTO or m.categoria_id is None for m in sdi_movs):
+        return True
+    if round(fattura.importo_iva, 2) > 0 and any(m.importo_iva is None for m in sdi_movs):
+        return True
+    return False
 
 
 def collega_attive_da_wincar(
@@ -449,7 +453,7 @@ def collega_attive_da_wincar(
     anno: int | None = None,
 ) -> CollegamentoSummary:
     """Sistema le fatture ATTIVE già importate ma non ancora attribuite:
-    assegna la categoria ("Riparazioni carrozzeria", o "Note di credito" se
+    assegna la categoria ("Riparazioni carrozzeria", o "Nota di credito" se
     l'XML è una NC) e — se il numero pratica è in ``wcFatture.mdb`` — la
     collega alla pratica. Riusa :func:`smista_fattura`. Idempotente: salta le
     fatture già legate a una pratica. Una tantum per lo storico."""
@@ -461,16 +465,27 @@ def collega_attive_da_wincar(
     summary = CollegamentoSummary()
     for fattura in fattura_repo.list(tipo=TIPO_ATTIVA, anno=anno, limit=100000):
         summary.esaminate += 1
-        if not _fattura_da_sistemare(movimento_repo, fattura.id):
+        if not _fattura_da_sistemare(movimento_repo, fattura):
             summary.gia_sistemate += 1
             continue
         cat = categoria_nc_id if _fattura_e_nota_credito_row(fattura) else categoria_id
-        pratica_id = _pratica_da_wincar_fattura(wincar_fatture_repo, fattura)
-        assegnazioni = (
-            [Assegnazione(pratica_id=pratica_id, importo=fattura.importo_totale)]
-            if pratica_id is not None
-            else []
-        )
+        # Se è già legata a delle pratiche, ri-smista mantenendo la ripartizione
+        # esistente (serve p.es. per aggiungere l'IVA ai movimenti). Altrimenti
+        # cerca la pratica in WinCar.
+        righe_ponte = fattura_repo.list_pratiche(fattura.id)
+        if righe_ponte:
+            assegnazioni = [
+                Assegnazione(pratica_id=r.pratica_id, importo=r.importo_assegnato)
+                for r in righe_ponte
+            ]
+            pratica_id = righe_ponte[0].pratica_id
+        else:
+            pratica_id = _pratica_da_wincar_fattura(wincar_fatture_repo, fattura)
+            assegnazioni = (
+                [Assegnazione(pratica_id=pratica_id, importo=fattura.importo_totale)]
+                if pratica_id is not None
+                else []
+            )
         try:
             smista_fattura(
                 fattura_repo=fattura_repo,

@@ -107,7 +107,7 @@ def run_once() -> int:
                 since=_parse_since(settings.sdi_attive_import_since),
                 come_storico=True,
                 categoria_id=_cats.get("riparazioni carrozzeria"),
-                categoria_nc_id=_cats.get("note di credito"),
+                categoria_nc_id=_cats.get("nota di credito"),
                 archivio_dir=archivio,
             )
             log.info(

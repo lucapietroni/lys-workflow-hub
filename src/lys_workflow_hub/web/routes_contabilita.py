@@ -178,6 +178,7 @@ def movimenti_list(
 
     filtro_err: str | None = None
     proposti_n = 0
+    totale_righe = 0
     try:
         movimenti = mov_repo.list(
             categoria_id=f_categoria,
@@ -187,6 +188,10 @@ def movimenti_list(
             stato=f_stato,
             dal=f_dal,
             al=f_al,
+        )
+        totale_righe = mov_repo.conta(
+            categoria_id=f_categoria, pratica_id=f_pratica, fattura_id=f_fattura,
+            tipo=f_tipo, stato=f_stato, dal=f_dal, al=f_al,
         )
         # I totali in testata contano solo i movimenti confermati (i 'proposto'
         # da fatture SDI non sono ancora dato reale), a meno che non si stia
@@ -222,6 +227,7 @@ def movimenti_list(
         categorie=categorie,
         cat_by_id=cat_by_id,
         proposti_n=proposti_n,
+        totale_righe=totale_righe,
         filtri={
             "categoria_id": categoria_id or "",
             "pratica_id": pratica_id or "",

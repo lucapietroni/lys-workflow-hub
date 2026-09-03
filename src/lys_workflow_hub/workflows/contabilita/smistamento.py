@@ -121,6 +121,14 @@ def smista_fattura(
     for r in fattura_repo.list_pratiche(fattura_id):
         fattura_repo.unlink_pratica(fattura_id, r.pratica_id)
 
+    # IVA del movimento (informativa): ripartita in proporzione all'importo.
+    iva_tot = round(fattura.importo_iva, 2)
+
+    def _iva_quota(imp: float) -> float | None:
+        if not iva_tot or totale <= 0:
+            return None
+        return round(iva_tot * imp / totale, 2)
+
     creati: list[Movimento] = []
 
     # 2) un movimento confermato per ogni pratica + riga ponte.
@@ -139,6 +147,7 @@ def smista_fattura(
                 descrizione=_descr(fattura, tipo_mov),
                 origine=ORIGINE_FATTURA_SDI,
                 stato=STATO_CONFERMATO,
+                importo_iva=_iva_quota(a.importo),
             )
         )
 
@@ -155,6 +164,7 @@ def smista_fattura(
                 descrizione=_descr(fattura, tipo_mov) + " (quota non attribuita a pratica)",
                 origine=ORIGINE_FATTURA_SDI,
                 stato=STATO_CONFERMATO,
+                importo_iva=_iva_quota(residuo),
             )
         )
 
@@ -171,6 +181,7 @@ def smista_fattura(
                 descrizione=_descr(fattura, tipo_mov),
                 origine=ORIGINE_FATTURA_SDI,
                 stato=STATO_CONFERMATO,
+                importo_iva=iva_tot or None,
             )
         )
 
