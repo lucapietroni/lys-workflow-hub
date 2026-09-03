@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %}Fatture elettroniche · LYS Workflow Hub{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb">
+  <a href="/contabilita/movimenti">← Movimenti</a>
+</nav>
+
+<header class="pratica-header">
+  <div>
+    <div class="hero-eyebrow">Contabilità gestionale</div>
+    <h1>Fatture elettroniche (SDI)</h1>
+    <p class="meta">
+      Specchio delle fatture che transitano dallo SDI. Le attive sono generate
+      da WinCar (<code>{{ sdi_dir }}</code>), importate qui per la contabilità;
+      le passive arrivano dal provider. Non è un registro IVA fiscale.
+      Provider: <strong>{{ sdi_provider }}</strong>{% if sdi_test_mode %} <span class="badge badge-yellow">modalità test</span>{% endif %}.
+    </p>
+  </div>
+</header>
+
+{% if esito %}
+  <div class="alert alert-info">{{ esito }}</div>
+{% endif %}
+
+{% if coda_da_smistare %}
+  <div class="alert alert-warn" style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+    <span><strong>{{ coda_da_smistare }}</strong>
+      fattur{{ "a" if coda_da_smistare == 1 else "e" }} da smistare (categoria/pratica da assegnare).</span>
+    <a class="btn btn-sm" href="/contabilita/fatture/passive/da-collegare">Vai allo smistamento</a>
+  </div>
+{% endif %}
+
+<section class="card">
+  <h2>Importa fatture attive da WinCar</h2>
+  <form method="post" action="/contabilita/fatture/importa-attive"
+        style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; margin-bottom:8px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <div class="form-field" style="margin:0;">
+      <label for="i_anno">Anno</label>
+      <input id="i_anno" name="anno" type="number" inputmode="numeric"
+             value="{{ anno_default }}" style="width:9ch;" />
+    </div>
+    <div class="form-field" style="margin:0;">
+      <label for="i_cat">Categoria ricavo</label>
+      <select id="i_cat" name="categoria_id">
+        {% for c in categorie %}
+          {% if c.tipo == "ricavo" %}
+            <option value="{{ c.id }}" {% if c.nome == "Riparazioni carrozzeria" %}selected{% endif %}>{{ c.nome }}</option>
+          {% endif %}
+        {% endfor %}
+        <option value="">— nessuna (da smistare) —</option>
+      </select>
+    </div>
+    <div class="form-field checkbox-field" style="margin:0;">
+      <label style="white-space:nowrap;">
+        <input type="checkbox" name="come_storico" value="1" checked />
+        già inviate allo SDI (storico)
+      </label>
+    </div>
+    <button type="submit" class="btn">Importa</button>
+  </form>
+  <p class="meta" style="margin:0 0 16px;">
+    Importa solo le fatture di quell'anno con data ≥ <code>{{ import_since or "—" }}</code>.
+    Con <em>«già inviate»</em> spuntato (default) sono marcate <strong>storico</strong> e
+    <strong>non</strong> vengono ritrasmesse allo SDI; se scegli una categoria il ricavo
+    entra subito nei report, altrimenti resta da smistare. Per le poche fatture non
+    ancora inviate, usa il pulsante <em>«Segna da inviare»</em> sulla riga.
+  </p>
+
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <form method="post" action="/contabilita/fatture/attive/collega-pratiche" style="display:inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <button type="submit" class="btn">Collega pratiche alle attive (da WinCar)</button>
+    </form>
+    <form method="post" action="/contabilita/fatture/invia-sdi" style="display:inline"
+          onsubmit='return confirm("Inoltrare allo SDI tutte le fatture attive in stato «da inviare»?");'>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <button type="submit" class="btn btn-primary">Invia attive «da inviare» allo SDI</button>
+    </form>
+    <form method="post" action="/contabilita/fatture/sincronizza-passive" style="display:inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <button type="submit" class="btn">Sincronizza passive</button>
+    </form>
+  </div>
+  <p class="meta" style="margin:8px 0 0;">
+    «Collega pratiche» legge il numero pratica da <code>wcFatture.mdb</code> (l'XML
+    non lo contiene) e assegna categoria + pratica alle attive già importate.
+  </p>
+</section>
+
+<section class="card">
+
+  <form method="get" action="/contabilita/fatture"
+        style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; margin-bottom:16px;">
+    <div class="form-field" style="margin:0;">
+      <label for="f_tipo">Tipo</label>
+      <select id="f_tipo" name="tipo">
+        <option value="">— tutte —</option>
+        <option value="attiva" {% if filtri.tipo == "attiva" %}selected{% endif %}>Attive</option>
+        <option value="passiva" {% if filtri.tipo == "passiva" %}selected{% endif %}>Passive</option>
+      </select>
+    </div>
+    <div class="form-field" style="margin:0;">
+      <label for="f_anno">Anno</label>
+      <input id="f_anno" name="anno" type="number" inputmode="numeric"
+             value="{{ filtri.anno }}" style="width:9ch;" />
+    </div>
+    <button type="submit" class="btn">Filtra</button>
+    <a href="/contabilita/fatture" class="btn btn-link">Azzera</a>
+  </form>
+
+  {% if not fatture %}
+    <p class="meta" style="margin:0">Nessuna fattura registrata.</p>
+  {% else %}
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Tipo</th><th>Numero</th><th>Data</th><th>Controparte</th>
+          <th style="text-align:right;">Imponibile</th>
+          <th style="text-align:right;">IVA</th>
+          <th style="text-align:right;">Totale</th>
+          <th>Stato SDI</th><th>Pratiche</th><th class="col-actions"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in fatture %}
+        <tr>
+          <td>{{ "Attiva" if f.tipo == "attiva" else "Passiva" }}</td>
+          <td>{{ f.numero }}/{{ f.anno }}</td>
+          <td>{{ f.data.strftime("%d/%m/%Y") }}</td>
+          <td>{{ f.controparte_nome or f.controparte_piva or "—" }}</td>
+          <td style="text-align:right;">€ {{ "%.2f"|format(f.imponibile) }}</td>
+          <td style="text-align:right;">€ {{ "%.2f"|format(f.importo_iva) }}</td>
+          <td style="text-align:right;"><strong>€ {{ "%.2f"|format(f.importo_totale) }}</strong></td>
+          <td>
+            {% if f.stato_sdi == "scartata" %}
+              <span class="badge badge-warn">scartata</span>
+            {% elif f.stato_sdi %}
+              <span class="badge badge-gray">{{ f.stato_sdi }}</span>
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            {% set n = pratiche_count.get(f.id, 0) %}
+            {% if n %}<a href="/contabilita/movimenti?fattura={{ f.id }}">{{ n }}</a>{% else %}—{% endif %}
+          </td>
+          <td class="col-actions">
+            <a class="btn btn-sm" href="/contabilita/fatture/{{ f.id }}/smista">Smista</a>
+            {% if f.tipo == "attiva" and f.stato_sdi == "storico" %}
+              <form method="post" action="/contabilita/fatture/{{ f.id }}/segna-da-inviare"
+                    style="display:inline"
+                    onsubmit='return confirm("Segnare la fattura {{ f.numero }}/{{ f.anno }} come «da inviare» allo SDI?");'>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                <button type="submit" class="btn btn-sm">Segna da inviare</button>
+              </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Categorie contabili · LYS Workflow Hub{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb">
+  <a href="/contabilita/movimenti">← Torna ai movimenti</a>
+</nav>
+
+<header class="pratica-header">
+  <div>
+    <div class="hero-eyebrow">Contabilità gestionale</div>
+    <h1>Categorie</h1>
+    <p class="meta">
+      Etichette per classificare i movimenti come ricavo o costo. Una categoria
+      usata da movimenti esistenti non si può eliminare: viene disattivata
+      (resta leggibile nello storico, sparisce dai menu).
+    </p>
+  </div>
+</header>
+
+{% if error %}
+  <div class="alert alert-warn">{{ error }}</div>
+{% endif %}
+
+<section class="card">
+  <h2>Nuova categoria</h2>
+  <form method="post" action="/contabilita/categorie/nuova"
+        style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <div class="form-field" style="margin:0;">
+      <label for="f_nome">Nome</label>
+      <input id="f_nome" name="nome" type="text" required autocomplete="off" />
+    </div>
+    <div class="form-field" style="margin:0;">
+      <label for="f_tipo">Tipo</label>
+      <select id="f_tipo" name="tipo" required>
+        <option value="costo">Costo</option>
+        <option value="ricavo">Ricavo</option>
+      </select>
+    </div>
+    <button type="submit" class="btn btn-primary">Aggiungi</button>
+  </form>
+</section>
+
+<section class="card">
+  {% if not categorie %}
+    <p class="meta" style="margin:0">Nessuna categoria.</p>
+  {% else %}
+    {% for c in categorie %}
+    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+                padding:10px 0; border-bottom:1px solid var(--border);">
+      <form method="post" action="/contabilita/categorie/{{ c.id }}/modifica"
+            style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; flex:1;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <input name="nome" type="text" value="{{ c.nome }}" required
+               style="min-width:22ch;" autocomplete="off" />
+        <select name="tipo">
+          <option value="costo" {% if c.tipo == "costo" %}selected{% endif %}>Costo</option>
+          <option value="ricavo" {% if c.tipo == "ricavo" %}selected{% endif %}>Ricavo</option>
+        </select>
+        <label style="white-space:nowrap;">
+          <input type="checkbox" name="attiva" value="1" {% if c.attiva %}checked{% endif %} />
+          attiva
+        </label>
+        <button type="submit" class="btn btn-sm">Salva</button>
+      </form>
+      <form method="post" action="/contabilita/categorie/{{ c.id }}/elimina"
+            onsubmit='return confirm("Eliminare la categoria " + {{ c.nome|tojson }} + "?");'>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <button type="submit" class="btn btn-sm btn-danger">Elimina</button>
+      </form>
+    </div>
+    {% endfor %}
+  {% endif %}
+</section>
+{% endblock %}

@@ -62,6 +62,9 @@ App Android (Capacitor, wrapper del portale esterno /portale)
 - `pec_sla_reminder` — tracking escalation SLA già inviati
 - `foto_lavorazioni` — log foto processate dal watcher
 - `utenti` — account applicativi: email, password_hash (bcrypt), ruolo (admin/esterno/supervisore)
+- `contabilita_categoria` — etichette ricavo/costo (contabilità gestionale, Fase 1)
+- `contabilita_movimento` — entrate/uscite, `pratica_id` nullable, `stato` proposto/confermato
+- `contabilita_fattura` + `contabilita_fattura_pratica` — specchio fatture SDI + ponte fattura↔pratica (split)
 
 ---
 
@@ -94,11 +97,12 @@ src/lys_workflow_hub/
 │   │   └── assets/                 Firma pre-apposta (PNG)
 │   ├── risarcimento_vandalismo/    Workflow B (data.py, pec_generator.py, invio_pec.py)
 │   ├── risposte/                   Workflow C (matcher.py, body_generator.py, ...)
-│   └── verbale_cortesia/           Workflow D
-│       ├── data.py                 VerbaleData dataclass + from_pratica()
-│       ├── generator.py            DOCX uscita/rientro (logo LYS, tabelle bordate)
-│       ├── archive.py              Salva PDF in Pratiche/<n>/Pubblici/Allegati/
-│       └── assets/logo_lys.png     Logo LYS Auto Carrozzeria & Noleggio
+│   ├── verbale_cortesia/           Workflow D
+│   │   ├── data.py                 VerbaleData dataclass + from_pratica()
+│   │   ├── generator.py            DOCX uscita/rientro (logo LYS, tabelle bordate)
+│   │   ├── archive.py              Salva PDF in Pratiche/<n>/Pubblici/Allegati/
+│   │   └── assets/logo_lys.png     Logo LYS Auto Carrozzeria & Noleggio
+│   └── contabilita/                Contabilità gestionale + SDI (logica di dominio)
 └── web/
     ├── auth.py                     Sessione, AuthMiddleware, require_admin, CSRF
     ├── routes_auth.py              GET/POST /login, POST /logout
@@ -110,11 +114,184 @@ src/lys_workflow_hub/
     ├── routes_foto.py              Workflow E — log foto /foto (admin-only)
     ├── routes_compagnie.py         CRUD compagnie (admin-only)
     ├── routes_impostazioni.py      Statistiche + policy editor (admin-only)
+    ├── routes_contabilita.py       Movimenti + categorie contabilità (admin-only)
     └── templates/ + static/
 scripts/
 ├── run_polling.py                  Ciclo polling completo
 └── create_admin.py                 Bootstrap primo utente admin
 ```
+
+Repository contabilità in `core/contabilita_categoria_repository.py`,
+`core/contabilita_movimento_repository.py`,
+`core/contabilita_fattura_repository.py`.
+
+---
+
+## Contabilità gestionale + fatturazione SDI (branch `feature/contabilita-sdi`)
+
+Livello **analitico/gestionale**, NON fiscale: nessuna partita doppia, nessun
+registro IVA, nessun bilancio, nessun vincolo dare/avere. Serve a leggere il
+margine reale per pratica e la spesa per categoria. Non sostituisce il
+software del commercialista. L'IVA nei movimenti (`importo_iva`) è solo
+informativa.
+
+**Fase 1 (fatta, v4.22.0)** — modello dati + CRUD:
+- `contabilita_categoria` (ricavo/costo, seed iniziale tipico carrozzeria,
+  CRUD; una categoria usata da movimenti si disattiva, non si elimina).
+- `contabilita_movimento` — entrata/uscita, `categoria_id` e `pratica_id`
+  nullable (`pratica_id` = `F_NUMPRA` WinCar, intero sciolto senza FK, come
+  nel resto del progetto), `fattura_id` nullable, `origine`
+  (manuale / da_fattura_sdi), `stato` (proposto / confermato — i proposti
+  da SDI restano fuori dai totali finché non confermati).
+- `contabilita_fattura` — specchio di comodo delle fatture SDI (importi
+  complessivi, nessun dettaglio per aliquota). Idempotente su `sdi_id` e
+  sulla chiave naturale `(tipo, numero, anno, controparte_piva)`.
+- `contabilita_fattura_pratica` — ponte fattura↔pratica con
+  `importo_assegnato`: 1:1 oppure split su più pratiche.
+- UI: `/contabilita/movimenti` (lista filtrabile categoria/tipo/stato/
+  pratica/periodo + totali), form manuale, `/contabilita/categorie`.
+
+**Fase 2 (fatta, v4.23.0)** — scheda economica pratica:
+- `workflows/contabilita/scheda_economica.py::costruisci_scheda_economica`
+  (db_path, pratica_numero) → `SchedaEconomica`: entrate/uscite/margine
+  (solo movimenti `confermato`), ripartizione per categoria, conteggio
+  movimenti `proposto` a parte, elenco fatture collegate (non sommate nel
+  margine, per non contarle due volte).
+- Sezione `#economia` in `pratica_detail.html` (route admin
+  `/pratiche/{numero}` in `web/routes.py`). **Non** in
+  `portale_pratica_detail.html` / `routes_portale.py`.
+- Fixture `client_with_mock_repo` in `tests/test_web_routes.py` ora isola
+  anche `get_app_settings` su DB temp (prima le route `/pratiche/{numero}`
+  scrivevano su `data/lys_hub.db` di sviluppo — vedi nota igiene test 4.21.2).
+
+**Fase 3 (fatta, v4.24.0)** — integrazione SDI:
+- `integrations/sdi.py` — interfaccia `SdiClient` (`invia_fattura` /
+  `ricevi_fatture` / `ottieni_pdf`). `FakeSdiClient` (default, nessuna rete) +
+  `OpenapiSdiClient` (endpoint REST da validare in sandbox — isolati qui).
+  `build_sdi_client(settings)`. Config `.env`: `SDI_PROVIDER` (fake|openapi),
+  `SDI_API_KEY`, `SDI_BASE_URL`, `SDI_TEST_MODE`, `SDI_PIVA_AZIENDA`
+  (14521721002), `SDI_WINCAR_ATTIVE_DIR`, `APP_ARCHIVIO_FATTURE`,
+  `SDI_FETCH_SINCE` (2026-01-01), `SDI_INVIO_DISABILITATO`.
+- `workflows/contabilita/sdi_import.py` — parser XML FatturaPA minimale
+  (numero/data/controparte/importi complessivi, gestisce 1 Body per file,
+  note di credito TD04/TD08 → segno movimento invertito). `importa_attive_da_dir`
+  (WinCar XML → riga fattura `da_inviare`, idempotente), `invia_attive_pendenti`
+  (→ SDI, stato `inviata`, + movimento proposto entrata), `sincronizza_passive`
+  (SDI → riga fattura passiva + movimento proposto uscita, senza categoria/pratica).
+- `scripts/run_sdi_poll.py` — ciclo singolo, gemello di `run_polling.py`, lock
+  file `sdi_poll.lock` dedicato, push ntfy di riepilogo. Task Scheduler 1x/giorno.
+  Riusa `PollingLock` / `_setup_logging` da `run_polling.py`.
+- UI `/contabilita/fatture` (admin): lista fatture + bottoni "importa attive",
+  "invia a SDI", "sincronizza passive". Coda passive non collegate evidenziata
+  (UI di smistamento vera = Fase 4).
+- Movimenti generati da fattura: `origine='da_fattura_sdi'`, `stato='proposto'`,
+  esclusi dal margine finché non confermati. Idempotenti per `fattura_id`.
+
+**Fase 4 (fatta, v4.25.0)** — coda smistamento + reportistica:
+- `workflows/contabilita/smistamento.py` — `coda_passive` (fatture con ≥1
+  movimento `proposto`), `smista_fattura(fattura_id, categoria_id,
+  assegnazioni)`: sostituisce i movimenti `origine='da_fattura_sdi'` (proposti
+  o già smistati — NON quelli manuali) con movimenti `confermato`, uno per
+  pratica assegnata + uno per il residuo (totale − somma) senza pratica;
+  riscrive `contabilita_fattura_pratica`. Valida somma ≤ totale.
+- `workflows/contabilita/report.py` — `costruisci_report(db_path, dal, al)` →
+  aggregato per categoria (solo movimenti `confermato`), ricavi/costi/margine.
+- Routes admin: `/contabilita/fatture/passive/da-collegare` (coda),
+  `/contabilita/fatture/{id}/smista` (form split dinamico),
+  `/contabilita/report` (dashboard). Link "Report" / "Fatture" / "Categorie"
+  nella testata di `/contabilita/movimenti`.
+- `movimento_repo`: `fattura_ids_con_proposti`, `riepilogo_per_categoria`,
+  `delete_by_fattura(solo_sdi=)`.
+
+Ciclo delle 4 fasi completo. Manca solo: apertura account Openapi +
+validazione endpoint reali in sandbox prima di `SDI_PROVIDER=openapi` in prod.
+
+**Fix post code-review (v4.25.1)**:
+- `smista_fattura`: la direzione del movimento si ricava dai movimenti
+  `origine='da_fattura_sdi'` (a prescindere dallo stato), non dal fallback
+  `uscita` — un ri-smistamento di una fattura attiva / nota di credito non
+  ribalta più il segno. Dedup delle assegnazioni sulla stessa pratica.
+- `parse_fattura_xml`: rifiuta XML con DTD/entità (anti entity-expansion),
+  cap 8 MB, warning su lotti multi-body (importato solo il primo).
+- `_archivia_xml`: basename-only sul `filename` del provider (anti path
+  traversal).
+- `ContabilitaFatturaRepository.delete`: rimuove anche i movimenti SDI legati
+  e scollega quelli manuali (niente più righe orfane).
+- Totali in `/contabilita/movimenti`: solo movimenti confermati, i proposti
+  contati a parte in una nota.
+- Redirect con query param url-encoded; seed categorie `INSERT OR IGNORE`;
+  `run_sdi_poll.py` notifica anche via FCM (come `run_polling.py`).
+
+**Import fatture attive rivisto (v4.25.2)**:
+- `importa_attive_da_dir(..., anno, since, come_storico, categoria_id,
+  movimento_repo)`: filtra per anno documento + cutoff data
+  (`SDI_ATTIVE_IMPORT_SINCE`, default 2026-01-01). Non importa più
+  indiscriminatamente tutta la cartella.
+- `come_storico=True` (default): stato fattura `storico` → **mai** re-inoltrata
+  da `invia_attive_pendenti`. Le attive le trasmette ancora WinCar/il
+  commercialista. Crea il movimento di ricavo: `confermato` (nei report) se
+  passi una categoria nel form, altrimenti `proposto` da smistare.
+- `marca_da_inviare(fattura_repo, id)` + bottone per-riga "Segna da inviare"
+  (`storico` → `da_inviare`) per le poche fatture non ancora trasmesse.
+- Form import su `/contabilita/fatture` (anno, categoria ricavo, checkbox
+  "già inviate").
+- `run_sdi_poll.py`: import attive come `storico` (anno corrente + cutoff);
+  invio attive automatico SOLO se `SDI_INVIO_ATTIVE_AUTO=true` (default false).
+
+**Legame fattura↔pratica (v4.26.0, fatto)**:
+- L'XML FatturaPA di WinCar **non contiene** il numero pratica (verificato su
+  un file reale: nessun `DatiCommessaConvenzione`/`DatiOrdineAcquisto`/
+  `Causale`). Il legame vive solo in `C:\WinCar\Archivi\wcFatture.mdb`,
+  tabella **`TESFAT`**: `F_NUMFAT` (numero) · `F_ALFFAT` (sezionale) ·
+  `F_DATFAT` · `F_TIPDOC` ('FI'/'NC') · `F_NUMPRA` (pratica, ≤0 = nessuna) ·
+  `F_TOTFAT`.
+- `core/wincar_fatture_repository.py` — `WinCarFattureRepository` (ODBC read-only,
+  stesso pattern di `WinCarRepository`): `pratica_per_fattura(numero, anno)` →
+  `SELECT F_NUMPRA FROM TESFAT WHERE F_NUMFAT=? AND YEAR(F_DATFAT)=?`. None se
+  ambiguo o F_NUMPRA≤0. `numero_fattura_int()` estrae la parte numerica dal
+  `Numero` XML ("2026/40" → 40).
+- Import attive: se `wincar_fatture_repo` passato + pratica trovata + categoria
+  ("Riparazioni carrozzeria" di default) → `link_pratica` + movimento
+  `confermato` con `pratica_id`. Altrimenti fallback (proposto / confermato
+  senza pratica). `run_sdi_poll.py` fa lo stesso in automatico.
+- `collega_attive_da_wincar()` + bottone "Collega pratiche alle attive (da
+  WinCar)" (`POST /contabilita/fatture/attive/collega-pratiche`): one-shot per
+  le fatture già importate — rilegge TESFAT e smista (riusa `smista_fattura`).
+  Idempotente (salta quelle già collegate). Se `wcFatture.mdb` non raggiungibile
+  → messaggio, nessun 500.
+- `scripts/dump_schema_fatture.py`: ricognizione schema (usato una volta).
+- Categoria attive = "Riparazioni carrozzeria" automatica; "coda passive" →
+  "coda da smistare" (`coda_da_smistare`, include anche le attive).
+
+**Categoria "Nota di credito" (v4.26.1)**:
+- Seed `CATEGORIA_NOTA_CREDITO = "Nota di credito"` (tipo costo; il segno lo
+  porta il movimento — uscita per NC attiva = storno ricavo, entrata per NC
+  passiva = storno costo). Garantita anche su DB già popolati (INSERT OR
+  IGNORE in `__init__`).
+- Import + `collega_attive_da_wincar`: se l'XML è una nota di credito
+  (`TipoDocumento` TD04/TD08/TD24 → `fx.is_nota_credito`) usa questa categoria
+  invece di "Riparazioni carrozzeria".
+- `collega_attive_da_wincar` ora sistema ANCHE le attive senza pratica in
+  WinCar (F_NUMPRA≤0, es. NC generiche): assegna solo la categoria + conferma.
+  Summary: `collegate` (con pratica) / `categorizzate` (solo categoria) /
+  `gia_sistemate`. Idempotenza via `_fattura_da_sistemare` (proposto o SDI-mov
+  senza categoria).
+- Descrizione movimento: "Fattura N a &lt;cliente&gt;" per le attive, "da
+  &lt;fornitore&gt;" per le passive (prima usava la direzione del movimento →
+  sbagliato per le NC attive).
+
+**Fix IVA + rename (v4.26.2)**:
+- `smista_fattura` propaga `fattura.importo_iva` sui movimenti creati
+  (ripartita in proporzione all'importo su split). Prima i movimenti smistati
+  perdevano l'IVA (colonna "di cui IVA" vuota).
+- `collega_attive_da_wincar` ri-sistema anche le fatture già smistate se i
+  movimenti sono senza IVA (`_fattura_da_sistemare` la controlla); per quelle
+  già legate riusa la ripartizione `fattura_pratica` esistente.
+- Categoria rinominata **"Note di credito" → "Nota di credito"**: migrazione
+  UPDATE in `__init__` su DB già popolati (`_CATEGORIA_NC_VECCHIO_NOME`).
+- `/contabilita/movimenti`: conteggio "Movimenti" in testata
+  (`ContabilitaMovimentoRepository.conta`) + avviso se troncato a 500.
+  Header colonna "di cui IVA" → "IVA".
 
 ---
 
@@ -890,10 +1067,31 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 
 ## Stato attuale
 
-Versione **4.21.3**, tutto su branch `main`, in produzione su
-`https://hub.lysauto.it`. Changelog per-commit in `git log`; le decisioni
-tecniche non ovvie dal codice (formati, gotcha, cause di bug reali) restano
-documentate nelle sezioni sopra, per sottosistema.
+Versione **4.21.3** in produzione su `main` / `https://hub.lysauto.it`.
+Sviluppo contabilità gestionale + SDI (**4.22.0**) sul branch
+`feature/contabilita-sdi`, non ancora in produzione. Changelog per-commit in
+`git log`; le decisioni tecniche non ovvie dal codice (formati, gotcha, cause
+di bug reali) restano documentate nelle sezioni sopra, per sottosistema.
+
+**4.25.0 — Contabilità gestionale, Fase 4 (branch `feature/contabilita-sdi`)**:
+coda smistamento fatture passive (assegnazione categoria/pratica + split,
+`/contabilita/fatture/passive/da-collegare`) + dashboard costi/ricavi per
+categoria/periodo (`/contabilita/report`). Ciclo contabilità completo.
+
+**4.24.0 — Contabilità gestionale, Fase 3 (branch `feature/contabilita-sdi`)**:
+integrazione SDI — `integrations/sdi.py` (client astratto, Fake + Openapi),
+`workflows/contabilita/sdi_import.py` (parser XML FatturaPA + import attive da
+WinCar / invio SDI / sync passive), `scripts/run_sdi_poll.py`, UI
+`/contabilita/fatture`. Vedi sezione dedicata sopra.
+
+**4.23.0 — Contabilità gestionale, Fase 2 (branch `feature/contabilita-sdi`)**:
+scheda economica pratica (entrate/uscite/margine + ripartizione per categoria
++ fatture collegate) come sezione admin-only in `pratica_detail.html`, mai nel
+portale esterno. Vedi sezione dedicata sopra.
+
+**4.22.0 — Contabilità gestionale, Fase 1 (branch `feature/contabilita-sdi`)**:
+modello dati + CRUD di categorie e movimenti (entrate/uscite analitiche per
+pratica e categoria). Nessuna contabilità fiscale. Vedi sezione dedicata sopra.
 
 **4.21.3 — Fix: token FCM condiviso tra due account sullo stesso device**:
 segnalato dall'utente admin — riceveva push anche delle proprie note,

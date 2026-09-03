@@ -59,6 +59,7 @@ from lys_workflow_hub.web.routes import router as pages_router
 from lys_workflow_hub.web.routes_auth import router as auth_router
 from lys_workflow_hub.web.routes_bozze import router as bozze_router
 from lys_workflow_hub.web.routes_compagnie import router as compagnie_router
+from lys_workflow_hub.web.routes_contabilita import router as contabilita_router
 from lys_workflow_hub.web.routes_impostazioni import router as impostazioni_router
 from lys_workflow_hub.web.routes_ingressi import router as ingressi_router
 from lys_workflow_hub.web.routes_operatore import router as operatore_router
@@ -257,6 +258,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(pages_router)
 app.include_router(compagnie_router)
+app.include_router(contabilita_router)
 app.include_router(vandalismo_router)
 app.include_router(pec_log_router)
 app.include_router(risposte_router)

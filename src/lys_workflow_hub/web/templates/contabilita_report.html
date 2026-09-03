@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Report costi/ricavi · LYS Workflow Hub{% endblock %}
+
+{% macro tabella(titolo, righe, campo) %}
+  <h2>{{ titolo }}</h2>
+  {% if not righe %}
+    <p class="meta">Nessun movimento nel periodo.</p>
+  {% else %}
+    <table class="table" style="margin-bottom:20px;">
+      <thead><tr><th>Categoria</th><th style="text-align:right;">Importo</th></tr></thead>
+      <tbody>
+        {% for r in righe %}
+        <tr>
+          <td>{{ r.nome }}</td>
+          <td style="text-align:right; white-space:nowrap;">€ {{ "%.2f"|format(r[campo]) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+{% endmacro %}
+
+{% block content %}
+<nav class="breadcrumb">
+  <a href="/contabilita/movimenti">← Movimenti</a>
+</nav>
+
+<header class="pratica-header">
+  <div>
+    <div class="hero-eyebrow">Contabilità gestionale</div>
+    <h1>Report costi / ricavi</h1>
+    <p class="meta">
+      Aggregato per categoria sui movimenti <strong>confermati</strong> nel
+      periodo. I movimenti proposti (fatture SDI non smistate) sono esclusi.
+    </p>
+  </div>
+</header>
+
+{% if error %}
+  <div class="alert alert-warn">{{ error }}</div>
+{% endif %}
+
+<section class="card">
+  <form method="get" action="/contabilita/report"
+        style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; margin-bottom:16px;">
+    <div class="form-field" style="margin:0;">
+      <label for="f_dal">Dal</label>
+      <input id="f_dal" name="dal" type="date" value="{{ filtri.dal }}" />
+    </div>
+    <div class="form-field" style="margin:0;">
+      <label for="f_al">Al</label>
+      <input id="f_al" name="al" type="date" value="{{ filtri.al }}" />
+    </div>
+    <button type="submit" class="btn">Applica</button>
+    <a href="/contabilita/report" class="btn btn-link">Tutto</a>
+  </form>
+
+  <div style="display:flex; gap:24px; flex-wrap:wrap; margin-bottom:20px;">
+    <div><span class="meta">Ricavi</span><br>
+      <strong style="color: var(--lys-success);">€ {{ "%.2f"|format(report.entrate_tot) }}</strong></div>
+    <div><span class="meta">Costi</span><br>
+      <strong style="color: var(--lys-danger);">€ {{ "%.2f"|format(report.uscite_tot) }}</strong></div>
+    <div><span class="meta">Margine</span><br>
+      <strong style="color: {% if report.margine >= 0 %}var(--lys-success){% else %}var(--lys-danger){% endif %};">
+        € {{ "%.2f"|format(report.margine) }}</strong></div>
+  </div>
+
+  {{ tabella("Ricavi per categoria", report.ricavi, "entrate") }}
+  {{ tabella("Costi per categoria", report.costi, "uscite") }}
+</section>
+{% endblock %}

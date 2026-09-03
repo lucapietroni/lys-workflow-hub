@@ -132,6 +132,44 @@ class Settings(BaseSettings):
     sla_formale_giorni: int = Field(default=30)
     sla_diffida_giorni: int = Field(default=45)
 
+    # --- Fatturazione elettronica SDI (Fase 3, branch feature/contabilita-sdi) ---
+    # Contabilità gestionale: importa fatture attive generate da WinCar e le
+    # inoltra allo SDI; riceve le passive dallo SDI. NON è contabilità fiscale.
+    #
+    # Provider: "fake" (default — nessuna chiamata di rete: invii simulati,
+    # nessuna passiva; per sviluppo/rodaggio) o "openapi" (openapi.com).
+    sdi_provider: str = Field(default="fake")
+    sdi_api_key: str = Field(default="")
+    # Base URL API del provider. Openapi: prod vs sandbox.
+    sdi_base_url: str = Field(default="https://api.openapi.com")
+    # Se True usa l'ambiente di test del provider (nessun inoltro reale a SDI).
+    sdi_test_mode: bool = Field(default=True)
+    # P.IVA della carrozzeria (11 cifre), usata per capire se una fattura XML è
+    # attiva (noi = cedente) o passiva (noi = cessionario) e come nome cartella.
+    sdi_piva_azienda: str = Field(default="14521721002")
+    # Cartella dove WinCar deposita gli XML delle fatture attive emesse.
+    # Il nome della sottocartella è la P.IVA (vedi sopra).
+    sdi_wincar_attive_dir: Path = Field(
+        default=Path(r"C:\WinCar\FattureElettroniche\14521721002\Attive")
+    )
+    # Cutoff di sicurezza per l'import delle fatture attive: le fatture con
+    # data documento precedente vengono ignorate anche se si sbaglia l'anno
+    # nel form. Vuoto = nessun cutoff.
+    sdi_attive_import_since: str = Field(default="2026-01-01")
+    # Se True il ciclo run_sdi_poll.py inoltra AUTOMATICAMENTE allo SDI le
+    # fatture attive in stato 'da_inviare'. Default False: le attive le invia
+    # ancora WinCar / il commercialista, qui si importano solo (stato
+    # 'storico'); l'invio da qui resta un'azione manuale da /contabilita/fatture.
+    sdi_invio_attive_auto: bool = Field(default=False)
+    # Archivio interno degli XML/PDF fattura scaricati/inoltrati (per anno).
+    app_archivio_fatture: Path = Field(default=Path(r"C:\LYSApp\Fatture"))
+    # Data di taglio per la sincronizzazione passive dallo SDI (YYYY-MM-DD).
+    # Vuoto = tutto lo storico disponibile dal provider (primo import 2026).
+    sdi_fetch_since: str = Field(default="2026-01-01")
+    # Se True, il ciclo run_sdi_poll.py NON inoltra le attive allo SDI: importa
+    # e basta (utile per rodaggio). L'invio resta possibile a mano da UI.
+    sdi_invio_disabilitato: bool = Field(default=False)
+
     # --- PDF extraction (M5.3) ---
     # Estrae il testo dagli allegati PDF delle risposte assicurative quando
     # il corpo della mail è troppo corto per essere classificato dall'AI.

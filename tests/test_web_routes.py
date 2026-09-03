@@ -90,19 +90,23 @@ def _sample_pratica() -> Pratica:
 
 
 @pytest.fixture
-def client_with_mock_repo(authenticated_app):
+def client_with_mock_repo(authenticated_app, tmp_path):
     repo = MagicMock()
+    # Isola anche le Settings (app_db_path) su un DB temporaneo: le route di
+    # /pratiche/{numero} costruiscono diversi repository SQLite reali
+    # (mail, stato, solleciti, scheda economica…) da settings.app_db_path —
+    # senza override scriverebbero sul data/lys_hub.db di sviluppo.
+    settings = Settings(wincar_archivio=tmp_path, app_db_path=tmp_path / "app.db")
 
-    def _override():
-        return repo
-
-    app.dependency_overrides[get_repository] = _override
+    app.dependency_overrides[get_repository] = lambda: repo
+    app.dependency_overrides[get_app_settings] = lambda: settings
     try:
         client = TestClient(app)
         login_as_admin(client)
         yield client, repo
     finally:
         app.dependency_overrides.pop(get_repository, None)
+        app.dependency_overrides.pop(get_app_settings, None)
 
 
 def test_home_no_query_mostra_ultime_pratiche(client_with_mock_repo):
@@ -209,6 +213,31 @@ def test_pratica_detail_renders_all_sections(client_with_mock_repo):
     assert "RSSMRA80A01H501U" in response.text
     assert "Tamponamento posteriore al semaforo." in response.text
     assert "Allianz" in response.text
+    # Scheda economica (Fase 2): sezione sempre presente, vuota di default.
+    assert "Scheda economica" in response.text
+    assert "Nessun movimento collegato a questa pratica" in response.text
+
+
+def test_pratica_detail_scheda_economica_con_movimenti(client_with_mock_repo):
+    client, repo = client_with_mock_repo
+    repo.get_pratica.return_value = _sample_pratica()
+
+    from lys_workflow_hub.core.contabilita_movimento_repository import (
+        ContabilitaMovimentoRepository,
+    )
+    from lys_workflow_hub.web.routes import get_app_settings
+
+    settings = app.dependency_overrides[get_app_settings]()
+    mov = ContabilitaMovimentoRepository(db_path=settings.app_db_path)
+    mov.create(data="2026-05-01", importo="1000", tipo="entrata", pratica_id=766)
+    mov.create(data="2026-05-02", importo="300", tipo="uscita", pratica_id=766)
+    mov.create(data="2026-05-03", importo="999", tipo="uscita", pratica_id=999)
+
+    response = client.get("/pratiche/766")
+    assert response.status_code == 200
+    assert "€ 1000.00" in response.text  # entrate
+    assert "€ 700.00" in response.text  # margine 1000 - 300
+    assert "€ 999.00" not in response.text  # altra pratica esclusa
 
 
 def test_pratica_detail_404_when_not_found(client_with_mock_repo):

@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Fatture da smistare · LYS Workflow Hub{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb">
+  <a href="/contabilita/fatture">← Fatture</a>
+</nav>
+
+<header class="pratica-header">
+  <div>
+    <div class="hero-eyebrow">Contabilità gestionale</div>
+    <h1>Fatture da smistare</h1>
+    <p class="meta">
+      Fatture con un movimento ancora <strong>proposto</strong> (arrivate dallo
+      SDI, senza categoria né pratica). Assegna categoria ed eventuali pratiche;
+      i movimenti passano a <strong>confermato</strong> ed entrano nel margine.
+    </p>
+  </div>
+</header>
+
+<section class="card">
+  {% if not coda %}
+    <p class="meta" style="margin:0">Niente da smistare. 🎉</p>
+  {% else %}
+    <table class="table">
+      <thead>
+        <tr><th>Tipo</th><th>Numero</th><th>Data</th><th>Controparte</th>
+          <th style="text-align:right;">Totale</th><th class="col-actions"></th></tr>
+      </thead>
+      <tbody>
+        {% for v in coda %}
+        <tr>
+          <td>{{ "Attiva" if v.fattura.tipo == "attiva" else "Passiva" }}</td>
+          <td>{{ v.fattura.numero }}/{{ v.fattura.anno }}</td>
+          <td>{{ v.fattura.data.strftime("%d/%m/%Y") }}</td>
+          <td>{{ v.fattura.controparte_nome or v.fattura.controparte_piva or "—" }}</td>
+          <td style="text-align:right;"><strong>€ {{ "%.2f"|format(v.fattura.importo_totale) }}</strong></td>
+          <td class="col-actions">
+            <a class="btn btn-sm btn-primary" href="/contabilita/fatture/{{ v.fattura.id }}/smista">Smista</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</section>
+{% endblock %}

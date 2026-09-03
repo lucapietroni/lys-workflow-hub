@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}Movimenti contabili · LYS Workflow Hub{% endblock %}
+
+{% block content %}
+<header class="pratica-header">
+  <div>
+    <div class="hero-eyebrow">Contabilità gestionale</div>
+    <h1>Movimenti</h1>
+    <p class="meta">
+      Entrate e uscite classificate per categoria, collegabili a una pratica.
+      Contabilità <strong>analitica interna</strong>, non fiscale: nessuna
+      partita doppia, l'IVA è un dato informativo.
+    </p>
+  </div>
+  <div class="pratica-actions">
+    <a class="btn" href="/contabilita/report">Report</a>
+    <a class="btn" href="/contabilita/fatture">Fatture</a>
+    <a class="btn" href="/contabilita/categorie">Categorie</a>
+    <a class="btn btn-primary" href="/contabilita/movimenti/nuovo">+ Nuovo movimento</a>
+  </div>
+</header>
+
+{% if filtro_err %}
+  <div class="alert alert-warn"><strong>Filtro non valido:</strong> {{ filtro_err }}</div>
+{% endif %}
+
+<section class="card">
+  <form method="get" action="/contabilita/movimenti"
+        style="display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap; margin-bottom:16px;">
+    <div class="form-field" style="margin:0;">
+      <label for="f_cat">Categoria</label>
+      <select id="f_cat" name="categoria_id">
+        <option value="">— tutte —</option>
+        {% for c in categorie %}
+          <option value="{{ c.id }}" {% if filtri.categoria_id == c.id|string %}selected{% endif %}>
+            {{ c.nome }} ({{ c.tipo_label|lower }}){% if not c.attiva %} — disattivata{% endif %}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-field" style="margin:0;">
+      <label for="f_tipo">Tipo</label>
+      <select id="f_tipo" name="tipo">
+        <option value="">— tutti —</option>
+        <option value="entrata" {% if filtri.tipo == "entrata" %}selected{% endif %}>Entrata</option>
+        <option value="uscita" {% if filtri.tipo == "uscita" %}selected{% endif %}>Uscita</option>
+      </select>
+    </div>
+    <div class="form-field" style="margin:0;">
+      <label for="f_stato">Stato</label>
+      <select id="f_stato" name="stato">
+        <option value="">— tutti —</option>
+        <option value="confermato" {% if filtri.stato == "confermato" %}selected{% endif %}>Confermato</option>
+        <option value="proposto" {% if filtri.stato == "proposto" %}selected{% endif %}>Proposto</option>
+      </select>
+    </div>
+    <div class="form-field" style="margin:0;">
+      <label for="f_pratica">Pratica</label>
+      <input id="f_pratica" name="pratica_id" type="number" inputmode="numeric"
+             value="{{ filtri.pratica_id }}" style="width:8ch;" />
+    </div>
+    <div class="form-field" style="margin:0;">
+      <label for="f_dal">Dal</label>
+      <input id="f_dal" name="dal" type="date" value="{{ filtri.dal }}" />
+    </div>
+    <div class="form-field" style="margin:0;">
+      <label for="f_al">Al</label>
+      <input id="f_al" name="al" type="date" value="{{ filtri.al }}" />
+    </div>
+    <button type="submit" class="btn">Filtra</button>
+    <a href="/contabilita/movimenti" class="btn btn-link">Azzera</a>
+  </form>
+
+  <div style="display:flex; gap:24px; flex-wrap:wrap; margin-bottom:16px;">
+    <div><span class="meta">Movimenti</span><br>
+      <strong>{{ totale_righe }}</strong></div>
+    <div><span class="meta">Entrate</span><br>
+      <strong style="color: var(--lys-success);">€ {{ "%.2f"|format(totali.entrate) }}</strong></div>
+    <div><span class="meta">Uscite</span><br>
+      <strong style="color: var(--lys-danger);">€ {{ "%.2f"|format(totali.uscite) }}</strong></div>
+    <div><span class="meta">Saldo</span><br>
+      <strong>€ {{ "%.2f"|format(totali.saldo) }}</strong></div>
+  </div>
+  {% if totale_righe > movimenti|length %}
+    <p class="meta" style="margin:-8px 0 16px;">
+      Mostrati i primi {{ movimenti|length }} di {{ totale_righe }} — restringi il periodo per vederli tutti.
+    </p>
+  {% endif %}
+  {% if proposti_n and not filtri.stato %}
+    <p class="meta" style="margin:-8px 0 16px;">
+      Totali sui soli movimenti confermati. {{ proposti_n }}
+      moviment{{ "o proposto" if proposti_n == 1 else "i proposti" }}
+      (fatture SDI da smistare) non incluso —
+      <a href="/contabilita/movimenti?stato=proposto{% if filtri.pratica_id %}&pratica_id={{ filtri.pratica_id }}{% endif %}">vedi</a>.
+    </p>
+  {% endif %}
+
+  {% if not movimenti %}
+    <p class="meta" style="margin:0">Nessun movimento con i filtri correnti.</p>
+  {% else %}
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Data</th>
+          <th>Categoria</th>
+          <th>Pratica</th>
+          <th>Descrizione</th>
+          <th style="text-align:right;">Importo</th>
+          <th style="text-align:right; white-space:nowrap;">IVA</th>
+          <th>Origine</th>
+          <th class="col-actions"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in movimenti %}
+        <tr>
+          <td>{{ m.data.strftime("%d/%m/%Y") }}</td>
+          <td>
+            {% set cat = cat_by_id.get(m.categoria_id) %}
+            {{ cat.nome if cat else "—" }}
+          </td>
+          <td>
+            {% if m.pratica_id %}<a href="/pratiche/{{ m.pratica_id }}">{{ m.pratica_id }}</a>{% else %}—{% endif %}
+          </td>
+          <td>
+            {{ m.descrizione or "—" }}
+            {% if m.stato == "proposto" %}<span class="badge badge-yellow">proposto</span>{% endif %}
+          </td>
+          <td style="text-align:right; white-space:nowrap;
+                     color: {% if m.tipo == 'entrata' %}var(--lys-success){% else %}var(--lys-danger){% endif %};">
+            {{ "+" if m.tipo == "entrata" else "−" }} € {{ "%.2f"|format(m.importo) }}
+          </td>
+          <td style="text-align:right; white-space:nowrap;">
+            {{ ("€ %.2f"|format(m.importo_iva)) if m.importo_iva is not none else "—" }}
+          </td>
+          <td>{{ "SDI" if m.origine == "da_fattura_sdi" else "manuale" }}</td>
+          <td class="col-actions">
+            <a class="btn btn-sm" href="/contabilita/movimenti/{{ m.id }}/modifica">Modifica</a>
+            <form method="post" action="/contabilita/movimenti/{{ m.id }}/elimina"
+                  style="display:inline"
+                  onsubmit='return confirm("Eliminare questo movimento?");'>
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+              <button type="submit" class="btn btn-sm btn-danger">Elimina</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</section>
+{% endblock %}
