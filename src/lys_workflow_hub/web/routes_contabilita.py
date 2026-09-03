@@ -46,9 +46,11 @@ from lys_workflow_hub.core.contabilita_movimento_repository import (
     TIPO_USCITA,
     ContabilitaMovimentoRepository,
 )
+from lys_workflow_hub.core.wincar_fatture_repository import WinCarFattureRepository
 from lys_workflow_hub.integrations.sdi import build_sdi_client
 from lys_workflow_hub.workflows.contabilita.report import costruisci_report
 from lys_workflow_hub.workflows.contabilita.sdi_import import (
+    collega_attive_da_wincar,
     importa_attive_da_dir,
     invia_attive_pendenti,
     marca_da_inviare,
@@ -551,6 +553,7 @@ async def fatture_importa_attive(
         piva_azienda=settings.sdi_piva_azienda,
         fattura_repo=fat_repo,
         movimento_repo=mov_repo,
+        wincar_fatture_repo=WinCarFattureRepository.from_settings(settings),
         anno=anno,
         since=since,
         come_storico=come_storico,
@@ -559,9 +562,42 @@ async def fatture_importa_attive(
     )
     stato_txt = "storico (non verranno inviate)" if come_storico else "da inviare"
     msg = (
-        f"Import attive {anno} [{stato_txt}]: {s.nuove} nuove, "
+        f"Import attive {anno} [{stato_txt}]: {s.nuove} nuove "
+        f"({s.collegate_pratica} collegate a pratica), "
         f"{s.duplicate} già presenti, {s.fuori_periodo} fuori periodo, "
         f"{len(s.errori)} errori."
+    )
+    if s.errori:
+        msg += " " + " · ".join(s.errori[:3])
+    return _redir("/contabilita/fatture", esito=msg)
+
+
+@router.post("/contabilita/fatture/attive/collega-pratiche")
+def fatture_collega_pratiche(
+    fat_repo: ContabilitaFatturaRepository = Depends(get_fattura_repo),
+    mov_repo: ContabilitaMovimentoRepository = Depends(get_movimento_repo),
+    cat_repo: ContabilitaCategoriaRepository = Depends(get_categoria_repo),
+    settings: Settings = Depends(get_contabilita_settings),
+) -> RedirectResponse:
+    """One-shot: collega alle pratiche le fatture attive già importate,
+    leggendo il numero pratica da wcFatture.mdb."""
+    wincar = WinCarFattureRepository.from_settings(settings)
+    if not wincar.disponibile():
+        return _redir(
+            "/contabilita/fatture",
+            esito=f"wcFatture.mdb non raggiungibile ({wincar.db_path}). "
+            "Serve girare sul PC con WinCar.",
+        )
+    s = collega_attive_da_wincar(
+        fattura_repo=fat_repo,
+        movimento_repo=mov_repo,
+        wincar_fatture_repo=wincar,
+        categoria_id=_categoria_attive_id(cat_repo),
+    )
+    msg = (
+        f"Collegamento pratiche: {s.collegate} collegate, "
+        f"{s.gia_collegate} già collegate, {s.pratica_non_trovata} senza pratica "
+        f"in WinCar, {len(s.errori)} errori."
     )
     if s.errori:
         msg += " " + " · ".join(s.errori[:3])

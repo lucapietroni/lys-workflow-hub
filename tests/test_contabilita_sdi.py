@@ -17,10 +17,15 @@ from lys_workflow_hub.integrations.sdi import (
     FatturaPassivaRaw,
     build_sdi_client,
 )
+from lys_workflow_hub.core.contabilita_categoria_repository import (
+    ContabilitaCategoriaRepository,
+)
+from lys_workflow_hub.core.wincar_fatture_repository import numero_fattura_int
 from lys_workflow_hub.workflows.contabilita.sdi_import import (
     STATO_SDI_DA_INVIARE,
     STATO_SDI_INVIATA,
     classifica_tipo,
+    collega_attive_da_wincar,
     importa_attive_da_dir,
     invia_attive_pendenti,
     parse_fattura_xml,
@@ -30,6 +35,19 @@ from lys_workflow_hub.workflows.contabilita.sdi_import import (
 PIVA_LYS = "14521721002"
 PIVA_CLIENTE = "09876543210"
 PIVA_FORNITORE = "01112223330"
+
+
+class FakeWinCarFatture:
+    """Sostituto di WinCarFattureRepository per i test."""
+
+    def __init__(self, mapping: dict[tuple[int, int], int] | None = None):
+        self.mapping = mapping or {}
+
+    def disponibile(self) -> bool:
+        return True
+
+    def pratica_per_fattura(self, numero: int, anno: int, *, alfa: str = "") -> int | None:
+        return self.mapping.get((int(numero), int(anno)))
 
 
 def _xml(
@@ -270,6 +288,96 @@ def test_importa_attive_dir_mancante(db: Path, tmp_path: Path):
                               fattura_repo=ContabilitaFatturaRepository(db_path=db))
     assert s.esaminati == 0
     assert s.errori
+
+
+def test_numero_fattura_int():
+    assert numero_fattura_int("40") == 40
+    assert numero_fattura_int("2026/40") == 40
+    assert numero_fattura_int("40/A") == 40
+    assert numero_fattura_int("") is None
+    assert numero_fattura_int(None) is None
+
+
+def test_importa_attive_auto_collega_pratica_da_wincar(db: Path, tmp_path: Path):
+    src = tmp_path / "attive"
+    src.mkdir()
+    (src / "a.xml").write_bytes(_xml(numero="40", data="2026-05-28", totale="854.00",
+                                     imponibile="700.00", imposta="154.00"))
+    fat = ContabilitaFatturaRepository(db_path=db)
+    mov = ContabilitaMovimentoRepository(db_path=db)
+    cat = ContabilitaCategoriaRepository(db_path=db)
+    ric = next(c for c in cat.list_all() if c.nome == "Riparazioni carrozzeria")
+    wincar = FakeWinCarFatture({(40, 2026): 827})
+
+    s = importa_attive_da_dir(
+        src, piva_azienda=PIVA_LYS, fattura_repo=fat, movimento_repo=mov,
+        wincar_fatture_repo=wincar, anno=2026, categoria_id=ric.id,
+    )
+    assert s.nuove == 1 and s.collegate_pratica == 1
+    f = fat.list(tipo="attiva")[0]
+    assert [r.pratica_id for r in fat.list_pratiche(f.id)] == [827]
+    m = mov.list_by_fattura(f.id)[0]
+    assert m.pratica_id == 827 and m.categoria_id == ric.id
+    assert m.stato == "confermato" and m.tipo == "entrata"
+
+
+def test_importa_attive_pratica_non_in_wincar_resta_da_smistare(db: Path, tmp_path: Path):
+    src = tmp_path / "attive"
+    src.mkdir()
+    (src / "a.xml").write_bytes(_xml(numero="99", data="2026-05-01"))
+    fat = ContabilitaFatturaRepository(db_path=db)
+    mov = ContabilitaMovimentoRepository(db_path=db)
+    cat = ContabilitaCategoriaRepository(db_path=db)
+    ric = next(c for c in cat.list_all() if c.nome == "Riparazioni carrozzeria")
+
+    s = importa_attive_da_dir(
+        src, piva_azienda=PIVA_LYS, fattura_repo=fat, movimento_repo=mov,
+        wincar_fatture_repo=FakeWinCarFatture({}), anno=2026, categoria_id=ric.id,
+    )
+    assert s.collegate_pratica == 0
+    f = fat.list(tipo="attiva")[0]
+    assert fat.list_pratiche(f.id) == []
+    # categoria c'è → confermato anche senza pratica
+    assert mov.list_by_fattura(f.id)[0].stato == "confermato"
+
+
+def test_collega_attive_da_wincar_one_shot(db: Path, tmp_path: Path):
+    src = tmp_path / "attive"
+    src.mkdir()
+    (src / "a.xml").write_bytes(_xml(numero="40", data="2026-05-28", totale="854.00",
+                                     imponibile="700.00", imposta="154.00"))
+    (src / "b.xml").write_bytes(_xml(numero="41", data="2026-05-29"))
+    fat = ContabilitaFatturaRepository(db_path=db)
+    mov = ContabilitaMovimentoRepository(db_path=db)
+    cat = ContabilitaCategoriaRepository(db_path=db)
+    ric = next(c for c in cat.list_all() if c.nome == "Riparazioni carrozzeria")
+
+    # import SENZA wincar → tutte da smistare (proposto, no pratica)
+    importa_attive_da_dir(src, piva_azienda=PIVA_LYS, fattura_repo=fat,
+                          movimento_repo=mov, anno=2026)
+    assert all(not fat.list_pratiche(f.id) for f in fat.list(tipo="attiva"))
+
+    # one-shot: collega dalla mappa WinCar
+    s = collega_attive_da_wincar(
+        fattura_repo=fat, movimento_repo=mov,
+        wincar_fatture_repo=FakeWinCarFatture({(40, 2026): 827}),
+        categoria_id=ric.id,
+    )
+    assert s.collegate == 1 and s.pratica_non_trovata == 1
+    per_numero = {f.numero: f for f in fat.list(tipo="attiva")}
+    assert [r.pratica_id for r in fat.list_pratiche(per_numero["40"].id)] == [827]
+    m40 = mov.list_by_fattura(per_numero["40"].id)[0]
+    assert m40.pratica_id == 827 and m40.categoria_id == ric.id and m40.stato == "confermato"
+    # la 41 resta da smistare
+    assert fat.list_pratiche(per_numero["41"].id) == []
+
+    # idempotente: seconda passata non ricollega la 40
+    s2 = collega_attive_da_wincar(
+        fattura_repo=fat, movimento_repo=mov,
+        wincar_fatture_repo=FakeWinCarFatture({(40, 2026): 827}),
+        categoria_id=ric.id,
+    )
+    assert s2.collegate == 0 and s2.gia_collegate == 1
 
 
 # --------------------------------------------------------------------------- invio

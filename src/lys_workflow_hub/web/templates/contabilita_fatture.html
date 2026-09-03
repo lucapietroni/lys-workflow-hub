@@ -69,6 +69,10 @@
   </p>
 
   <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <form method="post" action="/contabilita/fatture/attive/collega-pratiche" style="display:inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <button type="submit" class="btn">Collega pratiche alle attive (da WinCar)</button>
+    </form>
     <form method="post" action="/contabilita/fatture/invia-sdi" style="display:inline"
           onsubmit='return confirm("Inoltrare allo SDI tutte le fatture attive in stato «da inviare»?");'>
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
@@ -79,6 +83,10 @@
       <button type="submit" class="btn">Sincronizza passive</button>
     </form>
   </div>
+  <p class="meta" style="margin:8px 0 0;">
+    «Collega pratiche» legge il numero pratica da <code>wcFatture.mdb</code> (l'XML
+    non lo contiene) e assegna categoria + pratica alle attive già importate.
+  </p>
 </section>
 
 <section class="card">

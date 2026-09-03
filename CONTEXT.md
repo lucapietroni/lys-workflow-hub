@@ -238,16 +238,30 @@ validazione endpoint reali in sandbox prima di `SDI_PROVIDER=openapi` in prod.
 - `run_sdi_poll.py`: import attive come `storico` (anno corrente + cutoff);
   invio attive automatico SOLO se `SDI_INVIO_ATTIVE_AUTO=true` (default false).
 
-**Legame fattura↔pratica (v4.25.3, in corso)**:
+**Legame fattura↔pratica (v4.26.0, fatto)**:
 - L'XML FatturaPA di WinCar **non contiene** il numero pratica (verificato su
   un file reale: nessun `DatiCommessaConvenzione`/`DatiOrdineAcquisto`/
-  `Causale`). Il legame vive solo in `C:\WinCar\Archivi\wcFatture.mdb`.
-- v4.25.3: categoria attive = "Riparazioni carrozzeria" in automatico
-  all'import (default nel form, resolver `_categoria_attive_id`); wording
-  "coda passive" → "coda da smistare" (`coda_da_smistare`);
-  `scripts/dump_schema_fatture.py` per ricognizione schema `wcFatture.mdb`.
-- TODO: reader ODBC read-only su `wcFatture.mdb` per `numero fattura → pratica`
-  + auto-link all'import + azione one-shot per le fatture già importate.
+  `Causale`). Il legame vive solo in `C:\WinCar\Archivi\wcFatture.mdb`,
+  tabella **`TESFAT`**: `F_NUMFAT` (numero) · `F_ALFFAT` (sezionale) ·
+  `F_DATFAT` · `F_TIPDOC` ('FI'/'NC') · `F_NUMPRA` (pratica, ≤0 = nessuna) ·
+  `F_TOTFAT`.
+- `core/wincar_fatture_repository.py` — `WinCarFattureRepository` (ODBC read-only,
+  stesso pattern di `WinCarRepository`): `pratica_per_fattura(numero, anno)` →
+  `SELECT F_NUMPRA FROM TESFAT WHERE F_NUMFAT=? AND YEAR(F_DATFAT)=?`. None se
+  ambiguo o F_NUMPRA≤0. `numero_fattura_int()` estrae la parte numerica dal
+  `Numero` XML ("2026/40" → 40).
+- Import attive: se `wincar_fatture_repo` passato + pratica trovata + categoria
+  ("Riparazioni carrozzeria" di default) → `link_pratica` + movimento
+  `confermato` con `pratica_id`. Altrimenti fallback (proposto / confermato
+  senza pratica). `run_sdi_poll.py` fa lo stesso in automatico.
+- `collega_attive_da_wincar()` + bottone "Collega pratiche alle attive (da
+  WinCar)" (`POST /contabilita/fatture/attive/collega-pratiche`): one-shot per
+  le fatture già importate — rilegge TESFAT e smista (riusa `smista_fattura`).
+  Idempotente (salta quelle già collegate). Se `wcFatture.mdb` non raggiungibile
+  → messaggio, nessun 500.
+- `scripts/dump_schema_fatture.py`: ricognizione schema (usato una volta).
+- Categoria attive = "Riparazioni carrozzeria" automatica; "coda passive" →
+  "coda da smistare" (`coda_da_smistare`, include anche le attive).
 
 ---
 

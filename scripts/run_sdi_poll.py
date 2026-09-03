@@ -37,6 +37,9 @@ sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from lys_workflow_hub.config import get_settings  # noqa: E402
+from lys_workflow_hub.core.contabilita_categoria_repository import (  # noqa: E402
+    ContabilitaCategoriaRepository,
+)
 from lys_workflow_hub.core.contabilita_fattura_repository import (  # noqa: E402
     ContabilitaFatturaRepository,
 )
@@ -44,6 +47,9 @@ from lys_workflow_hub.core.contabilita_movimento_repository import (  # noqa: E4
     ContabilitaMovimentoRepository,
 )
 from lys_workflow_hub.core.utenti_repository import UtentiRepository  # noqa: E402
+from lys_workflow_hub.core.wincar_fatture_repository import (  # noqa: E402
+    WinCarFattureRepository,
+)
 from lys_workflow_hub.integrations.notifier import (  # noqa: E402
     notify_fcm_nuova_attivita,
     notify_push_nuova_attivita,
@@ -87,22 +93,31 @@ def run_once() -> int:
             archivio = Path(settings.app_archivio_fatture)
 
             # Import attive: come 'storico' (le invia WinCar / il
-            # commercialista). L'anno è quello corrente; il cutoff .env
-            # protegge da import troppo indietro. Nessuna categoria → i
-            # movimenti restano 'proposto' da smistare.
+            # commercialista). Anno corrente + cutoff .env. Categoria fissa
+            # "Riparazioni carrozzeria" e legame pratica letto da wcFatture.mdb.
+            cat_repo = ContabilitaCategoriaRepository(db_path=settings.app_db_path)
+            cat_ric = next(
+                (c.id for c in cat_repo.list_all()
+                 if c.nome.strip().lower() == "riparazioni carrozzeria"),
+                None,
+            )
             imp = importa_attive_da_dir(
                 Path(settings.sdi_wincar_attive_dir),
                 piva_azienda=piva,
                 fattura_repo=fattura_repo,
                 movimento_repo=movimento_repo,
+                wincar_fatture_repo=WinCarFattureRepository.from_settings(settings),
                 anno=date.today().year,
                 since=_parse_since(settings.sdi_attive_import_since),
                 come_storico=True,
+                categoria_id=cat_ric,
                 archivio_dir=archivio,
             )
             log.info(
-                "Attive import: esaminati=%d nuove=%d duplicate=%d fuori_periodo=%d errori=%d",
-                imp.esaminati, imp.nuove, imp.duplicate, imp.fuori_periodo, len(imp.errori),
+                "Attive import: esaminati=%d nuove=%d (collegate pratica=%d) "
+                "duplicate=%d fuori_periodo=%d errori=%d",
+                imp.esaminati, imp.nuove, imp.collegate_pratica,
+                imp.duplicate, imp.fuori_periodo, len(imp.errori),
             )
             for e in imp.errori:
                 log.warning("import attive: %s", e)

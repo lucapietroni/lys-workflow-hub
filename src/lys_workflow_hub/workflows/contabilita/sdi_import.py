@@ -236,6 +236,7 @@ class ImportSummary:
     nuove: int = 0
     duplicate: int = 0
     fuori_periodo: int = 0
+    collegate_pratica: int = 0
     errori: list[str] = field(default_factory=list)
 
 
@@ -304,6 +305,7 @@ def importa_attive_da_dir(
     piva_azienda: str,
     fattura_repo: ContabilitaFatturaRepository,
     movimento_repo: ContabilitaMovimentoRepository | None = None,
+    wincar_fatture_repo=None,
     anno: int | None = None,
     since: date | None = None,
     come_storico: bool = True,
@@ -357,21 +359,119 @@ def importa_attive_da_dir(
                 continue
             summary.nuove += 1
             if movimento_repo is not None:
-                mov_stato = (
-                    STATO_CONFERMATO
-                    if (come_storico and categoria_id is not None)
-                    else STATO_PROPOSTO
-                )
-                _crea_movimento_proposto(
-                    movimento_repo,
-                    fattura=fattura,
-                    tipo=TIPO_USCITA if fx.is_nota_credito else TIPO_ENTRATA,
-                    stato=mov_stato,
-                    categoria_id=categoria_id,
-                )
+                pratica_id = _pratica_da_wincar(wincar_fatture_repo, fx)
+                mov_tipo = TIPO_USCITA if fx.is_nota_credito else TIPO_ENTRATA
+                if pratica_id is not None and categoria_id is not None:
+                    # legame pieno: riga ponte + movimento confermato su pratica
+                    fattura_repo.link_pratica(
+                        fattura.id, pratica_id, importo_assegnato=fattura.importo_totale
+                    )
+                    _crea_movimento_proposto(
+                        movimento_repo, fattura=fattura, tipo=mov_tipo,
+                        stato=STATO_CONFERMATO, categoria_id=categoria_id,
+                        pratica_id=pratica_id,
+                    )
+                    summary.collegate_pratica += 1
+                else:
+                    mov_stato = (
+                        STATO_CONFERMATO
+                        if (come_storico and categoria_id is not None)
+                        else STATO_PROPOSTO
+                    )
+                    _crea_movimento_proposto(
+                        movimento_repo, fattura=fattura, tipo=mov_tipo,
+                        stato=mov_stato, categoria_id=categoria_id,
+                    )
         except Exception as exc:  # noqa: BLE001
             summary.errori.append(f"{xml_file.name}: {exc}")
     return summary
+
+
+def _pratica_da_wincar(wincar_fatture_repo, fx: FatturaXML) -> int | None:
+    """Numero pratica per la fattura, letto da wcFatture.mdb. Tollera qualunque
+    errore (driver Access assente, DB non raggiungibile) → None."""
+    if wincar_fatture_repo is None:
+        return None
+    try:
+        from lys_workflow_hub.core.wincar_fatture_repository import numero_fattura_int
+
+        nf = numero_fattura_int(fx.numero)
+        if nf is None:
+            return None
+        return wincar_fatture_repo.pratica_per_fattura(nf, fx.anno)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Lookup pratica WinCar per fattura %s fallito: %s", fx.numero, exc)
+        return None
+
+
+@dataclass
+class CollegamentoSummary:
+    esaminate: int = 0
+    collegate: int = 0
+    pratica_non_trovata: int = 0
+    gia_collegate: int = 0
+    errori: list[str] = field(default_factory=list)
+
+
+def collega_attive_da_wincar(
+    *,
+    fattura_repo: ContabilitaFatturaRepository,
+    movimento_repo: ContabilitaMovimentoRepository,
+    wincar_fatture_repo,
+    categoria_id: int | None,
+    anno: int | None = None,
+) -> CollegamentoSummary:
+    """Per ogni fattura ATTIVA non ancora legata a una pratica, cerca il
+    numero pratica in ``wcFatture.mdb`` e la smista (categoria + pratica),
+    riusando :func:`smista_fattura`. Idempotente: le fatture già collegate
+    vengono saltate. Usato una tantum per lo storico già importato."""
+    from lys_workflow_hub.workflows.contabilita.smistamento import (
+        Assegnazione,
+        smista_fattura,
+    )
+
+    summary = CollegamentoSummary()
+    for fattura in fattura_repo.list(tipo=TIPO_ATTIVA, anno=anno, limit=100000):
+        summary.esaminate += 1
+        if fattura_repo.list_pratiche(fattura.id):
+            summary.gia_collegate += 1
+            continue
+        pratica_id = _pratica_da_wincar_fattura(wincar_fatture_repo, fattura)
+        if pratica_id is None:
+            summary.pratica_non_trovata += 1
+            continue
+        try:
+            smista_fattura(
+                fattura_repo=fattura_repo,
+                movimento_repo=movimento_repo,
+                fattura_id=fattura.id,
+                categoria_id=categoria_id,
+                assegnazioni=[
+                    Assegnazione(pratica_id=pratica_id, importo=fattura.importo_totale)
+                ],
+            )
+            summary.collegate += 1
+        except Exception as exc:  # noqa: BLE001
+            summary.errori.append(f"Fattura {fattura.numero}/{fattura.anno}: {exc}")
+    return summary
+
+
+def _pratica_da_wincar_fattura(wincar_fatture_repo, fattura: Fattura) -> int | None:
+    if wincar_fatture_repo is None:
+        return None
+    try:
+        from lys_workflow_hub.core.wincar_fatture_repository import numero_fattura_int
+
+        nf = numero_fattura_int(fattura.numero)
+        if nf is None:
+            return None
+        return wincar_fatture_repo.pratica_per_fattura(nf, fattura.anno)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "Lookup pratica WinCar per fattura %s/%s fallito: %s",
+            fattura.numero, fattura.anno, exc,
+        )
+        return None
 
 
 def marca_da_inviare(
@@ -510,6 +610,7 @@ def _crea_movimento_proposto(
     tipo: str,
     stato: str = STATO_PROPOSTO,
     categoria_id: int | None = None,
+    pratica_id: int | None = None,
 ) -> None:
     """Crea un movimento legato alla fattura (default: ``proposto``).
 
@@ -525,6 +626,7 @@ def _crea_movimento_proposto(
         importo=fattura.importo_totale,
         tipo=tipo,
         categoria_id=categoria_id,
+        pratica_id=pratica_id,
         fattura_id=fattura.id,
         descrizione=descr,
         origine=ORIGINE_FATTURA_SDI,
