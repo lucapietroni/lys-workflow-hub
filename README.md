@@ -5,7 +5,9 @@ con il gestionale **WinCar**. Legge le pratiche dal database WinCar in sola lett
 genera documenti precompilati, monitora le risposte delle compagnie assicurative
 via PEC/email, classifica le risposte con AI e genera alert mirati.
 
-> Branch: **main** · Versione: **4.20.0** · In produzione su `hub.lysauto.it`
+> `main`: **4.21.3** in produzione su `hub.lysauto.it` ·
+> branch `feature/contabilita-sdi`: **4.25.1** (contabilità gestionale + SDI,
+> non ancora in produzione)
 
 ---
 
@@ -29,6 +31,27 @@ via PEC/email, classifica le risposte con AI e genera alert mirati.
   WinCar stesso (`.thumb` + `Thumbs.thumb`). L'admin elimina qualunque
   foto (pulizia coerente su disco e nel gestionale); un esterno elimina
   solo foto/documenti caricati da lui stesso, mai quelli di altri.
+
+**Contabilità gestionale e fatturazione elettronica SDI** _(branch `feature/contabilita-sdi`, non ancora in produzione)_
+- Contabilità **analitica interna**, non fiscale: nessuna partita doppia,
+  nessun registro IVA, non sostituisce il software del commercialista. Serve
+  a leggere il margine reale per pratica e la spesa per categoria. L'IVA nei
+  movimenti è un dato informativo.
+- Movimenti (entrate/uscite) classificati per categoria e collegabili a una
+  pratica (o a nessuna: affitto, utenze, assicurazioni aziendali). Inserimento
+  manuale per stipendi/F24/spese generali. Vista lista filtrabile per
+  categoria/periodo/pratica/stato.
+- Scheda economica su ogni pratica: entrate collegate, uscite collegate,
+  margine, ripartizione per categoria. Visibile solo agli admin, mai nel
+  portale esterno.
+- Fatturazione elettronica SDI: WinCar genera gli XML delle fatture attive,
+  la piattaforma li importa e li inoltra allo SDI (provider dietro
+  interfaccia astratta, candidato Openapi); le fatture passive ricevute dallo
+  SDI generano una riga fattura + un movimento proposto da smistare. Ciclo
+  schedulabile (`run_sdi_poll.py`) o azioni manuali da `/contabilita/fatture`.
+- Coda "fatture passive da smistare" con assegnazione categoria/pratica ed
+  eventuale split su più pratiche; dashboard costi/ricavi per categoria e
+  periodo.
 
 **Collaborazione e accesso esterno**
 - Autenticazione con ruoli (`admin`/`esterno`/`supervisore`/`operatore`),
@@ -73,6 +96,9 @@ Script polling (Task Scheduler Windows)
 Foto watcher (thread daemon, avviato al boot se FOTO_INBOX_PATH configurato)
     └── Syncthing inbox → targa via Claude Vision → fallback + WinCar Pratiche/
 
+Ciclo SDI (Task Scheduler, branch feature/contabilita-sdi)
+    └── run_sdi_poll.py: XML attivi WinCar → SDI · SDI → fatture passive + movimenti proposti
+
 App Android (Capacitor, wrapper del portale esterno)
     └── mobile/ — vedi mobile/README.md
 ```
@@ -90,12 +116,13 @@ bcrypt + sessione cookie · Firebase Cloud Messaging (push app + browser)
 src/lys_workflow_hub/
 ├── main.py
 ├── config.py
-├── core/                            Repository SQLite (mail, pratiche, bozze, SLA, utenti, ...)
-├── integrations/                    IMAP, SMTP, AI classifier, PDF extractor, notifier, foto_watcher
+├── core/                            Repository SQLite (mail, pratiche, bozze, SLA, utenti, contabilità, ...)
+├── integrations/                    IMAP, SMTP, AI classifier, PDF extractor, notifier, foto_watcher, sdi
 ├── workflows/
 │   ├── cessione_credito/            Workflow A
 │   ├── risarcimento_vandalismo/     Workflow B
 │   ├── risposte/                    Workflow C
+│   ├── contabilita/                 Contabilità gestionale + SDI (scheda economica, import fatture, smistamento, report)
 │   └── verbale_cortesia/            Workflow D
 │       ├── data.py                  VerbaleData + from_pratica()
 │       ├── generator.py             DOCX uscita/rientro con logo LYS
@@ -116,10 +143,12 @@ src/lys_workflow_hub/
     ├── routes_foto.py               Workflow E — log foto (admin-only)
     ├── routes_compagnie.py          (admin-only)
     ├── routes_impostazioni.py       (admin-only)
+    ├── routes_contabilita.py        Contabilità gestionale + fatture SDI (admin-only)
     └── templates/ + static/
 mobile/                              App Android Capacitor (LYSApp) — vedi mobile/README.md
 scripts/
 ├── run_polling.py
+├── run_sdi_poll.py                  Ciclo fatturazione SDI (import attive + invio + sync passive)
 ├── send_event_reminders.py
 └── create_admin.py                  Bootstrap primo utente admin
 ```
