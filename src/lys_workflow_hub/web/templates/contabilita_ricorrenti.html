@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}Costi ricorrenti · LYS Workflow Hub{% endblock %}
+
+{% macro cadenza_opts(sel) %}
+  {% for c in cadenze %}
+    <option value="{{ c }}" {% if sel == c %}selected{% endif %}>{{ c|capitalize }}</option>
+  {% endfor %}
+{% endmacro %}
+
+{% block content %}
+<nav class="breadcrumb">
+  <a href="/contabilita/movimenti">← Movimenti</a>
+</nav>
+
+<header class="pratica-header">
+  <div>
+    <div class="hero-eyebrow">Contabilità gestionale</div>
+    <h1>Costi ricorrenti</h1>
+    <p class="meta">
+      Spese periodiche non fatturate (affitto, autolavaggi, …). Ogni giorno il
+      ciclo genera automaticamente il movimento di uscita per i periodi scaduti,
+      a partire dalla data di inizio. Eliminare un movimento generato non lo
+      fa ricomparire.
+    </p>
+  </div>
+  <div class="pratica-actions">
+    <form method="post" action="/contabilita/ricorrenti/genera" style="display:inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <button type="submit" class="btn">Genera movimenti scaduti adesso</button>
+    </form>
+  </div>
+</header>
+
+{% if error %}<div class="alert alert-warn">{{ error }}</div>{% endif %}
+{% if esito %}<div class="alert alert-info">{{ esito }}</div>{% endif %}
+
+<section class="card">
+  <h2>Nuovo costo ricorrente</h2>
+  <form method="post" action="/contabilita/ricorrenti/nuovo" class="cessione-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <div class="form-grid">
+      <div class="form-field">
+        <label for="n_nome">Nome <span class="req">*</span></label>
+        <input id="n_nome" name="nome" type="text" required autocomplete="off" />
+      </div>
+      <div class="form-field">
+        <label for="n_cat">Categoria</label>
+        <select id="n_cat" name="categoria_id">
+          <option value="">— nessuna —</option>
+          {% for c in categorie %}
+            {% if c.tipo == "costo" %}<option value="{{ c.id }}">{{ c.nome }}</option>{% endif %}
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-field">
+        <label for="n_imp">Importo € <span class="req">*</span></label>
+        <input id="n_imp" name="importo" type="text" inputmode="decimal" required autocomplete="off" />
+      </div>
+      <div class="form-field">
+        <label for="n_iva">di cui IVA € <small class="meta">(informativo)</small></label>
+        <input id="n_iva" name="importo_iva" type="text" inputmode="decimal" autocomplete="off" />
+      </div>
+      <div class="form-field">
+        <label for="n_cad">Cadenza <span class="req">*</span></label>
+        <select id="n_cad" name="cadenza" required>{{ cadenza_opts("mensile") }}</select>
+      </div>
+      <div class="form-field">
+        <label for="n_gg">Giorno del mese</label>
+        <input id="n_gg" name="giorno_mese" type="number" min="1" max="28" value="1" />
+      </div>
+      <div class="form-field">
+        <label for="n_di">Data inizio <span class="req">*</span></label>
+        <input id="n_di" name="data_inizio" type="date" value="{{ oggi }}" required />
+        <small class="hint">Il primo movimento sarà del mese di questa data (recupera i mesi passati del 2026).</small>
+      </div>
+    </div>
+    <div class="form-field">
+      <label for="n_descr">Descrizione</label>
+      <input id="n_descr" name="descrizione" type="text" autocomplete="off"
+             placeholder="usata nella riga del movimento (vuoto = il nome)" />
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Crea</button>
+    </div>
+  </form>
+</section>
+
+<section class="card">
+  {% if not ricorrenti %}
+    <p class="meta" style="margin:0">Nessun costo ricorrente.</p>
+  {% else %}
+    {% for r in ricorrenti %}
+    <div style="padding:12px 0; border-bottom:1px solid var(--border);">
+      <form method="post" action="/contabilita/ricorrenti/{{ r.id }}/modifica" class="cessione-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <div class="form-grid">
+          <div class="form-field">
+            <label>Nome</label>
+            <input name="nome" type="text" value="{{ r.nome }}" required />
+          </div>
+          <div class="form-field">
+            <label>Categoria</label>
+            <select name="categoria_id">
+              <option value="">— nessuna —</option>
+              {% for c in categorie %}
+                {% if c.tipo == "costo" %}
+                  <option value="{{ c.id }}" {% if r.categoria_id == c.id %}selected{% endif %}>{{ c.nome }}</option>
+                {% endif %}
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-field">
+            <label>Importo €</label>
+            <input name="importo" type="text" inputmode="decimal" value="{{ "%.2f"|format(r.importo) }}" required />
+          </div>
+          <div class="form-field">
+            <label>di cui IVA €</label>
+            <input name="importo_iva" type="text" inputmode="decimal"
+                   value="{{ ("%.2f"|format(r.importo_iva)) if r.importo_iva is not none else "" }}" />
+          </div>
+          <div class="form-field">
+            <label>Cadenza</label>
+            <select name="cadenza">{{ cadenza_opts(r.cadenza) }}</select>
+          </div>
+          <div class="form-field">
+            <label>Giorno</label>
+            <input name="giorno_mese" type="number" min="1" max="28" value="{{ r.giorno_mese }}" />
+          </div>
+          <div class="form-field">
+            <label>Data inizio</label>
+            <input name="data_inizio" type="date" value="{{ r.data_inizio.isoformat() }}" required />
+          </div>
+          <div class="form-field checkbox-field">
+            <label style="white-space:nowrap;">
+              <input type="checkbox" name="attivo" value="1" {% if r.attivo %}checked{% endif %} /> attivo
+            </label>
+          </div>
+        </div>
+        <div class="form-field">
+          <label>Descrizione</label>
+          <input name="descrizione" type="text" value="{{ r.descrizione }}" />
+        </div>
+        <p class="meta" style="margin:0 0 8px;">
+          {{ r.cadenza_label }} · giorno {{ r.giorno_mese }} ·
+          ultimo periodo generato:
+          {{ r.ultimo_periodo.strftime("%m/%Y") if r.ultimo_periodo else "nessuno" }}
+        </p>
+        <button type="submit" class="btn btn-sm">Salva</button>
+      </form>
+      <form method="post" action="/contabilita/ricorrenti/{{ r.id }}/elimina"
+            style="margin-top:8px;"
+            onsubmit='return confirm("Eliminare il template " + {{ r.nome|tojson }} + "? I movimenti già generati restano.");'>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <button type="submit" class="btn btn-sm btn-danger">Elimina</button>
+      </form>
+    </div>
+    {% endfor %}
+  {% endif %}
+</section>
+{% endblock %}

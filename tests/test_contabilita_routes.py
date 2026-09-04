@@ -337,3 +337,65 @@ def test_report_dashboard(client):
     assert "Report costi / ricavi" in resp.text
     assert "€ 1000.00" in resp.text
     assert "€ 600.00" in resp.text  # margine
+
+
+# --------------------------------------------------------------------------- #
+#  Costi ricorrenti (Fase 5)
+# --------------------------------------------------------------------------- #
+
+
+def test_ricorrenti_crud_e_genera(client):
+    c, settings = client
+    from lys_workflow_hub.core.contabilita_costo_ricorrente_repository import (
+        ContabilitaCostoRicorrenteRepository,
+    )
+    from lys_workflow_hub.core.contabilita_movimento_repository import (
+        ContabilitaMovimentoRepository,
+    )
+
+    resp = c.get("/contabilita/ricorrenti")
+    assert resp.status_code == 200
+    assert "Costi ricorrenti" in resp.text
+
+    token = get_csrf(c, "/contabilita/ricorrenti")
+    resp = c.post("/contabilita/ricorrenti/nuovo", data={
+        "csrf_token": token, "nome": "Autolavaggi", "categoria_id": "",
+        "importo": "150", "cadenza": "mensile", "giorno_mese": "5",
+        "data_inizio": "2026-01-05", "descrizione": "",
+    })
+    assert resp.status_code == 303
+    ric = ContabilitaCostoRicorrenteRepository(db_path=settings.app_db_path)
+    assert [x.nome for x in ric.list_all()] == ["Autolavaggi"]
+
+    # genera (fino a oggi reale — almeno i mesi 2026 passati)
+    token = get_csrf(c, "/contabilita/ricorrenti")
+    resp = c.post("/contabilita/ricorrenti/genera", data={"csrf_token": token})
+    assert resp.status_code == 303
+    mov = ContabilitaMovimentoRepository(db_path=settings.app_db_path)
+    m = mov.list(stato="confermato")
+    assert m and all(x.origine == "ricorrente" and x.tipo == "uscita" for x in m)
+
+
+def test_ricorrente_elimina_lascia_i_movimenti(client):
+    c, settings = client
+    from lys_workflow_hub.core.contabilita_costo_ricorrente_repository import (
+        ContabilitaCostoRicorrenteRepository,
+    )
+    from lys_workflow_hub.core.contabilita_movimento_repository import (
+        ContabilitaMovimentoRepository,
+    )
+
+    ric = ContabilitaCostoRicorrenteRepository(db_path=settings.app_db_path)
+    r = ric.create(nome="Affitto", categoria_id=None, importo="1200",
+                   cadenza="mensile", giorno_mese="1", data_inizio="2026-01-01")
+    token = get_csrf(c, "/contabilita/ricorrenti")
+    c.post("/contabilita/ricorrenti/genera", data={"csrf_token": token})
+    mov = ContabilitaMovimentoRepository(db_path=settings.app_db_path)
+    n = len(mov.list())
+    assert n > 0
+
+    token = get_csrf(c, "/contabilita/ricorrenti")
+    resp = c.post(f"/contabilita/ricorrenti/{r.id}/elimina", data={"csrf_token": token})
+    assert resp.status_code == 303
+    assert ric.get(r.id) is None
+    assert len(mov.list()) == n  # movimenti generati intatti

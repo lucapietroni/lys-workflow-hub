@@ -5,9 +5,8 @@ con il gestionale **WinCar**. Legge le pratiche dal database WinCar in sola lett
 genera documenti precompilati, monitora le risposte delle compagnie assicurative
 via PEC/email, classifica le risposte con AI e genera alert mirati.
 
-> `main`: **4.21.3** in produzione su `hub.lysauto.it` ·
-> branch `feature/contabilita-sdi`: **4.26.2** (contabilità gestionale + SDI,
-> non ancora in produzione)
+> Branch: **main** · Versione: **4.27.0** · In produzione su `hub.lysauto.it`
+> (contabilità gestionale + SDI mergiata; provider SDI di default `fake`)
 
 ---
 
@@ -32,7 +31,7 @@ via PEC/email, classifica le risposte con AI e genera alert mirati.
   foto (pulizia coerente su disco e nel gestionale); un esterno elimina
   solo foto/documenti caricati da lui stesso, mai quelli di altri.
 
-**Contabilità gestionale e fatturazione elettronica SDI** _(branch `feature/contabilita-sdi`, non ancora in produzione)_
+**Contabilità gestionale e fatturazione elettronica SDI**
 - Contabilità **analitica interna**, non fiscale: nessuna partita doppia,
   nessun registro IVA, non sostituisce il software del commercialista. Serve
   a leggere il margine reale per pratica e la spesa per categoria. L'IVA nei
@@ -55,6 +54,9 @@ via PEC/email, classifica le risposte con AI e genera alert mirati.
 - Coda "fatture da smistare" con assegnazione categoria/pratica ed eventuale
   split su più pratiche; le attive WinCar prendono in automatico la categoria
   "Riparazioni carrozzeria". Dashboard costi/ricavi per categoria e periodo.
+- Costi ricorrenti non fatturati (affitto, autolavaggi, …): template con
+  cadenza; il ciclo giornaliero genera i movimenti di uscita dei periodi
+  scaduti a partire da una data di inizio.
 
 **Collaborazione e accesso esterno**
 - Autenticazione con ruoli (`admin`/`esterno`/`supervisore`/`operatore`),
@@ -95,6 +97,7 @@ Web UI (FastAPI + Jinja2)
 
 Script polling (Task Scheduler Windows)
     └── run_polling.py: fetch → match → classify → auto-transition → notify
+                        → genera movimenti costi ricorrenti
 
 Foto watcher (thread daemon, avviato al boot se FOTO_INBOX_PATH configurato)
     └── Syncthing inbox → targa via Claude Vision → fallback + WinCar Pratiche/

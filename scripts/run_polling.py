@@ -847,6 +847,24 @@ def run_once() -> int:
             except Exception as exc:  # noqa: BLE001
                 log.warning("Controllo reminder esterno pratiche fallito (non blocca): %s", exc)
 
+            # 8) Costi ricorrenti non fatturati (contabilità gestionale, Fase 5):
+            # genera i movimenti di uscita per i periodi scaduti. Idempotente
+            # (watermark ultimo_periodo per template).
+            try:
+                from lys_workflow_hub.workflows.contabilita.ricorrenti import (
+                    genera_movimenti_ricorrenti,
+                )
+
+                ric = genera_movimenti_ricorrenti(settings.app_db_path)
+                log.info(
+                    "Costi ricorrenti: %d movimenti creati da %d template (%d errori)",
+                    ric.movimenti_creati, ric.template_esaminati, len(ric.errori),
+                )
+                for e in ric.errori:
+                    log.warning("costo ricorrente: %s", e)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("Generazione costi ricorrenti fallita (non blocca): %s", exc)
+
             log.info("=== Fine ciclo polling ===")
             return 0
     except RuntimeError as exc:
