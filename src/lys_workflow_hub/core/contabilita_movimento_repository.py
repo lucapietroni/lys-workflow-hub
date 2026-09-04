@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS contabilita_movimento (
     origine      TEXT    NOT NULL DEFAULT 'manuale',
     stato        TEXT    NOT NULL DEFAULT 'confermato',
     importo_iva  REAL,
+    costo_ricorrente_id INTEGER,
     created_at   TEXT    NOT NULL
 );
 
@@ -96,6 +97,7 @@ class Movimento:
     origine: str = ORIGINE_MANUALE
     stato: str = STATO_CONFERMATO
     importo_iva: float | None = None
+    costo_ricorrente_id: int | None = None
     created_at: datetime | None = None
 
     @property
@@ -181,6 +183,13 @@ class ContabilitaMovimentoRepository:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as conn:
             conn.executescript(_SCHEMA_SQL)
+            # Migrazione: colonna aggiunta dopo il primo rilascio.
+            try:
+                conn.execute(
+                    "ALTER TABLE contabilita_movimento ADD COLUMN costo_ricorrente_id INTEGER"
+                )
+            except sqlite3.OperationalError:
+                pass
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -208,6 +217,11 @@ class ContabilitaMovimentoRepository:
             importo_iva=(
                 float(row["importo_iva"]) if row["importo_iva"] is not None else None
             ),
+            costo_ricorrente_id=(
+                row["costo_ricorrente_id"]
+                if "costo_ricorrente_id" in row.keys()
+                else None
+            ),
             created_at=_parse_dt(row["created_at"]),
         )
 
@@ -226,6 +240,7 @@ class ContabilitaMovimentoRepository:
         origine: str = ORIGINE_MANUALE,
         stato: str = STATO_CONFERMATO,
         importo_iva: Any = None,
+        costo_ricorrente_id: int | None = None,
     ) -> Movimento:
         d = _parse_date(data)
         imp = _coerce_importo(importo, campo="importo", obbligatorio=True)
@@ -240,8 +255,9 @@ class ContabilitaMovimentoRepository:
             cur = conn.execute(
                 "INSERT INTO contabilita_movimento "
                 "(data, importo, tipo, categoria_id, pratica_id, fattura_id, "
-                " descrizione, origine, stato, importo_iva, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " descrizione, origine, stato, importo_iva, costo_ricorrente_id, "
+                " created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     d.isoformat(),
                     imp,
@@ -253,6 +269,7 @@ class ContabilitaMovimentoRepository:
                     origine,
                     stato,
                     iva,
+                    int(costo_ricorrente_id) if costo_ricorrente_id else None,
                     _iso_now(),
                 ),
             )
@@ -450,6 +467,35 @@ class ContabilitaMovimentoRepository:
         if solo_sdi:
             sql += " AND origine = ?"
             params.append(ORIGINE_FATTURA_SDI)
+        with self._connect() as conn:
+            cur = conn.execute(sql, params)
+            return cur.rowcount
+
+    def delete_by_costo_ricorrente(
+        self, costo_id: int, *, descrizione_prefix: str | None = None
+    ) -> int:
+        """Elimina i movimenti generati da un costo ricorrente.
+
+        Rimuove sia quelli collegati via ``costo_ricorrente_id`` sia — se
+        ``descrizione_prefix`` è dato — i vecchi movimenti ``origine =
+        'ricorrente'`` senza id (generati prima della colonna) la cui
+        descrizione inizia con quel prefisso."""
+        sql = (
+            "DELETE FROM contabilita_movimento "
+            "WHERE costo_ricorrente_id = ?"
+        )
+        params: list[Any] = [int(costo_id)]
+        if descrizione_prefix:
+            sql += (
+                " OR (costo_ricorrente_id IS NULL AND origine = ? "
+                "     AND descrizione LIKE ? ESCAPE '\\')"
+            )
+            esc = (
+                descrizione_prefix.replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_")
+            )
+            params += [ORIGINE_RICORRENTE, esc + "%"]
         with self._connect() as conn:
             cur = conn.execute(sql, params)
             return cur.rowcount

@@ -124,6 +124,51 @@ def test_movimento_eliminato_non_viene_ricreato(db: Path):
     assert len(mov.list()) == 1  # NON ricreato (watermark è avanti)
 
 
+def test_movimenti_hanno_costo_ricorrente_id(db: Path):
+    c = _crea(db, data_inizio="2026-01-01")
+    genera_movimenti_ricorrenti(db, oggi=date(2026, 3, 1))
+    mov = ContabilitaMovimentoRepository(db_path=db)
+    assert all(m.costo_ricorrente_id == c.id for m in mov.list())
+
+
+def test_delete_by_costo_ricorrente(db: Path):
+    c = _crea(db, data_inizio="2026-01-01")
+    genera_movimenti_ricorrenti(db, oggi=date(2026, 3, 1))
+    mov = ContabilitaMovimentoRepository(db_path=db)
+    assert len(mov.list()) == 3
+    # movimento manuale non legato → non toccato
+    mov.create(data="2026-02-01", importo="50", tipo="uscita")
+    n = mov.delete_by_costo_ricorrente(c.id)
+    assert n == 3
+    resto = mov.list()
+    assert len(resto) == 1 and resto[0].origine == "manuale"
+
+
+def test_delete_by_costo_ricorrente_orfani_per_descrizione(db: Path):
+    """Movimenti generati da una versione precedente (costo_ricorrente_id NULL)
+    vengono rimossi via prefisso descrizione."""
+    c = _crea(db, nome="Affitto", data_inizio="2026-01-01")
+    mov = ContabilitaMovimentoRepository(db_path=db)
+    mov.create(data="2026-01-01", importo="1200", tipo="uscita",
+               origine="ricorrente", descrizione="Affitto (01/2026)")
+    mov.create(data="2026-02-01", importo="1200", tipo="uscita",
+               origine="ricorrente", descrizione="Affitto (02/2026)")
+    mov.create(data="2026-01-05", importo="99", tipo="uscita",
+               origine="ricorrente", descrizione="Altro (01/2026)")
+    n = mov.delete_by_costo_ricorrente(c.id, descrizione_prefix="Affitto (")
+    assert n == 2
+    assert [m.descrizione for m in mov.list()] == ["Altro (01/2026)"]
+
+
+def test_reset_watermark(db: Path):
+    c = _crea(db, data_inizio="2026-01-01")
+    repo = ContabilitaCostoRicorrenteRepository(db_path=db)
+    repo.segna_periodo_generato(c.id, date(2026, 5, 1))
+    assert repo.get(c.id).ultimo_periodo == date(2026, 5, 1)
+    repo.reset_watermark(c.id)
+    assert repo.get(c.id).ultimo_periodo is None
+
+
 def test_template_disattivo_non_genera(db: Path):
     c = _crea(db, data_inizio="2026-01-01")
     repo = ContabilitaCostoRicorrenteRepository(db_path=db)

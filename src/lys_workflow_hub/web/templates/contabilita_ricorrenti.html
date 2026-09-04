@@ -17,10 +17,12 @@
     <div class="hero-eyebrow">Contabilità gestionale</div>
     <h1>Costi ricorrenti</h1>
     <p class="meta">
-      Spese periodiche non fatturate (affitto, autolavaggi, …). Ogni giorno il
-      ciclo genera automaticamente il movimento di uscita per i periodi scaduti,
-      a partire dalla data di inizio. Eliminare un movimento generato non lo
-      fa ricomparire.
+      Spese periodiche non fatturate (affitto, autolavaggi, …). "Genera
+      movimenti scaduti adesso" (o il ciclo giornaliero) crea un movimento di
+      uscita per ogni periodo scaduto, dalla data di inizio. Modificare il
+      template elimina i suoi movimenti generati (poi riclicchi «Genera» per
+      ricrearli aggiornati); eliminare il template elimina anche i suoi
+      movimenti.
     </p>
   </div>
   <div class="pratica-actions">
@@ -145,11 +147,12 @@
           ultimo periodo generato:
           {{ r.ultimo_periodo.strftime("%m/%Y") if r.ultimo_periodo else "nessuno" }}
         </p>
-        <button type="submit" class="btn btn-sm">Salva</button>
+        <button type="submit" class="btn btn-sm"
+                onclick='return confirm("Salvare? I movimenti già generati da questo template verranno eliminati; riclicca «Genera» per ricrearli.");'>Salva</button>
       </form>
       <form method="post" action="/contabilita/ricorrenti/{{ r.id }}/elimina"
             style="margin-top:8px;"
-            onsubmit='return confirm("Eliminare il template " + {{ r.nome|tojson }} + "? I movimenti già generati restano.");'>
+            onsubmit='return confirm("Eliminare il template " + {{ r.nome|tojson }} + " e tutti i suoi movimenti generati?");'>
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
         <button type="submit" class="btn btn-sm btn-danger">Elimina</button>
       </form>

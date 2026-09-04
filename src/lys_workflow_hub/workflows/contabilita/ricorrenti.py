@@ -90,6 +90,7 @@ def genera_movimenti_ricorrenti(db_path: Path, *, oggi: date | None = None) -> R
                     origine=ORIGINE_RICORRENTE,
                     stato=STATO_CONFERMATO,
                     importo_iva=costo.importo_iva,
+                    costo_ricorrente_id=costo.id,
                 )
                 costo_repo.segna_periodo_generato(costo.id, periodo)
                 summary.movimenti_creati += 1

@@ -907,17 +907,23 @@ async def ricorrente_new(
     return _redir("/contabilita/ricorrenti")
 
 
+def _prefisso_descr(costo) -> str:
+    return f"{costo.descrizione or costo.nome} ("
+
+
 @router.post("/contabilita/ricorrenti/{costo_id}/modifica")
 async def ricorrente_edit(
     costo_id: int,
     request: Request,
     ric_repo: ContabilitaCostoRicorrenteRepository = Depends(get_ricorrente_repo),
+    mov_repo: ContabilitaMovimentoRepository = Depends(get_movimento_repo),
 ):
-    if ric_repo.get(costo_id) is None:
+    costo = ric_repo.get(costo_id)
+    if costo is None:
         raise HTTPException(404, f"Costo ricorrente id={costo_id} non trovato.")
     v = _ricorrente_values(await request.form())
     try:
-        ric_repo.update(
+        aggiornato = ric_repo.update(
             costo_id,
             nome=v["nome"],
             categoria_id=_int_or_none(v["categoria_id"]),
@@ -931,19 +937,45 @@ async def ricorrente_edit(
         )
     except ValueError as exc:
         return _redir("/contabilita/ricorrenti", error=str(exc))
-    return _redir("/contabilita/ricorrenti")
+    # I movimenti già generati riflettono i vecchi valori: eliminali e
+    # riazzera il contatore periodi. L'operatore riclicca "Genera" per
+    # ricrearli aggiornati (oppure lo fa il ciclo giornaliero).
+    n = mov_repo.delete_by_costo_ricorrente(
+        costo_id, descrizione_prefix=_prefisso_descr(costo)
+    )
+    n += mov_repo.delete_by_costo_ricorrente(
+        costo_id, descrizione_prefix=_prefisso_descr(aggiornato)
+    )
+    ric_repo.reset_watermark(costo_id)
+    return _redir(
+        "/contabilita/ricorrenti",
+        esito=(
+            f"Template aggiornato. {n} moviment"
+            f"{'o generato eliminato' if n == 1 else 'i generati eliminati'}: "
+            "riclicca «Genera movimenti scaduti adesso» per ricrearli aggiornati."
+        ),
+    )
 
 
 @router.post("/contabilita/ricorrenti/{costo_id}/elimina")
 def ricorrente_delete(
     costo_id: int,
     ric_repo: ContabilitaCostoRicorrenteRepository = Depends(get_ricorrente_repo),
+    mov_repo: ContabilitaMovimentoRepository = Depends(get_movimento_repo),
 ) -> RedirectResponse:
-    if not ric_repo.delete(costo_id):
+    costo = ric_repo.get(costo_id)
+    if costo is None:
         raise HTTPException(404, f"Costo ricorrente id={costo_id} non trovato.")
+    n = mov_repo.delete_by_costo_ricorrente(
+        costo_id, descrizione_prefix=_prefisso_descr(costo)
+    )
+    ric_repo.delete(costo_id)
     return _redir(
         "/contabilita/ricorrenti",
-        esito="Template eliminato. I movimenti già generati restano nei movimenti.",
+        esito=(
+            f"Template e {n} moviment"
+            f"{'o generato' if n == 1 else 'i generati'} eliminati."
+        ),
     )
 
 

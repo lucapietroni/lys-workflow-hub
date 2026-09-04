@@ -376,7 +376,7 @@ def test_ricorrenti_crud_e_genera(client):
     assert m and all(x.origine == "ricorrente" and x.tipo == "uscita" for x in m)
 
 
-def test_ricorrente_elimina_lascia_i_movimenti(client):
+def test_ricorrente_elimina_rimuove_anche_i_movimenti(client):
     c, settings = client
     from lys_workflow_hub.core.contabilita_costo_ricorrente_repository import (
         ContabilitaCostoRicorrenteRepository,
@@ -388,14 +388,50 @@ def test_ricorrente_elimina_lascia_i_movimenti(client):
     ric = ContabilitaCostoRicorrenteRepository(db_path=settings.app_db_path)
     r = ric.create(nome="Affitto", categoria_id=None, importo="1200",
                    cadenza="mensile", giorno_mese="1", data_inizio="2026-01-01")
+    mov = ContabilitaMovimentoRepository(db_path=settings.app_db_path)
+    mov.create(data="2026-01-02", importo="99", tipo="uscita")  # manuale, resta
     token = get_csrf(c, "/contabilita/ricorrenti")
     c.post("/contabilita/ricorrenti/genera", data={"csrf_token": token})
-    mov = ContabilitaMovimentoRepository(db_path=settings.app_db_path)
-    n = len(mov.list())
-    assert n > 0
+    assert len(mov.list()) > 1
 
     token = get_csrf(c, "/contabilita/ricorrenti")
     resp = c.post(f"/contabilita/ricorrenti/{r.id}/elimina", data={"csrf_token": token})
     assert resp.status_code == 303
     assert ric.get(r.id) is None
-    assert len(mov.list()) == n  # movimenti generati intatti
+    resto = mov.list()
+    assert len(resto) == 1 and resto[0].origine == "manuale"
+
+
+def test_ricorrente_modifica_azzera_e_rigenera(client):
+    c, settings = client
+    from lys_workflow_hub.core.contabilita_costo_ricorrente_repository import (
+        ContabilitaCostoRicorrenteRepository,
+    )
+    from lys_workflow_hub.core.contabilita_movimento_repository import (
+        ContabilitaMovimentoRepository,
+    )
+
+    ric = ContabilitaCostoRicorrenteRepository(db_path=settings.app_db_path)
+    r = ric.create(nome="Affitto", categoria_id=None, importo="1000",
+                   cadenza="mensile", giorno_mese="1", data_inizio="2026-01-01")
+    token = get_csrf(c, "/contabilita/ricorrenti")
+    c.post("/contabilita/ricorrenti/genera", data={"csrf_token": token})
+    mov = ContabilitaMovimentoRepository(db_path=settings.app_db_path)
+    assert all(m.importo == 1000.0 for m in mov.list())
+
+    # modifica importo → i vecchi movimenti spariscono, watermark azzerato
+    token = get_csrf(c, "/contabilita/ricorrenti")
+    resp = c.post(f"/contabilita/ricorrenti/{r.id}/modifica", data={
+        "csrf_token": token, "nome": "Affitto", "categoria_id": "",
+        "importo": "1300", "cadenza": "mensile", "giorno_mese": "1",
+        "data_inizio": "2026-01-01", "descrizione": "", "attivo": "1",
+    })
+    assert resp.status_code == 303
+    assert mov.list() == []
+    assert ric.get(r.id).ultimo_periodo is None
+
+    # rigenera → nuovi valori
+    token = get_csrf(c, "/contabilita/ricorrenti")
+    c.post("/contabilita/ricorrenti/genera", data={"csrf_token": token})
+    nuovi = mov.list()
+    assert nuovi and all(m.importo == 1300.0 for m in nuovi)

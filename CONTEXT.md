@@ -219,6 +219,15 @@ autolavaggi, …):
   automatica: hook in `scripts/run_polling.py` (2x/giorno, punto 8 del ciclo).
 - `ORIGINE_RICORRENTE = "ricorrente"` in `contabilita_movimento_repository`.
 
+**v4.27.1** — collegamento movimento→template:
+- `contabilita_movimento.costo_ricorrente_id` (colonna nullable, migrazione
+  ALTER). Il generatore lo valorizza.
+- Modifica template → `delete_by_costo_ricorrente` (per id + per prefisso
+  descrizione, così prende anche i movimenti generati prima della colonna) +
+  `reset_watermark` → l'operatore riclicca "Genera" per ricrearli aggiornati.
+- Elimina template → elimina anche i suoi movimenti generati.
+- I movimenti manuali e quelli da fattura non vengono mai toccati.
+
 **Fix post code-review (v4.25.1)**:
 - `smista_fattura`: la direzione del movimento si ricava dai movimenti
   `origine='da_fattura_sdi'` (a prescindere dallo stato), non dal fallback

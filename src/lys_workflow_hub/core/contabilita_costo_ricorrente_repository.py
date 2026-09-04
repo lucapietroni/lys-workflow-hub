@@ -299,6 +299,16 @@ class ContabilitaCostoRicorrenteRepository:
                 (periodo.isoformat(), int(costo_id), periodo.isoformat()),
             )
 
+    def reset_watermark(self, costo_id: int) -> None:
+        """Azzera ``ultimo_periodo``: alla prossima generazione i movimenti
+        vengono ricreati da ``data_inizio``. Usato dopo la modifica del
+        template (i vecchi movimenti vengono eliminati a parte)."""
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE contabilita_costo_ricorrente SET ultimo_periodo = NULL WHERE id = ?",
+                (int(costo_id),),
+            )
+
     def delete(self, costo_id: int) -> bool:
         with self._connect() as conn:
             cur = conn.execute(
