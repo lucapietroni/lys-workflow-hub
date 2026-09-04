@@ -33,6 +33,10 @@ from lys_workflow_hub.core.contabilita_categoria_repository import (
     ContabilitaCategoriaRepository,
     TIPI as CATEGORIA_TIPI,
 )
+from lys_workflow_hub.core.contabilita_costo_ricorrente_repository import (
+    CADENZE,
+    ContabilitaCostoRicorrenteRepository,
+)
 from lys_workflow_hub.core.contabilita_fattura_repository import (
     TIPO_ATTIVA,
     TIPO_PASSIVA,
@@ -50,6 +54,7 @@ from lys_workflow_hub.core.contabilita_movimento_repository import (
 from lys_workflow_hub.core.wincar_fatture_repository import WinCarFattureRepository
 from lys_workflow_hub.integrations.sdi import build_sdi_client
 from lys_workflow_hub.workflows.contabilita.report import costruisci_report
+from lys_workflow_hub.workflows.contabilita.ricorrenti import genera_movimenti_ricorrenti
 from lys_workflow_hub.workflows.contabilita.sdi_import import (
     collega_attive_da_wincar,
     importa_attive_da_dir,
@@ -101,6 +106,12 @@ def get_fattura_repo(
     settings: Settings = Depends(get_contabilita_settings),
 ) -> ContabilitaFatturaRepository:
     return ContabilitaFatturaRepository(db_path=settings.app_db_path)
+
+
+def get_ricorrente_repo(
+    settings: Settings = Depends(get_contabilita_settings),
+) -> ContabilitaCostoRicorrenteRepository:
+    return ContabilitaCostoRicorrenteRepository(db_path=settings.app_db_path)
 
 
 # --------------------------------------------------------------------------- #
@@ -830,3 +841,121 @@ def report_dashboard(
     context = _ctx()
     context.update(report=report, filtri={"dal": dal or "", "al": al or ""}, error=error)
     return templates.TemplateResponse(request, "contabilita_report.html", context)
+
+
+# --------------------------------------------------------------------------- #
+#  Costi ricorrenti non fatturati (Fase 5)
+# --------------------------------------------------------------------------- #
+
+
+def _ricorrente_values(form) -> dict:
+    return {
+        "nome": _form_str(form, "nome"),
+        "categoria_id": _form_str(form, "categoria_id"),
+        "importo": _form_str(form, "importo"),
+        "importo_iva": _form_str(form, "importo_iva"),
+        "cadenza": _form_str(form, "cadenza"),
+        "giorno_mese": _form_str(form, "giorno_mese") or "1",
+        "data_inizio": _form_str(form, "data_inizio"),
+        "descrizione": _form_str(form, "descrizione"),
+        "attivo": _form_str(form, "attivo") == "1",
+    }
+
+
+@router.get("/contabilita/ricorrenti", response_class=HTMLResponse)
+def ricorrenti_list(
+    request: Request,
+    error: str | None = None,
+    esito: str | None = None,
+    ric_repo: ContabilitaCostoRicorrenteRepository = Depends(get_ricorrente_repo),
+    cat_repo: ContabilitaCategoriaRepository = Depends(get_categoria_repo),
+) -> HTMLResponse:
+    from datetime import date as _date
+
+    context = _ctx()
+    context.update(
+        ricorrenti=ric_repo.list_all(),
+        categorie=cat_repo.list_all(solo_attive=True),
+        cat_by_id={c.id: c for c in cat_repo.list_all()},
+        cadenze=CADENZE,
+        oggi=_date.today().isoformat(),
+        error=error,
+        esito=esito,
+    )
+    return templates.TemplateResponse(request, "contabilita_ricorrenti.html", context)
+
+
+@router.post("/contabilita/ricorrenti/nuovo")
+async def ricorrente_new(
+    request: Request,
+    ric_repo: ContabilitaCostoRicorrenteRepository = Depends(get_ricorrente_repo),
+):
+    v = _ricorrente_values(await request.form())
+    try:
+        ric_repo.create(
+            nome=v["nome"],
+            categoria_id=_int_or_none(v["categoria_id"]),
+            importo=v["importo"],
+            importo_iva=v["importo_iva"] or None,
+            cadenza=v["cadenza"],
+            giorno_mese=v["giorno_mese"],
+            data_inizio=v["data_inizio"],
+            descrizione=v["descrizione"],
+        )
+    except ValueError as exc:
+        return _redir("/contabilita/ricorrenti", error=str(exc))
+    return _redir("/contabilita/ricorrenti")
+
+
+@router.post("/contabilita/ricorrenti/{costo_id}/modifica")
+async def ricorrente_edit(
+    costo_id: int,
+    request: Request,
+    ric_repo: ContabilitaCostoRicorrenteRepository = Depends(get_ricorrente_repo),
+):
+    if ric_repo.get(costo_id) is None:
+        raise HTTPException(404, f"Costo ricorrente id={costo_id} non trovato.")
+    v = _ricorrente_values(await request.form())
+    try:
+        ric_repo.update(
+            costo_id,
+            nome=v["nome"],
+            categoria_id=_int_or_none(v["categoria_id"]),
+            importo=v["importo"],
+            importo_iva=v["importo_iva"] or None,
+            cadenza=v["cadenza"],
+            giorno_mese=v["giorno_mese"],
+            data_inizio=v["data_inizio"],
+            descrizione=v["descrizione"],
+            attivo=v["attivo"],
+        )
+    except ValueError as exc:
+        return _redir("/contabilita/ricorrenti", error=str(exc))
+    return _redir("/contabilita/ricorrenti")
+
+
+@router.post("/contabilita/ricorrenti/{costo_id}/elimina")
+def ricorrente_delete(
+    costo_id: int,
+    ric_repo: ContabilitaCostoRicorrenteRepository = Depends(get_ricorrente_repo),
+) -> RedirectResponse:
+    if not ric_repo.delete(costo_id):
+        raise HTTPException(404, f"Costo ricorrente id={costo_id} non trovato.")
+    return _redir(
+        "/contabilita/ricorrenti",
+        esito="Template eliminato. I movimenti già generati restano nei movimenti.",
+    )
+
+
+@router.post("/contabilita/ricorrenti/genera")
+def ricorrenti_genera(
+    settings: Settings = Depends(get_contabilita_settings),
+) -> RedirectResponse:
+    s = genera_movimenti_ricorrenti(settings.app_db_path)
+    msg = (
+        f"Generazione: {s.movimenti_creati} moviment"
+        f"{'o' if s.movimenti_creati == 1 else 'i'} creat"
+        f"{'o' if s.movimenti_creati == 1 else 'i'} da {s.template_esaminati} "
+        f"templat{'e' if s.template_esaminati == 1 else 'i'}, {len(s.errori)} errori."
+    )
+    return _redir("/contabilita/ricorrenti", esito=msg)

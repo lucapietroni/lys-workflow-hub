@@ -127,7 +127,7 @@ Repository contabilità in `core/contabilita_categoria_repository.py`,
 
 ---
 
-## Contabilità gestionale + fatturazione SDI (branch `feature/contabilita-sdi`)
+## Contabilità gestionale + fatturazione SDI (mergiato in `main`, v4.26.2)
 
 Livello **analitico/gestionale**, NON fiscale: nessuna partita doppia, nessun
 registro IVA, nessun bilancio, nessun vincolo dare/avere. Serve a leggere il
@@ -205,6 +205,19 @@ informativa.
 
 Ciclo delle 4 fasi completo. Manca solo: apertura account Openapi +
 validazione endpoint reali in sandbox prima di `SDI_PROVIDER=openapi` in prod.
+
+**Fase 5 (fatta, v4.27.0)** — costi ricorrenti non fatturati (affitto,
+autolavaggi, …):
+- `contabilita_costo_ricorrente` — template: nome, categoria, importo, IVA
+  opz., cadenza (mensile/bimestrale/trimestrale/annuale), giorno del mese
+  (1-28), `data_inizio`, `attivo`, watermark `ultimo_periodo`.
+- `workflows/contabilita/ricorrenti.py::genera_movimenti_ricorrenti(db_path,
+  oggi)` — crea i `contabilita_movimento` (uscita, `origine='ricorrente'`,
+  confermato) per i periodi scaduti da `data_inizio`. Idempotente via
+  `ultimo_periodo`: un movimento eliminato NON viene ricreato.
+- UI `/contabilita/ricorrenti` (CRUD + "Genera adesso"). Generazione
+  automatica: hook in `scripts/run_polling.py` (2x/giorno, punto 8 del ciclo).
+- `ORIGINE_RICORRENTE = "ricorrente"` in `contabilita_movimento_repository`.
 
 **Fix post code-review (v4.25.1)**:
 - `smista_fattura`: la direzione del movimento si ricava dai movimenti
