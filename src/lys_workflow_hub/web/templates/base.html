@@ -129,6 +129,9 @@
           <a href="/portale/calendario">Calendario</a>
           <a href="/portale/esporta" class="csv-export-link">Esporta</a>
           <a href="/portale/impostazioni">Impostazioni</a>
+          {% if current_user.is_supervisore %}
+          <a href="/targa">Ricerca targa</a>
+          {% endif %}
           {% endif %}
         </nav>
         {% if current_user %}

@@ -165,6 +165,18 @@ def require_admin(request: Request) -> Utente:
     return user
 
 
+def require_admin_o_supervisore(request: Request) -> Utente:
+    """Dependency: 403 se l'utente corrente non è admin né supervisore.
+
+    Come `require_admin`, ma per pagine che il supervisore può usare anche
+    lui (es. /targa) pur non essendo un pieno accesso da amministratore.
+    """
+    user = getattr(request.state, "current_user", None)
+    if user is None or not (user.is_admin or user.is_supervisore):
+        raise HTTPException(status_code=403, detail="Accesso riservato ad amministratori e supervisori.")
+    return user
+
+
 def template_context_processor(request: Request) -> dict:
     """Iniettato in ogni `Jinja2Templates(context_processors=[...])`.
 

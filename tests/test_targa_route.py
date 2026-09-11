@@ -17,6 +17,8 @@ from tests.conftest import ADMIN_EMAIL, ADMIN_PASSWORD, login_as
 
 OPERATORE_EMAIL = "operatore-targa@test.local"
 OPERATORE_PASSWORD = "test-password-1234"
+SUPERVISORE_EMAIL = "supervisore-targa@test.local"
+SUPERVISORE_PASSWORD = "test-password-1234"
 
 
 def test_normalizza_targa():
@@ -29,6 +31,9 @@ def test_fake_client_non_trova_nulla():
     esito = client.cerca_veicolo("AB123CD")
     assert esito.trovato is False
     assert esito.targa == "AB123CD"
+    esito_ass = client.cerca_assicurazione("AB123CD")
+    assert esito_ass.trovato is False
+    assert esito_ass.targa == "AB123CD"
 
 
 def test_build_automotive_client_default_fake():
@@ -106,7 +111,7 @@ def test_targa_ricerca_non_trovata_mostra_esito(authenticated_app: UtentiReposit
     assert "nessun dato disponibile" in resp.text.lower()
 
 
-def test_targa_negata_a_non_admin(authenticated_app: UtentiRepository):
+def test_targa_negata_a_operatore(authenticated_app: UtentiRepository):
     authenticated_app.create(
         email=OPERATORE_EMAIL, password=OPERATORE_PASSWORD, nome="Operatore Test", ruolo="operatore"
     )
@@ -114,3 +119,14 @@ def test_targa_negata_a_non_admin(authenticated_app: UtentiRepository):
     login_as(client, OPERATORE_EMAIL, OPERATORE_PASSWORD)
     resp = client.get("/targa")
     assert resp.status_code == 403
+
+
+def test_targa_permessa_a_supervisore(authenticated_app: UtentiRepository):
+    authenticated_app.create(
+        email=SUPERVISORE_EMAIL, password=SUPERVISORE_PASSWORD, nome="Supervisore Test", ruolo="supervisore"
+    )
+    client = TestClient(app)
+    login_as(client, SUPERVISORE_EMAIL, SUPERVISORE_PASSWORD)
+    resp = client.get("/targa")
+    assert resp.status_code == 200
+    assert "Ricerca veicolo per targa" in resp.text

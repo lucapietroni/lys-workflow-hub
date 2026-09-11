@@ -63,4 +63,32 @@
     </section>
   {% endif %}
 {% endif %}
+
+{% if errore_assicurazione %}
+  <div class="alert alert-warn"><strong>Errore assicurazione:</strong> {{ errore_assicurazione }}</div>
+{% endif %}
+
+{% if assicurazione %}
+  {% if not assicurazione.trovato %}
+    <div class="alert alert-warn">
+      <strong>Assicurazione {{ assicurazione.targa }}:</strong> {{ assicurazione.errore or "nessun dato trovato." }}
+    </div>
+  {% else %}
+    <section class="card">
+      <h2>Assicurazione targa {{ assicurazione.targa }}</h2>
+      <p class="meta">Schema campi non ancora confermato in produzione: verifica sempre nella risposta grezza sotto.</p>
+      <table class="table">
+        <tbody>
+          <tr><th>Compagnia</th><td>{{ assicurazione.compagnia or "—" }}</td></tr>
+          <tr><th>Scadenza polizza</th><td>{{ assicurazione.scadenza_polizza or "—" }}</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="card">
+      <h2>Risposta completa del provider (assicurazione)</h2>
+      <pre style="white-space:pre-wrap;word-break:break-word">{{ assicurazione.raw | tojson(indent=2) }}</pre>
+    </section>
+  {% endif %}
+{% endif %}
 {% endblock %}

@@ -15,7 +15,7 @@ from fastapi.templating import Jinja2Templates
 from lys_workflow_hub import __version__
 from lys_workflow_hub.config import Settings, get_settings
 from lys_workflow_hub.integrations.automotive import build_automotive_client
-from lys_workflow_hub.web.auth import require_admin, template_context_processor
+from lys_workflow_hub.web.auth import require_admin_o_supervisore, template_context_processor
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ templates = Jinja2Templates(
     directory=str(TEMPLATES_DIR), context_processors=[template_context_processor]
 )
 
-router = APIRouter(tags=["targa"], dependencies=[Depends(require_admin)])
+router = APIRouter(tags=["targa"], dependencies=[Depends(require_admin_o_supervisore)])
 
 
 @router.get("/targa", response_class=HTMLResponse)
@@ -33,7 +33,7 @@ def targa_lookup(
     targa: str | None = None,
     settings: Settings = Depends(get_settings),
 ) -> HTMLResponse:
-    context = {"version": __version__, "targa": targa or "", "veicolo": None}
+    context = {"version": __version__, "targa": targa or "", "veicolo": None, "assicurazione": None}
 
     if targa and targa.strip():
         client = build_automotive_client(settings)
@@ -42,5 +42,10 @@ def targa_lookup(
         except Exception as exc:  # noqa: BLE001
             logger.exception("Ricerca targa %s fallita", targa)
             context["errore_generico"] = f"Ricerca non riuscita: {exc}"
+        try:
+            context["assicurazione"] = client.cerca_assicurazione(targa.strip())
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Ricerca assicurazione targa %s fallita", targa)
+            context["errore_assicurazione"] = f"Ricerca assicurazione non riuscita: {exc}"
 
     return templates.TemplateResponse(request, "targa_lookup.html", context)

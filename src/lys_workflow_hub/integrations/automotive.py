@@ -7,7 +7,8 @@ a partire dalla targa, per uso interno (front-desk / accettazione).
 Il client vive dietro un'interfaccia minima (:class:`AutomotiveClient`) così
 il provider è sostituibile:
 
-    cerca_veicolo(targa) -> VeicoloInfo
+    cerca_veicolo(targa)       -> VeicoloInfo
+    cerca_assicurazione(targa) -> AssicurazioneInfo
 
 Implementazioni:
   - :class:`FakeAutomotiveClient` — nessuna rete, dati fittizi. Default in
@@ -19,6 +20,8 @@ Implementazioni:
     l'endpoint restituisce solo dati tecnici del veicolo (marca, modello,
     versione, telaio, immatricolazione...). ``raw`` porta comunque sempre
     la risposta JSON completa, per i campi non mappati sotto.
+    ``cerca_assicurazione`` (path ``/IT-insurance/{targa}``) non è ancora
+    verificato in produzione: nomi campi da confermare (vedi ``raw``).
 
 Factory: :func:`build_automotive_client(settings)`.
 """
@@ -66,6 +69,23 @@ class VeicoloInfo:
     errore: str = ""
 
 
+@dataclass(frozen=True)
+class AssicurazioneInfo:
+    """Dati assicurativi veicolo (endpoint ``/IT-insurance``).
+
+    NON ANCORA VERIFICATO in produzione (a differenza di :class:`VeicoloInfo`):
+    nomi dei campi noti sono un'ipotesi. ``raw`` porta sempre la risposta
+    JSON completa — è la fonte di verità finché non si conferma lo schema.
+    """
+
+    targa: str
+    trovato: bool
+    compagnia: str = ""
+    scadenza_polizza: str = ""
+    raw: dict[str, Any] = field(default_factory=dict)
+    errore: str = ""
+
+
 # --------------------------------------------------------------------------- #
 #  Interfaccia
 # --------------------------------------------------------------------------- #
@@ -73,6 +93,8 @@ class VeicoloInfo:
 
 class AutomotiveClient(Protocol):
     def cerca_veicolo(self, targa: str) -> VeicoloInfo: ...
+
+    def cerca_assicurazione(self, targa: str) -> AssicurazioneInfo: ...
 
 
 # --------------------------------------------------------------------------- #
@@ -86,6 +108,10 @@ class FakeAutomotiveClient:
     def cerca_veicolo(self, targa: str) -> VeicoloInfo:
         logger.info("FakeAutomotiveClient: ricerca simulata targa %s", targa)
         return VeicoloInfo(targa=targa, trovato=False, errore="Client fake: nessun dato disponibile.")
+
+    def cerca_assicurazione(self, targa: str) -> AssicurazioneInfo:
+        logger.info("FakeAutomotiveClient: ricerca assicurazione simulata targa %s", targa)
+        return AssicurazioneInfo(targa=targa, trovato=False, errore="Client fake: nessun dato disponibile.")
 
 
 # --------------------------------------------------------------------------- #
@@ -132,44 +158,52 @@ class OpenapiAutomotiveClient:
             "Accept": "application/json",
         }
 
-    def cerca_veicolo(self, targa: str) -> VeicoloInfo:
+    def _fetch(self, path: str, targa: str, *, azione: str) -> tuple[dict | None, dict, str]:
+        """GET generico su un endpoint Automotive.
+
+        Ritorna ``(payload, raw, errore)``: ``payload`` è ``None`` se non
+        trovato/errore (``errore`` spiega perché), altrimenti il dict dati
+        (sotto ``"data"`` se presente, come confermato per ``/IT-car``).
+        ``raw`` è sempre la risposta JSON completa (anche vuota).
+        """
         import requests  # lazy: come in integrations/sdi.py
 
         targa_norm = normalizza_targa(targa)
         if not targa_norm:
-            return VeicoloInfo(targa=targa, trovato=False, errore="Targa vuota.")
+            return None, {}, "Targa vuota."
 
-        url = f"{self.base_url}/IT-car/{targa_norm}"
+        url = f"{self.base_url}/{path}/{targa_norm}"
         try:
             resp = requests.get(url, headers=self._headers(), timeout=self.timeout)
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Openapi cerca_veicolo(%s) fallito (rete): %s", targa_norm, exc)
-            return VeicoloInfo(targa=targa_norm, trovato=False, errore=f"Errore di rete: {exc}")
+            logger.warning("Openapi %s(%s) fallito (rete): %s", azione, targa_norm, exc)
+            return None, {}, f"Errore di rete: {exc}"
 
         if resp.status_code == 404:
-            return VeicoloInfo(targa=targa_norm, trovato=False, errore="Nessun veicolo trovato per questa targa.")
+            return None, {}, "Nessun dato trovato per questa targa."
         if resp.status_code >= 400:
             corpo = resp.text[:500]
-            logger.warning(
-                "Openapi cerca_veicolo(%s) fallito (HTTP %s): %s", targa_norm, resp.status_code, corpo
-            )
-            # Il corpo dell'errore del provider è mostrato in pagina (route admin-only)
-            # per poter diagnosticare subito (token/prodotto/parametro) senza dover
-            # andare a leggere il log file.
-            return VeicoloInfo(
-                targa=targa_norm, trovato=False,
-                errore=f"Errore provider (HTTP {resp.status_code}): {corpo}",
-            )
+            logger.warning("Openapi %s(%s) fallito (HTTP %s): %s", azione, targa_norm, resp.status_code, corpo)
+            # Corpo dell'errore mostrato in pagina (route admin-only) per diagnosticare
+            # subito (token/prodotto/parametro) senza andare a leggere il log file.
+            return None, {}, f"Errore provider (HTTP {resp.status_code}): {corpo}"
 
         try:
             data = resp.json() if resp.content else {}
         except ValueError:
-            logger.warning("Openapi cerca_veicolo(%s): risposta non JSON.", targa_norm)
-            return VeicoloInfo(targa=targa_norm, trovato=False, errore="Risposta del provider non interpretabile.")
+            logger.warning("Openapi %s(%s): risposta non JSON.", azione, targa_norm)
+            return None, {}, "Risposta del provider non interpretabile."
 
         payload = data.get("data") if isinstance(data.get("data"), dict) else data
         if not payload:
-            return VeicoloInfo(targa=targa_norm, trovato=False, raw=data, errore="Risposta vuota dal provider.")
+            return None, data, "Risposta vuota dal provider."
+        return payload, data, ""
+
+    def cerca_veicolo(self, targa: str) -> VeicoloInfo:
+        targa_norm = normalizza_targa(targa)
+        payload, raw, errore = self._fetch("IT-car", targa, azione="cerca_veicolo")
+        if payload is None:
+            return VeicoloInfo(targa=targa_norm, trovato=False, raw=raw, errore=errore)
 
         potenza = payload.get("PowerCV")  # 0 = non disponibile (come i campi stringa vuoti)
         return VeicoloInfo(
@@ -185,7 +219,27 @@ class OpenapiAutomotiveClient:
             potenza_cv=str(potenza) if potenza else "",
             data_immatricolazione=str(payload.get("RegistrationDate") or ""),
             telaio=str(payload.get("Vin") or ""),
-            raw=data,
+            raw=raw,
+        )
+
+    def cerca_assicurazione(self, targa: str) -> AssicurazioneInfo:
+        """ATTENZIONE: nomi campi non verificati (a differenza di ``cerca_veicolo``).
+        ``raw`` è la fonte di verità finché non si conferma lo schema in produzione."""
+        targa_norm = normalizza_targa(targa)
+        payload, raw, errore = self._fetch("IT-insurance", targa, azione="cerca_assicurazione")
+        if payload is None:
+            return AssicurazioneInfo(targa=targa_norm, trovato=False, raw=raw, errore=errore)
+
+        return AssicurazioneInfo(
+            targa=targa_norm,
+            trovato=True,
+            compagnia=str(
+                payload.get("InsuranceCompany") or payload.get("Company") or payload.get("Compagnia") or ""
+            ),
+            scadenza_polizza=str(
+                payload.get("ExpiryDate") or payload.get("PolicyExpiryDate") or payload.get("Scadenza") or ""
+            ),
+            raw=raw,
         )
 
 
