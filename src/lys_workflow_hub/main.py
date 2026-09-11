@@ -66,6 +66,7 @@ from lys_workflow_hub.web.routes_operatore import router as operatore_router
 from lys_workflow_hub.web.routes_pec_log import router as pec_log_router
 from lys_workflow_hub.web.routes_portale import router as portale_router
 from lys_workflow_hub.web.routes_risposte import router as risposte_router
+from lys_workflow_hub.web.routes_targa import router as targa_router
 from lys_workflow_hub.web.routes_vandalismo import router as vandalismo_router
 from lys_workflow_hub.web.routes_foto import router as foto_router
 from lys_workflow_hub.web.routes_utenti import router as utenti_router
@@ -270,6 +271,7 @@ app.include_router(utenti_router)
 app.include_router(portale_router)
 app.include_router(operatore_router)
 app.include_router(ingressi_router)
+app.include_router(targa_router)
 app.include_router(api_router)
 
 

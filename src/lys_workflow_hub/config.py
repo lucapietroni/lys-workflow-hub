@@ -170,6 +170,18 @@ class Settings(BaseSettings):
     # e basta (utile per rodaggio). L'invio resta possibile a mano da UI.
     sdi_invio_disabilitato: bool = Field(default=False)
 
+    # --- Automotive Openapi (ricerca veicolo per targa) ----------------------
+    # Anagrafica veicolo/PRA per targa, stesso provider di SDI (openapi.com),
+    # prodotto diverso. Pagina admin-only /targa.
+    # Provider: "fake" (default, nessuna rete) o "openapi".
+    automotive_provider: str = Field(default="fake")
+    # Vuota = riusa sdi_api_key (stesso account Openapi).
+    automotive_api_key: str = Field(default="")
+    # Vuota = calcolato da automotive_test_mode (dominio prod vs sandbox).
+    automotive_base_url: str = Field(default="")
+    # Se True usa il dominio sandbox del provider (test.automotive.openapi.com).
+    automotive_test_mode: bool = Field(default=True)
+
     # --- PDF extraction (M5.3) ---
     # Estrae il testo dagli allegati PDF delle risposte assicurative quando
     # il corpo della mail è troppo corto per essere classificato dall'AI.

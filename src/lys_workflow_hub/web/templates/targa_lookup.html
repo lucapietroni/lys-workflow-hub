@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Ricerca targa · LYS Workflow Hub{% endblock %}
+
+{% block content %}
+<header class="pratica-header">
+  <div>
+    <div class="hero-eyebrow">Automotive</div>
+    <h1>Ricerca veicolo per targa</h1>
+    <p class="meta">
+      Interroga l'anagrafica veicoli (provider Openapi, prodotto Automotive) a partire
+      dalla targa. Dati forniti da terzi: verificarli sempre prima di usarli in una pratica.
+    </p>
+  </div>
+</header>
+
+<section class="card">
+  <form method="get" action="/targa" class="targa-form">
+    <div class="form-grid">
+      <div class="form-field">
+        <label for="f_targa">Targa</label>
+        <input id="f_targa" name="targa" type="text" value="{{ targa }}"
+               autocomplete="off" autocapitalize="characters" placeholder="AB123CD" required />
+      </div>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Cerca</button>
+    </div>
+  </form>
+</section>
+
+{% if errore_generico %}
+  <div class="alert alert-warn"><strong>Errore:</strong> {{ errore_generico }}</div>
+{% endif %}
+
+{% if veicolo %}
+  {% if not veicolo.trovato %}
+    <div class="alert alert-warn">
+      <strong>{{ veicolo.targa }}:</strong> {{ veicolo.errore or "nessun dato trovato." }}
+    </div>
+  {% else %}
+    <section class="card">
+      <h2>Targa {{ veicolo.targa }}</h2>
+      <table class="table">
+        <tbody>
+          <tr><th>Marca</th><td>{{ veicolo.marca or "—" }}</td></tr>
+          <tr><th>Modello</th><td>{{ veicolo.modello or "—" }}</td></tr>
+          <tr><th>Alimentazione</th><td>{{ veicolo.alimentazione or "—" }}</td></tr>
+          <tr><th>Data immatricolazione</th><td>{{ veicolo.data_immatricolazione or "—" }}</td></tr>
+          <tr><th>Proprietario</th><td>{{ veicolo.proprietario or "—" }}</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="card">
+      <h2>Risposta completa del provider</h2>
+      <p class="meta">
+        Schema campi non ancora validato in sandbox: qui la risposta grezza, per non perdere
+        dati non mappati sopra.
+      </p>
+      <pre style="white-space:pre-wrap;word-break:break-word">{{ veicolo.raw | tojson(indent=2) }}</pre>
+    </section>
+  {% endif %}
+{% endif %}
+{% endblock %}
