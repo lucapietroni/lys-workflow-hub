@@ -12,14 +12,13 @@ il provider è sostituibile:
 Implementazioni:
   - :class:`FakeAutomotiveClient` — nessuna rete, dati fittizi. Default in
     sviluppo/test.
-  - :class:`OpenapiAutomotiveClient` — provider Openapi. Gli endpoint REST
-    (dominio ``automotive.openapi.com``, path ``/IT-car/{targa}``) sono la
-    migliore ipotesi dalla documentazione pubblica (la doc completa con lo
-    schema di risposta è dietro login sulla console) e vanno confermati in
-    sandbox (``automotive_test_mode=True``) prima dell'uso in produzione:
-    isolati qui, nient'altro nel progetto ne dipende. ``raw`` porta sempre
-    la risposta JSON completa così l'admin vede i dati anche se il parsing
-    dei singoli campi non azzecca i nomi esatti.
+  - :class:`OpenapiAutomotiveClient` — provider Openapi. Endpoint REST
+    (dominio ``automotive.openapi.com``, path ``/IT-car/{targa}``) e schema
+    di risposta (``{"success", "data": {"CarMake", "CarModel", ...}}``)
+    confermati in produzione l'11/09/2026. Nessun dato di proprietà/PRA:
+    l'endpoint restituisce solo dati tecnici del veicolo (marca, modello,
+    versione, telaio, immatricolazione...). ``raw`` porta comunque sempre
+    la risposta JSON completa, per i campi non mappati sotto.
 
 Factory: :func:`build_automotive_client(settings)`.
 """
@@ -44,20 +43,25 @@ PROVIDER_OPENAPI = "openapi"
 
 @dataclass(frozen=True)
 class VeicoloInfo:
-    """Dati veicolo così come restituiti dal provider.
+    """Dati tecnici veicolo così come restituiti dal provider (nessun dato di
+    proprietà/PRA: l'endpoint Automotive non lo fornisce).
 
-    I campi "noti" sono un best-effort di parsing (nomi da confermare); `raw`
-    contiene sempre l'intera risposta JSON, mostrata in fallback nel template
-    così nessun dato va perso se il parsing sbaglia un nome di campo.
+    `raw` contiene sempre l'intera risposta JSON, mostrata in fallback nel
+    template così nessun dato va perso se il parsing manca un campo.
     """
 
     targa: str
     trovato: bool
     marca: str = ""
     modello: str = ""
+    versione: str = ""
+    carrozzeria: str = ""
     alimentazione: str = ""
+    cambio: str = ""
+    porte: str = ""
+    potenza_cv: str = ""
     data_immatricolazione: str = ""
-    proprietario: str = ""
+    telaio: str = ""
     raw: dict[str, Any] = field(default_factory=dict)
     errore: str = ""
 
@@ -101,10 +105,12 @@ def normalizza_targa(targa: str) -> str:
 class OpenapiAutomotiveClient:
     """Client per il prodotto Automotive di Openapi (openapi.com).
 
-    ATTENZIONE: endpoint/campi qui sotto sono la migliore ipotesi dalla
-    documentazione pubblica (https://console.openapi.com/it/apis/automotive/documentation)
-    e vanno confermati in sandbox prima della produzione. Se il provider
-    cambia, si tocca solo questa classe.
+    Autenticazione: serve un Token generato in console.openapi.com/it/oauth
+    (sezione "Autenticazione" — NON la API Key mostrata in cima alla stessa
+    pagina, quella è solo per generare token via OAuth). Token Produzione e
+    Sandbox sono separati e vanno abbinati al dominio giusto: un token
+    Produzione contro ``test.automotive.openapi.com`` (o viceversa) risponde
+    401 "Wrong Token".
     """
 
     def __init__(
@@ -161,23 +167,24 @@ class OpenapiAutomotiveClient:
             logger.warning("Openapi cerca_veicolo(%s): risposta non JSON.", targa_norm)
             return VeicoloInfo(targa=targa_norm, trovato=False, errore="Risposta del provider non interpretabile.")
 
-        # Il wrapper esatto ("data": {...} vs oggetto diretto) è da confermare
-        # in sandbox: proviamo entrambe le forme più comuni per i prodotti Openapi.
         payload = data.get("data") if isinstance(data.get("data"), dict) else data
         if not payload:
             return VeicoloInfo(targa=targa_norm, trovato=False, raw=data, errore="Risposta vuota dal provider.")
 
+        potenza = payload.get("PowerCV")  # 0 = non disponibile (come i campi stringa vuoti)
         return VeicoloInfo(
             targa=targa_norm,
             trovato=True,
-            marca=str(payload.get("marca") or payload.get("make") or ""),
-            modello=str(payload.get("modello") or payload.get("model") or ""),
-            alimentazione=str(payload.get("alimentazione") or payload.get("fuel") or ""),
-            data_immatricolazione=str(
-                payload.get("dataImmatricolazione") or payload.get("data_immatricolazione")
-                or payload.get("registrationDate") or ""
-            ),
-            proprietario=str(payload.get("proprietario") or payload.get("owner") or ""),
+            marca=str(payload.get("CarMake") or payload.get("MakeDescription") or ""),
+            modello=str(payload.get("CarModel") or payload.get("ModelDescription") or ""),
+            versione=str(payload.get("Version") or ""),
+            carrozzeria=str(payload.get("BodyStyle") or ""),
+            alimentazione=str(payload.get("FuelType") or ""),
+            cambio=str(payload.get("Transmission") or ""),
+            porte=str(payload.get("NumberOfDoors") or ""),
+            potenza_cv=str(potenza) if potenza else "",
+            data_immatricolazione=str(payload.get("RegistrationDate") or ""),
+            telaio=str(payload.get("Vin") or ""),
             raw=data,
         )
 

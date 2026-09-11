@@ -44,19 +44,21 @@
         <tbody>
           <tr><th>Marca</th><td>{{ veicolo.marca or "—" }}</td></tr>
           <tr><th>Modello</th><td>{{ veicolo.modello or "—" }}</td></tr>
+          <tr><th>Versione</th><td>{{ veicolo.versione or "—" }}</td></tr>
+          <tr><th>Carrozzeria</th><td>{{ veicolo.carrozzeria or "—" }}</td></tr>
           <tr><th>Alimentazione</th><td>{{ veicolo.alimentazione or "—" }}</td></tr>
+          <tr><th>Cambio</th><td>{{ veicolo.cambio or "—" }}</td></tr>
+          <tr><th>Porte</th><td>{{ veicolo.porte or "—" }}</td></tr>
+          <tr><th>Potenza (CV)</th><td>{{ veicolo.potenza_cv or "—" }}</td></tr>
           <tr><th>Data immatricolazione</th><td>{{ veicolo.data_immatricolazione or "—" }}</td></tr>
-          <tr><th>Proprietario</th><td>{{ veicolo.proprietario or "—" }}</td></tr>
+          <tr><th>Telaio (VIN)</th><td>{{ veicolo.telaio or "—" }}</td></tr>
         </tbody>
       </table>
     </section>
 
     <section class="card">
       <h2>Risposta completa del provider</h2>
-      <p class="meta">
-        Schema campi non ancora validato in sandbox: qui la risposta grezza, per non perdere
-        dati non mappati sopra.
-      </p>
+      <p class="meta">Risposta grezza, per i campi non mappati nella tabella sopra.</p>
       <pre style="white-space:pre-wrap;word-break:break-word">{{ veicolo.raw | tojson(indent=2) }}</pre>
     </section>
   {% endif %}

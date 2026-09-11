@@ -44,6 +44,52 @@ def test_build_automotive_client_openapi_riusa_sdi_api_key():
     assert client.base_url == "https://test.automotive.openapi.com"  # automotive_test_mode default True
 
 
+def test_openapi_client_parsing_schema_reale(monkeypatch):
+    """Schema di risposta confermato in produzione l'11/09/2026 (vedi commit)."""
+    import sys
+
+    class _FakeResp:
+        status_code = 200
+        content = b"{}"
+
+        def json(self):
+            return {
+                "success": True,
+                "message": "",
+                "error": None,
+                "data": {
+                    "LicensePlate": "HA202KX",
+                    "CarMake": "Dacia",
+                    "CarModel": "Sandero",
+                    "Version": "Sandero Streetway 1.0 tce Essential Eco-g 100cv 5 marce",
+                    "BodyStyle": "Berlina",
+                    "FuelType": "",
+                    "Transmission": "",
+                    "NumberOfDoors": "5",
+                    "PowerCV": 0,
+                    "RegistrationDate": "01/07/2025",
+                    "Vin": "UU1DJF00875088535",
+                },
+            }
+
+    def _fake_get(url, headers=None, timeout=None):
+        assert url.endswith("/IT-car/HA202KX")
+        return _FakeResp()
+
+    fake_requests = type("_FakeRequestsModule", (), {"get": staticmethod(_fake_get)})
+    monkeypatch.setitem(sys.modules, "requests", fake_requests)
+
+    client = OpenapiAutomotiveClient(api_key="tok")
+    esito = client.cerca_veicolo("ha202kx")
+    assert esito.trovato is True
+    assert esito.marca == "Dacia"
+    assert esito.modello == "Sandero"
+    assert esito.carrozzeria == "Berlina"
+    assert esito.porte == "5"
+    assert esito.potenza_cv == ""  # 0 = non disponibile
+    assert esito.telaio == "UU1DJF00875088535"
+
+
 def test_targa_form_admin_ok(authenticated_app: UtentiRepository):
     client = TestClient(app)
     login_as(client, ADMIN_EMAIL, ADMIN_PASSWORD)
