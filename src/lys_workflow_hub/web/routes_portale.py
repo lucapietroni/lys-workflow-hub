@@ -770,7 +770,6 @@ def portale_cambia_stato(
     numero: int,
     request: Request,
     stato: str = Form(...),
-    note: str = Form(""),
     current_user: Utente | None = Depends(get_current_user),
     assegnazioni_repo: PraticaAssegnazioniRepository = Depends(get_assegnazioni_repo),
     settings: Settings = Depends(get_portale_settings),
@@ -783,9 +782,13 @@ def portale_cambia_stato(
     if stato not in STATI:
         raise HTTPException(400, "Stato non valido.")
 
+    # Nessun campo note dal portale (solo admin): gli esterni lo usavano come
+    # sostituto del campo note vero della pratica invece di scriverci dentro.
+    # Ignorato anche se qualcuno lo posta direttamente all'endpoint (non solo
+    # nascosto in UI), per impedirlo davvero e non solo scoraggiarlo.
     stato_repo = PraticaStatoRepository(db_path=settings.app_db_path)
     stato_repo.set_stato(
-        numero, stato, changed_by=utente.nome or utente.email, note=note.strip()
+        numero, stato, changed_by=utente.nome or utente.email, note=""
     )
     try:
         EsternoPraticaReminderRepository(db_path=settings.app_db_path).risolvi_per_pratica(
@@ -800,8 +803,7 @@ def portale_cambia_stato(
         costruisci_messaggio=lambda: (
             f"Stato aggiornato · Pratica {numero}",
             f"{utente.nome or utente.email} ha impostato lo stato "
-            f"\"{STATO_LABELS.get(stato, stato)}\" sulla pratica {numero}"
-            + (f": {note.strip()}" if note.strip() else ""),
+            f"\"{STATO_LABELS.get(stato, stato)}\" sulla pratica {numero}",
             settings.public_url(f"/pratiche/{numero}"),
         ),
     )

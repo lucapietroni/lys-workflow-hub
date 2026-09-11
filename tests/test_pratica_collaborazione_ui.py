@@ -369,6 +369,9 @@ def test_portale_puo_cambiare_stato_pratica_assegnata(authenticated_app, portale
     resp = client.post(
         "/portale/pratiche/766/stato",
         data={
+            # Il campo note non esiste più nel form portale (gli esterni lo usavano
+            # come sostituto del campo note vero della pratica): anche postandolo
+            # esplicitamente qui, deve essere ignorato dal backend.
             "stato": "in_gestione",
             "note": "preso in carico",
             "csrf_token": get_csrf(client, "/portale/pratiche/766"),
@@ -380,7 +383,7 @@ def test_portale_puo_cambiare_stato_pratica_assegnata(authenticated_app, portale
     stato = stato_repo.get_stato(766)
     assert stato.stato == "in_gestione"
     assert stato.changed_by == "Agenzia"
-    assert stato.note == "preso in carico"
+    assert stato.note == ""
 
 
 def test_portale_dropdown_stato_include_periziata(authenticated_app, portale_setup) -> None:
