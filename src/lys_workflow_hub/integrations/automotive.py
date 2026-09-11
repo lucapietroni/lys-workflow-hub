@@ -142,11 +142,18 @@ class OpenapiAutomotiveClient:
 
         if resp.status_code == 404:
             return VeicoloInfo(targa=targa_norm, trovato=False, errore="Nessun veicolo trovato per questa targa.")
-        try:
-            resp.raise_for_status()
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Openapi cerca_veicolo(%s) fallito (HTTP %s): %s", targa_norm, resp.status_code, exc)
-            return VeicoloInfo(targa=targa_norm, trovato=False, errore=f"Errore provider (HTTP {resp.status_code}).")
+        if resp.status_code >= 400:
+            corpo = resp.text[:500]
+            logger.warning(
+                "Openapi cerca_veicolo(%s) fallito (HTTP %s): %s", targa_norm, resp.status_code, corpo
+            )
+            # Il corpo dell'errore del provider è mostrato in pagina (route admin-only)
+            # per poter diagnosticare subito (token/prodotto/parametro) senza dover
+            # andare a leggere il log file.
+            return VeicoloInfo(
+                targa=targa_norm, trovato=False,
+                errore=f"Errore provider (HTTP {resp.status_code}): {corpo}",
+            )
 
         try:
             data = resp.json() if resp.content else {}
