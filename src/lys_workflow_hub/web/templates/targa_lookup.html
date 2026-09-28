@@ -57,9 +57,15 @@
     </section>
 
     <section class="card">
-      <h2>Risposta completa del provider</h2>
-      <p class="meta">Risposta grezza, per i campi non mappati nella tabella sopra.</p>
-      <pre style="white-space:pre-wrap;word-break:break-word">{{ veicolo.raw | tojson(indent=2) }}</pre>
+      <details>
+        <summary class="section-toggle">
+          <h2>Risposta completa del provider
+            <span class="h2-right"><span class="chevron">▾</span></span>
+          </h2>
+        </summary>
+        <p class="meta">Risposta grezza, per i campi non mappati nella tabella sopra.</p>
+        <pre style="white-space:pre-wrap;word-break:break-word">{{ veicolo.raw | tojson(indent=2) }}</pre>
+      </details>
     </section>
   {% endif %}
 {% endif %}
@@ -86,8 +92,14 @@
     </section>
 
     <section class="card">
-      <h2>Risposta completa del provider (assicurazione)</h2>
-      <pre style="white-space:pre-wrap;word-break:break-word">{{ assicurazione.raw | tojson(indent=2) }}</pre>
+      <details>
+        <summary class="section-toggle">
+          <h2>Risposta completa del provider (assicurazione)
+            <span class="h2-right"><span class="chevron">▾</span></span>
+          </h2>
+        </summary>
+        <pre style="white-space:pre-wrap;word-break:break-word">{{ assicurazione.raw | tojson(indent=2) }}</pre>
+      </details>
     </section>
   {% endif %}
 {% endif %}
