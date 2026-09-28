@@ -568,6 +568,47 @@ def calendario(
     return templates.TemplateResponse(request, "calendario.html", context)
 
 
+@router.get("/calendario/stampa")
+def calendario_stampa(
+    anno: int | None = None,
+    mese: int | None = None,
+    settings: Settings = Depends(get_app_settings),
+    repo: WinCarRepository = Depends(get_repository),
+) -> Response:
+    """PDF con l'elenco testuale (non la griglia) degli appuntamenti del mese
+    mostrato in `/calendario`: cliente, targa, data e nota, uno sotto l'altro."""
+    oggi = date.today()
+    anno = anno or oggi.year
+    mese = mese or oggi.month
+    if not (1 <= mese <= 12):
+        raise HTTPException(400, "Mese non valido.")
+
+    try:
+        eventi = PraticaEventiRepository(db_path=settings.app_db_path).list_mese(anno, mese)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Impossibile leggere eventi calendario %s-%s: %s", anno, mese, exc)
+        eventi = []
+
+    per_giorno: dict[date, list[dict]] = {}
+    for voce in _arricchisci_eventi_con_pratica(eventi, repo):
+        giorno = voce["evento"].data_evento
+        if giorno is not None:
+            per_giorno.setdefault(giorno, []).append(voce)
+
+    docx_bytes = _genera_docx_calendario_stampa(per_giorno, _MESE_LABELS[mese - 1], anno)
+    try:
+        pdf_bytes = docx_bytes_to_pdf_bytes(docx_bytes)
+    except PdfConversionError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    fname = f"appuntamenti_{anno}-{mese:02d}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type=PDF_MIME,
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
 def _contesto_calendario(anno: int, mese: int) -> dict[str, Any]:
     """Dati di navigazione mese (griglia settimane, mese prec/succ) comuni
     a `/calendario` (admin) e `/portale/calendario` (esterno)."""
@@ -604,6 +645,53 @@ _MESE_LABELS = (
     "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
     "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre",
 )
+
+_GIORNI_SETTIMANA_LABELS = (
+    "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica",
+)
+
+
+def _genera_docx_calendario_stampa(
+    eventi_per_giorno: dict[date, list[dict]], mese_label: str, anno: int
+) -> bytes:
+    """Elenco testuale (non griglia) degli appuntamenti di un mese, per la
+    stampa: un blocco per giorno, una riga per appuntamento con cliente,
+    targa e nota — pensato per essere leggibile su carta, non per ricalcare
+    il calendario a caselle della pagina web."""
+    from docx import Document
+    from docx.shared import Pt
+
+    doc = Document()
+    doc.add_heading(f"Appuntamenti — {mese_label} {anno}", level=1)
+
+    giorni = sorted(eventi_per_giorno.keys())
+    if not giorni:
+        doc.add_paragraph("Nessun appuntamento in questo mese.")
+
+    for giorno in giorni:
+        intestazione = doc.add_paragraph()
+        run = intestazione.add_run(
+            f"{_GIORNI_SETTIMANA_LABELS[giorno.weekday()]} {giorno.strftime('%d/%m/%Y')}"
+        )
+        run.bold = True
+        run.font.size = Pt(13)
+
+        for voce in eventi_per_giorno[giorno]:
+            evento = voce["evento"]
+            dettagli = []
+            if voce["cliente"]:
+                dettagli.append(voce["cliente"])
+            if voce["targa"]:
+                dettagli.append(f"targa {voce['targa']}")
+            dettagli.append(f"pratica {evento.pratica_numero}")
+
+            riga = doc.add_paragraph(style="List Bullet")
+            riga.add_run(evento.titolo).bold = True
+            riga.add_run(f" — {' · '.join(dettagli)}")
+
+    buffer = BytesIO()
+    doc.save(buffer)
+    return buffer.getvalue()
 
 
 @router.get("/pratiche/{numero}", response_class=HTMLResponse)

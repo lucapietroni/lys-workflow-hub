@@ -17,6 +17,9 @@
     <a class="btn" href="?anno={{ mese_prec_anno }}&mese={{ mese_prec }}">← Precedente</a>
     <a class="btn" href="?anno={{ oggi.year }}&mese={{ oggi.month }}">Oggi</a>
     <a class="btn" href="?anno={{ mese_succ_anno }}&mese={{ mese_succ }}">Successivo →</a>
+    {% if current_user and current_user.is_admin %}
+    <a class="btn btn-primary" href="/calendario/stampa?anno={{ anno }}&mese={{ mese }}" target="_blank" rel="noopener">Stampa</a>
+    {% endif %}
   </div>
 </header>
 
