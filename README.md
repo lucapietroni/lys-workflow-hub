@@ -5,7 +5,7 @@ con il gestionale **WinCar**. Legge le pratiche dal database WinCar in sola lett
 genera documenti precompilati, monitora le risposte delle compagnie assicurative
 via PEC/email, classifica le risposte con AI e genera alert mirati.
 
-> Branch: **main** · Versione: **4.27.1** · In produzione su `hub.lysauto.it`
+> Branch: **main** · Versione: **4.29.0** · In produzione su `hub.lysauto.it`
 > (contabilità gestionale + SDI mergiata; provider SDI di default `fake`)
 
 ---
@@ -58,6 +58,17 @@ via PEC/email, classifica le risposte con AI e genera alert mirati.
   cadenza; il ciclo giornaliero genera i movimenti di uscita dei periodi
   scaduti a partire da una data di inizio.
 
+**Automotive e strumenti admin**
+- Ricerca veicolo per targa (`/targa`, admin + supervisore): interroga l'API
+  Automotive del provider Openapi (stesso account di SDI) — dati tecnici
+  veicolo (marca, modello, versione, telaio, immatricolazione...) e stato
+  assicurativo (compagnia, scadenza polizza). Risposta grezza del provider
+  sempre visibile, per i campi non mappati.
+- Calendario (`/calendario`, admin): stampa PDF dell'elenco appuntamenti del
+  mese mostrato — tabella in pagina orizzontale (data, cliente, veicolo,
+  nota), non la griglia a caselle della pagina web, pensata per essere
+  leggibile su carta.
+
 **Collaborazione e accesso esterno**
 - Autenticazione con ruoli (`admin`/`esterno`/`supervisore`/`operatore`),
   sessione cookie, anti-bruteforce, gestione utenti via UI. Il supervisore
@@ -68,7 +79,8 @@ via PEC/email, classifica le risposte con AI e genera alert mirati.
   mano e la collega, spostando i documenti nel posto giusto.
 - Portale esterno (`/portale`): agenzie pratiche auto e avvocati vedono solo
   le pratiche assegnate — dettaglio pratica, note e calendario condivisi,
-  cambio stato, upload foto/documenti.
+  cambio stato (senza campo note: va scritta nel campo note vero della
+  pratica, non nello storico stato), upload foto/documenti.
 - Notifiche in tempo reale (email, push ntfy.sh, push FCM su app Android e
   browser) configurabili self-service da ogni utente esterno, reminder
   automatici per gli appuntamenti di calendario. Reminder ricorrente per le
@@ -123,7 +135,7 @@ src/lys_workflow_hub/
 ├── main.py
 ├── config.py
 ├── core/                            Repository SQLite (mail, pratiche, bozze, SLA, utenti, contabilità, ...)
-├── integrations/                    IMAP, SMTP, AI classifier, PDF extractor, notifier, foto_watcher, sdi
+├── integrations/                    IMAP, SMTP, AI classifier, PDF extractor, notifier, foto_watcher, sdi, automotive
 ├── workflows/
 │   ├── cessione_credito/            Workflow A
 │   ├── risarcimento_vandalismo/     Workflow B
@@ -150,6 +162,7 @@ src/lys_workflow_hub/
     ├── routes_compagnie.py          (admin-only)
     ├── routes_impostazioni.py       (admin-only)
     ├── routes_contabilita.py        Contabilità gestionale + fatture SDI (admin-only)
+    ├── routes_targa.py              Ricerca veicolo per targa (admin + supervisore)
     └── templates/ + static/
 mobile/                              App Android Capacitor (LYSApp) — vedi mobile/README.md
 scripts/

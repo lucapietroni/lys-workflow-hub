@@ -1,6 +1,6 @@
 # LYS Workflow Hub — Contesto di sviluppo
 
-> Branch: **main** · Versione: **4.11.0** · In produzione su `hub.lysauto.it`
+> Branch: **main** · Versione: **4.29.0** · In produzione su `hub.lysauto.it`
 
 ---
 
@@ -314,6 +314,48 @@ autolavaggi, …):
 - `/contabilita/movimenti`: conteggio "Movimenti" in testata
   (`ContabilitaMovimentoRepository.conta`) + avviso se troncato a 500.
   Header colonna "di cui IVA" → "IVA".
+
+---
+
+## Ricerca targa (Automotive Openapi, v4.28.0)
+
+`GET /targa` (admin + supervisore, `require_admin_o_supervisore` in
+`web/auth.py`): form targa → dati tecnici veicolo + stato assicurativo dal
+prodotto **Automotive** di Openapi — stesso provider/account di SDI
+(`integrations/automotive.py`), prodotto diverso. Stesso pattern di
+`integrations/sdi.py`: `Protocol` + `FakeAutomotiveClient` (default,
+nessuna rete) + `OpenapiAutomotiveClient` + factory `build_automotive_
+client(settings)`. Se `AUTOMOTIVE_API_KEY` è vuota riusa `SDI_API_KEY`
+(stesso account Openapi, scelta esplicita per non gestire due chiavi).
+
+**Autenticazione — gotcha reale, non ovvio dalla doc pubblica**: la console
+(`console.openapi.com/it/oauth`) mostra due cose diverse: una **API Key**
+(in cima, Prod/Sandbox) e una lista di **Token** generati (con scadenza).
+Il Bearer per le chiamate API è il **Token**, non la API Key — usarla dà
+`401 {"message":"Wrong Token"}`. Stesso errore se si usa un token
+Produzione contro il dominio sandbox (`test.automotive.openapi.com`) o
+viceversa: dominio e tipo di token vanno abbinati (`AUTOMOTIVE_TEST_MODE`
+sceglie il dominio, vedi `build_automotive_client`). Diagnosticato in prod
+mostrando il body della risposta d'errore direttamente in pagina (route
+admin-only, nessun rischio) invece di solo loggarlo — altrimenti "Wrong
+Token" da solo non fa capire se è la key sbagliata o il mismatch dominio.
+
+**Schema di risposta** — la doc completa (schema JSON) è dietro login
+sulla console, il body pubblico non la mostra. Confermato in produzione con
+targhe reali, non per ipotesi:
+- `/IT-car/{targa}`: `{"success", "data": {"CarMake", "CarModel",
+  "Version", "BodyStyle", "FuelType", "Transmission", "NumberOfDoors",
+  "PowerCV", "RegistrationDate", "Vin", ...}}` — solo dati tecnici, NESSUN
+  dato di proprietà/PRA nonostante il nome del prodotto.
+- `/IT-insurance/{targa}`: `{"data": {"Company", "Expiry" (ISO datetime),
+  "IsInsured", ...}}`. Il campo scadenza è `Expiry`, non uno dei nomi
+  plausibili tentati inizialmente (`ExpiryDate`/`PolicyExpiryDate`) — la
+  UI mostrava sempre "—" finché non verificato con una targa reale.
+
+`VeicoloInfo`/`AssicurazioneInfo.raw` porta sempre la risposta JSON
+completa, mostrata in pagina in una sezione collassabile (`<details>/
+<summary class="section-toggle">`, stesso pattern già usato altrove nel
+sito) — fallback per i campi non mappati o se il provider cambia schema.
 
 ---
 
@@ -842,14 +884,25 @@ distinguerle visivamente dalle pratiche ancora attive.
 
 `routes_portale.py::portale_pratica_detail()` carica anche `pratica_stato`/
 `pratica_stato_storia`/`stati_disponibili`; `portale_pratica_detail.html`
-replica esattamente la card "Stato pratica" di `pratica_detail.html`
-(stesso markup, stesso dropdown, stesso campo note). Nuova route
-`POST /portale/pratiche/{numero}/stato` (IDOR-safe via `_verifica_accesso`,
-stesso pattern di note/eventi), `changed_by=utente.nome or utente.email`
-(non hardcoded `"operatore"` come la route admin equivalente in
-`routes_impostazioni.py` — piccola incoerenza pre-esistente, non toccata).
-Ogni cambio stato dall'esterno notifica l'admin via push (`_notifica_admin`,
-stesso helper già usato per nota/evento).
+replica la card "Stato pratica" di `pratica_detail.html` (stesso markup,
+stesso dropdown). Nuova route `POST /portale/pratiche/{numero}/stato`
+(IDOR-safe via `_verifica_accesso`, stesso pattern di note/eventi),
+`changed_by=utente.nome or utente.email` (non hardcoded `"operatore"` come
+la route admin equivalente in `routes_impostazioni.py` — piccola
+incoerenza pre-esistente, non toccata). Ogni cambio stato dall'esterno
+notifica l'admin via push (`_notifica_admin`, stesso helper già usato per
+nota/evento).
+
+**Campo note rimosso lato portale (v4.27.2)**: gli esterni usavano il campo
+note del cambio-stato come sostituto del campo note vero della pratica
+(`PraticaNoteRepository`) invece di scriverci dentro — segnalato
+dall'utente admin. Fix: tolto l'`&lt;input name="note"&gt;` dal form in
+`portale_pratica_detail.html` e il parametro `note: str = Form("")` dalla
+route (`stato_repo.set_stato(..., note="")` sempre); ignorato anche se
+qualcuno lo posta direttamente all'endpoint, non solo nascosto in UI.
+Restano liberi di cambiare stato, solo senza allegare testo lì. Lato admin
+(`pratica_detail.html` / `routes_impostazioni.py::pratica_cambia_stato`)
+invariato: il campo note c'è ancora.
 
 `pratica_stato_repository.py`: nuovo `STATO_PERIZIATA = "periziata"`
 inserito in `STATI` tra `perito_nominato` e `in_liquidazione` — la
@@ -939,6 +992,25 @@ monthdatescalendar`, lunedì primo giorno) e navigazione prec/succ calcolate
 in `_contesto_calendario()` (routes.py, riusata da routes_portale.py —
 stesso pattern di condivisione già in uso per `_allegati_con_url`/
 `_parse_date`/`resolve_pratica_file`).
+
+**Stampa PDF (v4.29.0, admin-only)**: `GET /calendario/stampa` genera il PDF
+del mese mostrato in tabella (non la griglia a caselle) — data, cliente,
+veicolo (marca+modello+targa, letti da WinCar via `_arricchisci_eventi_con_
+pratica`, la stessa funzione già usata dal widget home "Prossimi
+appuntamenti"), nota. Pipeline python-docx → PDF via `docx2pdf`/Word COM,
+stessa di cessione credito e verbali (nessuna libreria PDF diretta nel
+progetto). Bottone "Stampa" in `calendario.html` visibile solo se
+`current_user.is_admin` — il template è condiviso con `/portale/calendario`
+(esterni/supervisori non lo vedono).
+
+Gotcha risolto in review: `docx.Document()` di python-docx nasce **US
+Letter**, non A4 — le colonne a larghezza fissa pensate per riempire l'area
+utile A4 landscape sarebbero sbordate dal margine destro su carta reale.
+Fix: `sezione.page_width/page_height` impostati esplicitamente a `Cm(29.7)`/
+`Cm(21.0)` con margini `Cm(1.5)`, colonne ricalcolate sull'area utile
+risultante (26.7cm). Riga di intestazione ripetuta su ogni pagina stampata
+via XML `w:tblHeader` (`_imposta_intestazione_ripetuta`, idiom standard di
+python-docx per questo, non c'è API pubblica).
 
 ## Modifica/eliminazione note (admin)
 
@@ -1089,11 +1161,27 @@ deve puntare a `C:\Users\lucap\Documents\Claude\Projects\Lysauto\lys-workflow-hu
 
 ## Stato attuale
 
-Versione **4.21.3** in produzione su `main` / `https://hub.lysauto.it`.
-Sviluppo contabilità gestionale + SDI (**4.22.0**) sul branch
-`feature/contabilita-sdi`, non ancora in produzione. Changelog per-commit in
-`git log`; le decisioni tecniche non ovvie dal codice (formati, gotcha, cause
-di bug reali) restano documentate nelle sezioni sopra, per sottosistema.
+Versione **4.29.0** in produzione su `main` / `https://hub.lysauto.it`.
+Changelog per-commit in `git log`; le decisioni tecniche non ovvie dal
+codice (formati, gotcha, cause di bug reali) restano documentate nelle
+sezioni sopra, per sottosistema.
+
+**4.29.0 — Calendario: stampa PDF in tabella orizzontale + modello auto**:
+`/calendario/stampa` (admin-only), tabella con griglia invece dei bullet
+point iniziali, pagina A4 orizzontale, marca+modello veicolo oltre alla
+targa. Vedi sezione dedicata "Calendario mensile" sopra (include il gotcha
+US Letter vs A4 trovato in review).
+
+**4.28.0 — Ricerca targa (Automotive Openapi)**: nuova pagina `/targa`
+(admin, poi estesa a supervisore) — dati tecnici veicolo + stato
+assicurativo dallo stesso account Openapi di SDI. Vedi sezione dedicata
+"Ricerca targa (Automotive Openapi)" sopra per i gotcha di autenticazione
+e schema risposta (non documentati nella doc pubblica del provider).
+
+**4.27.2 — Fix: rimosso campo note dal cambio-stato lato portale esterno**:
+segnalato dall'utente admin — gli esterni lo usavano come sostituto del
+campo note vero della pratica. Vedi sezione "Stato pratica modificabile
+dall'esterno" sopra.
 
 **4.25.0 — Contabilità gestionale, Fase 4 (branch `feature/contabilita-sdi`)**:
 coda smistamento fatture passive (assegnazione categoria/pratica + split,
