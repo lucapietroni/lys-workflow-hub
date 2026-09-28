@@ -575,8 +575,8 @@ def calendario_stampa(
     settings: Settings = Depends(get_app_settings),
     repo: WinCarRepository = Depends(get_repository),
 ) -> Response:
-    """PDF con l'elenco testuale (non la griglia) degli appuntamenti del mese
-    mostrato in `/calendario`: cliente, targa, data e nota, uno sotto l'altro."""
+    """PDF con gli appuntamenti del mese mostrato in `/calendario` in tabella
+    (pagina orizzontale): data, cliente, veicolo (marca/modello/targa) e nota."""
     oggi = date.today()
     anno = anno or oggi.year
     mese = mese or oggi.month
@@ -651,43 +651,92 @@ _GIORNI_SETTIMANA_LABELS = (
 )
 
 
+def _imposta_intestazione_ripetuta(riga) -> None:
+    """Ripete la riga (header di tabella) in cima a ogni pagina stampata —
+    utile perché l'elenco del mese può superare una pagina in orizzontale.
+
+    Va chiamata solo su un blocco contiguo di righe a partire dalla PRIMA
+    riga della tabella: è un vincolo OOXML, Word ignora `w:tblHeader` su
+    righe non in testa. Unico call site oggi è `tabella.rows[0]`."""
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    tr_pr = riga._tr.get_or_add_trPr()
+    tbl_header = OxmlElement("w:tblHeader")
+    tbl_header.set(qn("w:val"), "true")
+    tr_pr.append(tbl_header)
+
+
 def _genera_docx_calendario_stampa(
     eventi_per_giorno: dict[date, list[dict]], mese_label: str, anno: int
 ) -> bytes:
-    """Elenco testuale (non griglia) degli appuntamenti di un mese, per la
-    stampa: un blocco per giorno, una riga per appuntamento con cliente,
-    targa e nota — pensato per essere leggibile su carta, non per ricalcare
-    il calendario a caselle della pagina web."""
+    """Tabella (non le caselle del calendario web) con gli appuntamenti del
+    mese in ordine cronologico: data, cliente, veicolo e nota — una riga per
+    appuntamento, pagina orizzontale per leggerla comoda su carta."""
     from docx import Document
-    from docx.shared import Pt
+    from docx.enum.section import WD_ORIENT
+    from docx.shared import Cm, Pt
 
     doc = Document()
+    sezione = doc.sections[0]
+    sezione.orientation = WD_ORIENT.LANDSCAPE
+    # Il template di default di python-docx è US Letter, non A4: va impostato
+    # esplicitamente (azienda italiana, stampa su A4) — altrimenti le colonne,
+    # calcolate sull'area utile A4, sborderebbero nel margine destro su carta
+    # Letter (margini di default diversi: 1.25" L/R contro l'1.5cm qui sotto).
+    sezione.page_width = Cm(29.7)
+    sezione.page_height = Cm(21.0)
+    sezione.left_margin = sezione.right_margin = Cm(1.5)
+    sezione.top_margin = sezione.bottom_margin = Cm(1.5)
+
     doc.add_heading(f"Appuntamenti — {mese_label} {anno}", level=1)
 
     giorni = sorted(eventi_per_giorno.keys())
     if not giorni:
         doc.add_paragraph("Nessun appuntamento in questo mese.")
+        buffer = BytesIO()
+        doc.save(buffer)
+        return buffer.getvalue()
+
+    # Larghezze pensate per riempire l'area utile A4 landscape impostata sopra
+    # (29.7cm - 2x1.5cm di margine = 26.7cm): 4 + 5 + 6 + 11.7 = 26.7cm.
+    larghezze_colonne = (Cm(4), Cm(5), Cm(6), Cm(11.7))
+
+    tabella = doc.add_table(rows=1, cols=4)
+    tabella.style = "Table Grid"
+    tabella.autofit = False
+    intestazioni = tabella.rows[0].cells
+    for cella, testo, larghezza in zip(
+        intestazioni, ("Data", "Cliente", "Veicolo", "Appuntamento"), larghezze_colonne
+    ):
+        cella.text = testo
+        cella.width = larghezza
+        cella.paragraphs[0].runs[0].bold = True
+        cella.paragraphs[0].runs[0].font.size = Pt(11)
+    _imposta_intestazione_ripetuta(tabella.rows[0])
 
     for giorno in giorni:
-        intestazione = doc.add_paragraph()
-        run = intestazione.add_run(
-            f"{_GIORNI_SETTIMANA_LABELS[giorno.weekday()]} {giorno.strftime('%d/%m/%Y')}"
-        )
-        run.bold = True
-        run.font.size = Pt(13)
-
+        data_label = f"{_GIORNI_SETTIMANA_LABELS[giorno.weekday()][:3]} {giorno.strftime('%d/%m/%Y')}"
         for voce in eventi_per_giorno[giorno]:
             evento = voce["evento"]
-            dettagli = []
-            if voce["cliente"]:
-                dettagli.append(voce["cliente"])
+            veicolo_bits = [b for b in (voce["marca"], voce["modello"]) if b]
+            veicolo_label = " ".join(veicolo_bits)
             if voce["targa"]:
-                dettagli.append(f"targa {voce['targa']}")
-            dettagli.append(f"pratica {evento.pratica_numero}")
+                veicolo_label = f"{veicolo_label} ({voce['targa']})" if veicolo_label else voce["targa"]
 
-            riga = doc.add_paragraph(style="List Bullet")
-            riga.add_run(evento.titolo).bold = True
-            riga.add_run(f" — {' · '.join(dettagli)}")
+            riga_celle = tabella.add_row().cells
+            for cella, testo, larghezza in zip(
+                riga_celle,
+                (
+                    data_label,
+                    voce["cliente"] or "—",
+                    veicolo_label or "—",
+                    f"{evento.titolo} (pratica {evento.pratica_numero})",
+                ),
+                larghezze_colonne,
+            ):
+                cella.text = testo
+                cella.width = larghezza  # ripetuto per riga: python-docx ignora la larghezza di colonna da sola
 
     buffer = BytesIO()
     doc.save(buffer)
@@ -851,25 +900,32 @@ def pratica_detail(
 
 
 def _arricchisci_eventi_con_pratica(eventi: list, repo: WinCarRepository) -> list[dict]:
-    """Aggiunge cliente/targa a ogni evento per il widget "Prossimi
-    appuntamenti" (home admin e /portale), leggendo da WinCar. Tollera
-    errori PER SINGOLO evento — un fallimento WinCar su una pratica non deve
-    far sparire l'intero widget, solo quella riga resta senza cliente/targa.
+    """Aggiunge cliente/targa/marca/modello a ogni evento per il widget
+    "Prossimi appuntamenti" (home admin e /portale) e per la stampa PDF del
+    calendario, leggendo da WinCar. Tollera errori PER SINGOLO evento — un
+    fallimento WinCar su una pratica non deve far sparire l'intero widget,
+    solo quella riga resta senza questi dati.
     """
     arricchiti = []
     for e in eventi:
         cliente = ""
         targa = ""
+        marca = ""
+        modello = ""
         try:
             pratica = repo.get_pratica(e.pratica_numero)
             if pratica is not None:
                 cliente = pratica.cliente.nominativo or ""
                 targa = pratica.veicolo.targa or ""
+                marca = pratica.veicolo.marca or ""
+                modello = pratica.veicolo.modello or ""
         except Exception as exc:  # noqa: BLE001
             logger.warning(
-                "Impossibile leggere cliente/targa per pratica %s: %s", e.pratica_numero, exc
+                "Impossibile leggere cliente/veicolo per pratica %s: %s", e.pratica_numero, exc
             )
-        arricchiti.append({"evento": e, "cliente": cliente, "targa": targa})
+        arricchiti.append({
+            "evento": e, "cliente": cliente, "targa": targa, "marca": marca, "modello": modello,
+        })
     return arricchiti
 
 

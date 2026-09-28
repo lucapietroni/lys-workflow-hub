@@ -1,4 +1,4 @@
-"""Test stampa PDF calendario (/calendario/stampa): elenco testuale, non griglia."""
+"""Test stampa PDF calendario (/calendario/stampa): tabella in pagina orizzontale."""
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -30,28 +30,85 @@ def _sample_pratica(numero: int) -> Pratica:
         numero=numero,
         data_creazione=datetime(2026, 5, 1, 0, 0),
         cliente=Cliente("ROSSI MARIO", None, None, None, None, None, None, None, None, None),
-        veicolo=Veicolo("AB123CD", None, None, None),
+        veicolo=Veicolo("AB123CD", "Fiat", "Panda", None),
         sinistro=Sinistro(None, None, None, None, None, None, None),
         controparte=Controparte(None, None, None, None, None, None, None, None),
         assicurazione_cliente=CompagniaCliente(None, None, None, None, None, None, None),
     )
 
 
+def _testo_tabella(doc: Document) -> str:
+    tabella = doc.tables[0]
+    return "\n".join(cella.text for riga in tabella.rows for cella in riga.cells)
+
+
 def test_genera_docx_calendario_stampa_contenuto():
     per_giorno = {
         date(2026, 9, 15): [
-            {"evento": _EventoFake(766, "Perizia"), "cliente": "Rossi Mario", "targa": "AB123CD"},
+            {
+                "evento": _EventoFake(766, "Perizia"),
+                "cliente": "Rossi Mario",
+                "targa": "AB123CD",
+                "marca": "Fiat",
+                "modello": "Panda",
+            },
         ],
     }
     docx_bytes = _genera_docx_calendario_stampa(per_giorno, "Settembre", 2026)
     doc = Document(BytesIO(docx_bytes))
-    testo = "\n".join(p.text for p in doc.paragraphs)
-    assert "Settembre 2026" in testo
-    assert "15/09/2026" in testo
-    assert "Perizia" in testo
-    assert "Rossi Mario" in testo
-    assert "AB123CD" in testo
-    assert "pratica 766" in testo
+
+    intestazione = "\n".join(p.text for p in doc.paragraphs)
+    assert "Settembre 2026" in intestazione
+
+    # Pagina orizzontale
+    sezione = doc.sections[0]
+    assert sezione.page_width > sezione.page_height
+
+    testo_tabella = _testo_tabella(doc)
+    assert "15/09/2026" in testo_tabella
+    assert "Perizia" in testo_tabella
+    assert "Rossi Mario" in testo_tabella
+    assert "Fiat Panda (AB123CD)" in testo_tabella
+    assert "pratica 766" in testo_tabella
+
+    # Pagina A4 esplicita (non il default Letter di python-docx) e area utile
+    # coerente con le larghezze colonna fisse, altrimenti la tabella sborda
+    # dal margine su carta reale. Confronto approssimato: il round-trip
+    # cm -> twips (unità XML) -> EMU non è esatto al singolo EMU.
+    assert abs(sezione.page_width.cm - 29.7) < 0.05
+    assert abs(sezione.page_height.cm - 21.0) < 0.05
+    area_utile = sezione.page_width - sezione.left_margin - sezione.right_margin
+    larghezza_tabella = sum(cella.width for cella in doc.tables[0].rows[0].cells)
+    assert larghezza_tabella <= area_utile
+
+
+def test_genera_docx_calendario_stampa_veicolo_parziale_o_assente():
+    per_giorno = {
+        date(2026, 9, 16): [
+            {
+                "evento": _EventoFake(700, "Solo targa"),
+                "cliente": "Verdi Anna",
+                "targa": "ZZ111ZZ",
+                "marca": "",
+                "modello": "",
+            },
+            {
+                "evento": _EventoFake(701, "Nessun veicolo"),
+                "cliente": "Neri Luca",
+                "targa": "",
+                "marca": "",
+                "modello": "",
+            },
+        ],
+    }
+    docx_bytes = _genera_docx_calendario_stampa(per_giorno, "Settembre", 2026)
+    doc = Document(BytesIO(docx_bytes))
+    testo_tabella = _testo_tabella(doc)
+    assert "ZZ111ZZ" in testo_tabella
+    # Riga senza targa/marca/modello: fallback "—" nella cella veicolo.
+    righe = doc.tables[0].rows
+    riga_senza_veicolo = next(r for r in righe if "Nessun veicolo" in r.cells[3].text)
+    assert riga_senza_veicolo.cells[2].text == "—"
 
 
 def test_genera_docx_calendario_stampa_mese_vuoto():
@@ -59,6 +116,7 @@ def test_genera_docx_calendario_stampa_mese_vuoto():
     doc = Document(BytesIO(docx_bytes))
     testo = "\n".join(p.text for p in doc.paragraphs)
     assert "Nessun appuntamento" in testo
+    assert doc.tables == []
 
 
 class _EventoFake:
