@@ -18,7 +18,8 @@
     <a class="btn" href="?anno={{ oggi.year }}&mese={{ oggi.month }}">Oggi</a>
     <a class="btn" href="?anno={{ mese_succ_anno }}&mese={{ mese_succ }}">Successivo →</a>
     {% if current_user and current_user.is_admin %}
-    <a class="btn btn-primary" href="/calendario/stampa?anno={{ anno }}&mese={{ mese }}" target="_blank" rel="noopener">Stampa</a>
+    <a class="btn btn-primary" href="/calendario/stampa" target="_blank" rel="noopener"
+       title="Stampa la settimana corrente — per stampare un'altra settimana usa l'icona 🖨 su quella riga">Stampa settimana corrente</a>
     {% endif %}
   </div>
 </header>
@@ -32,6 +33,10 @@
       {% for giorno in settimana %}
         <div class="calendar-day{% if giorno.month != mese %} calendar-day-altro-mese{% endif %}{% if giorno == oggi %} calendar-day-oggi{% endif %}">
           <div class="calendar-day-num">{{ giorno.day }}</div>
+          {% if current_user and current_user.is_admin and loop.first %}
+          <a class="calendar-print-week" href="/calendario/stampa?settimana={{ giorno.isoformat() }}"
+             target="_blank" rel="noopener" title="Stampa questa settimana">🖨</a>
+          {% endif %}
           {% for e in eventi_per_giorno.get(giorno, []) %}
             <a class="calendar-event" href="{{ pratica_link_base }}/{{ e.pratica_numero }}#calendario" title="{{ e.titolo }} — Pratica {{ e.pratica_numero }}">
               {{ e.titolo }} <span class="meta">· {{ e.pratica_numero }}</span>

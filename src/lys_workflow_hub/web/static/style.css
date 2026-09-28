@@ -777,7 +777,17 @@ code {
   min-height: 92px;
   padding: 6px;
   font-size: 0.78rem;
+  position: relative;
 }
+.calendar-print-week {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  font-size: 0.8rem;
+  text-decoration: none;
+  opacity: 0.55;
+}
+.calendar-print-week:hover { opacity: 1; }
 .calendar-day-num { font-weight: 600; margin-bottom: 4px; color: var(--lys-grey-700); }
 .calendar-day-altro-mese { opacity: 0.4; }
 .calendar-day-oggi { box-shadow: inset 0 0 0 2px var(--lys-gold); }

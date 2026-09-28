@@ -94,6 +94,20 @@ def test_list_mese_filtra_per_pratiche(tmp_path: Path) -> None:
     assert len(repo.list_mese(2026, 8, pratica_numeri=None)) == 2
 
 
+def test_list_range_include_estremi_ed_esclude_fuori_range(tmp_path: Path) -> None:
+    repo = PraticaEventiRepository(db_path=tmp_path / "eventi.db")
+    repo.add(766, "Prima del range", date(2026, 9, 13), 1, "Admin")
+    repo.add(766, "Inizio range (lunedì)", date(2026, 9, 14), 1, "Admin")
+    repo.add(766, "Dentro il range", date(2026, 9, 16), 1, "Admin")
+    repo.add(766, "Fine range (domenica)", date(2026, 9, 20), 1, "Admin")
+    repo.add(766, "Dopo il range", date(2026, 9, 21), 1, "Admin")
+
+    eventi = repo.list_range(date(2026, 9, 14), date(2026, 9, 20))
+    assert [e.titolo for e in eventi] == [
+        "Inizio range (lunedì)", "Dentro il range", "Fine range (domenica)",
+    ]
+
+
 def test_list_domani(tmp_path: Path) -> None:
     repo = PraticaEventiRepository(db_path=tmp_path / "eventi.db")
     oggi = date.today()

@@ -203,6 +203,19 @@ class PraticaEventiRepository:
             rows = conn.execute(query, params).fetchall()
         return [self._row_to_evento(r) for r in rows]
 
+    def list_range(self, data_da: date, data_a: date) -> list[Evento]:
+        """Eventi con `data_evento` compreso tra `data_da` e `data_a`
+        (estremi inclusi) — usato dalla stampa PDF settimanale del
+        calendario, dove il mese non è l'unità di query giusta."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM pratica_eventi "
+                "WHERE data_evento BETWEEN ? AND ? "
+                "ORDER BY data_evento, created_at",
+                (data_da.isoformat(), data_a.isoformat()),
+            ).fetchall()
+        return [self._row_to_evento(r) for r in rows]
+
     # -- reminder "il giorno prima" (v3.0 fase 5, parte B) ------------------
 
     def list_domani(self) -> list[Evento]:

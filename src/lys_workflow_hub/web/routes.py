@@ -14,7 +14,7 @@ import calendar
 import csv
 import logging
 import zipfile
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from io import BytesIO, StringIO
 from pathlib import Path
 from typing import Any, Callable
@@ -570,23 +570,29 @@ def calendario(
 
 @router.get("/calendario/stampa")
 def calendario_stampa(
-    anno: int | None = None,
-    mese: int | None = None,
+    settimana: str | None = None,
     settings: Settings = Depends(get_app_settings),
     repo: WinCarRepository = Depends(get_repository),
 ) -> Response:
-    """PDF con gli appuntamenti del mese mostrato in `/calendario` in tabella
-    (pagina orizzontale): data, cliente, veicolo (marca/modello/targa) e nota."""
-    oggi = date.today()
-    anno = anno or oggi.year
-    mese = mese or oggi.month
-    if not (1 <= mese <= 12):
-        raise HTTPException(400, "Mese non valido.")
+    """PDF con gli appuntamenti di UNA settimana (lunedì-domenica) in
+    tabella (pagina orizzontale): data, cliente, veicolo (marca/modello/
+    targa) e nota. `settimana`: una data ISO qualunque in quella settimana
+    (default: oggi) — non serve che sia lunedì, i confini si calcolano qui."""
+    if settimana:
+        try:
+            riferimento = date.fromisoformat(settimana)
+        except ValueError:
+            raise HTTPException(400, "Data non valida.")
+    else:
+        riferimento = date.today()
+
+    lunedi = riferimento - timedelta(days=riferimento.weekday())
+    domenica = lunedi + timedelta(days=6)
 
     try:
-        eventi = PraticaEventiRepository(db_path=settings.app_db_path).list_mese(anno, mese)
+        eventi = PraticaEventiRepository(db_path=settings.app_db_path).list_range(lunedi, domenica)
     except Exception as exc:  # noqa: BLE001
-        logger.warning("Impossibile leggere eventi calendario %s-%s: %s", anno, mese, exc)
+        logger.warning("Impossibile leggere eventi calendario %s → %s: %s", lunedi, domenica, exc)
         eventi = []
 
     per_giorno: dict[date, list[dict]] = {}
@@ -595,13 +601,14 @@ def calendario_stampa(
         if giorno is not None:
             per_giorno.setdefault(giorno, []).append(voce)
 
-    docx_bytes = _genera_docx_calendario_stampa(per_giorno, _MESE_LABELS[mese - 1], anno)
+    titolo = _titolo_settimana_stampa(lunedi, domenica)
+    docx_bytes = _genera_docx_calendario_stampa(per_giorno, titolo)
     try:
         pdf_bytes = docx_bytes_to_pdf_bytes(docx_bytes)
     except PdfConversionError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    fname = f"appuntamenti_{anno}-{mese:02d}.pdf"
+    fname = f"appuntamenti_{lunedi.isoformat()}_{domenica.isoformat()}.pdf"
     return Response(
         content=pdf_bytes,
         media_type=PDF_MIME,
@@ -667,12 +674,27 @@ def _imposta_intestazione_ripetuta(riga) -> None:
     tr_pr.append(tbl_header)
 
 
-def _genera_docx_calendario_stampa(
-    eventi_per_giorno: dict[date, list[dict]], mese_label: str, anno: int
-) -> bytes:
-    """Tabella (non le caselle del calendario web) con gli appuntamenti del
-    mese in ordine cronologico: data, cliente, veicolo e nota — una riga per
-    appuntamento, pagina orizzontale per leggerla comoda su carta."""
+def _titolo_settimana_stampa(lunedi: date, domenica: date) -> str:
+    """'Settimana 14–20 Settembre 2026', o con mese/anno doppio se la
+    settimana scavalca un confine di mese/anno."""
+    if lunedi.month == domenica.month and lunedi.year == domenica.year:
+        return f"Settimana {lunedi.day}–{domenica.day} {_MESE_LABELS[lunedi.month - 1]} {lunedi.year}"
+    if lunedi.year == domenica.year:
+        return (
+            f"Settimana {lunedi.day} {_MESE_LABELS[lunedi.month - 1]} – "
+            f"{domenica.day} {_MESE_LABELS[domenica.month - 1]} {lunedi.year}"
+        )
+    return (
+        f"Settimana {lunedi.day} {_MESE_LABELS[lunedi.month - 1]} {lunedi.year} – "
+        f"{domenica.day} {_MESE_LABELS[domenica.month - 1]} {domenica.year}"
+    )
+
+
+def _genera_docx_calendario_stampa(eventi_per_giorno: dict[date, list[dict]], titolo: str) -> bytes:
+    """Tabella (non le caselle del calendario web) con gli appuntamenti di
+    una settimana in ordine cronologico: data, cliente, veicolo e nota — una
+    riga per appuntamento, pagina orizzontale per leggerla comoda su carta.
+    Font grandi apposta: è una settimana, non un mese, ci sta comodamente."""
     from docx import Document
     from docx.enum.section import WD_ORIENT
     from docx.shared import Cm, Pt
@@ -689,11 +711,12 @@ def _genera_docx_calendario_stampa(
     sezione.left_margin = sezione.right_margin = Cm(1.5)
     sezione.top_margin = sezione.bottom_margin = Cm(1.5)
 
-    doc.add_heading(f"Appuntamenti — {mese_label} {anno}", level=1)
+    intestazione = doc.add_heading(titolo, level=1)
+    intestazione.runs[0].font.size = Pt(24)
 
     giorni = sorted(eventi_per_giorno.keys())
     if not giorni:
-        doc.add_paragraph("Nessun appuntamento in questo mese.")
+        doc.add_paragraph("Nessun appuntamento in questa settimana.")
         buffer = BytesIO()
         doc.save(buffer)
         return buffer.getvalue()
@@ -712,7 +735,7 @@ def _genera_docx_calendario_stampa(
         cella.text = testo
         cella.width = larghezza
         cella.paragraphs[0].runs[0].bold = True
-        cella.paragraphs[0].runs[0].font.size = Pt(11)
+        cella.paragraphs[0].runs[0].font.size = Pt(14)
     _imposta_intestazione_ripetuta(tabella.rows[0])
 
     for giorno in giorni:
@@ -737,6 +760,7 @@ def _genera_docx_calendario_stampa(
             ):
                 cella.text = testo
                 cella.width = larghezza  # ripetuto per riga: python-docx ignora la larghezza di colonna da sola
+                cella.paragraphs[0].runs[0].font.size = Pt(13)
 
     buffer = BytesIO()
     doc.save(buffer)
