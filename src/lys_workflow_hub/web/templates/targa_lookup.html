@@ -76,9 +76,9 @@
   {% else %}
     <section class="card">
       <h2>Assicurazione targa {{ assicurazione.targa }}</h2>
-      <p class="meta">Schema campi non ancora confermato in produzione: verifica sempre nella risposta grezza sotto.</p>
       <table class="table">
         <tbody>
+          <tr><th>Assicurato</th><td>{{ assicurazione.assicurato or "—" }}</td></tr>
           <tr><th>Compagnia</th><td>{{ assicurazione.compagnia or "—" }}</td></tr>
           <tr><th>Scadenza polizza</th><td>{{ assicurazione.scadenza_polizza or "—" }}</td></tr>
         </tbody>

@@ -20,8 +20,9 @@ Implementazioni:
     l'endpoint restituisce solo dati tecnici del veicolo (marca, modello,
     versione, telaio, immatricolazione...). ``raw`` porta comunque sempre
     la risposta JSON completa, per i campi non mappati sotto.
-    ``cerca_assicurazione`` (path ``/IT-insurance/{targa}``) non è ancora
-    verificato in produzione: nomi campi da confermare (vedi ``raw``).
+    ``cerca_assicurazione`` (path ``/IT-insurance/{targa}``, schema
+    confermato in produzione il 28/09/2026: ``Company``, ``Expiry``,
+    ``IsInsured``).
 
 Factory: :func:`build_automotive_client(settings)`.
 """
@@ -71,17 +72,13 @@ class VeicoloInfo:
 
 @dataclass(frozen=True)
 class AssicurazioneInfo:
-    """Dati assicurativi veicolo (endpoint ``/IT-insurance``).
-
-    NON ANCORA VERIFICATO in produzione (a differenza di :class:`VeicoloInfo`):
-    nomi dei campi noti sono un'ipotesi. ``raw`` porta sempre la risposta
-    JSON completa — è la fonte di verità finché non si conferma lo schema.
-    """
+    """Dati assicurativi veicolo (endpoint ``/IT-insurance``)."""
 
     targa: str
     trovato: bool
     compagnia: str = ""
     scadenza_polizza: str = ""
+    assicurato: str = ""
     raw: dict[str, Any] = field(default_factory=dict)
     errore: str = ""
 
@@ -223,22 +220,20 @@ class OpenapiAutomotiveClient:
         )
 
     def cerca_assicurazione(self, targa: str) -> AssicurazioneInfo:
-        """ATTENZIONE: nomi campi non verificati (a differenza di ``cerca_veicolo``).
-        ``raw`` è la fonte di verità finché non si conferma lo schema in produzione."""
+        """Schema di risposta (``Company``, ``Expiry``, ``IsInsured``) confermato
+        in produzione il 28/09/2026."""
         targa_norm = normalizza_targa(targa)
         payload, raw, errore = self._fetch("IT-insurance", targa, azione="cerca_assicurazione")
         if payload is None:
             return AssicurazioneInfo(targa=targa_norm, trovato=False, raw=raw, errore=errore)
 
+        is_insured = payload.get("IsInsured")
         return AssicurazioneInfo(
             targa=targa_norm,
             trovato=True,
-            compagnia=str(
-                payload.get("InsuranceCompany") or payload.get("Company") or payload.get("Compagnia") or ""
-            ),
-            scadenza_polizza=str(
-                payload.get("ExpiryDate") or payload.get("PolicyExpiryDate") or payload.get("Scadenza") or ""
-            ),
+            compagnia=str(payload.get("Company") or ""),
+            scadenza_polizza=str(payload.get("Expiry") or "").split("T")[0],
+            assicurato=("Sì" if is_insured else "No") if is_insured is not None else "",
             raw=raw,
         )
 

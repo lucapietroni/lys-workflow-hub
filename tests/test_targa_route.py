@@ -95,6 +95,43 @@ def test_openapi_client_parsing_schema_reale(monkeypatch):
     assert esito.telaio == "UU1DJF00875088535"
 
 
+def test_openapi_client_parsing_assicurazione_schema_reale(monkeypatch):
+    """Schema di risposta confermato in produzione il 28/09/2026 (vedi commit)."""
+    import sys
+
+    class _FakeResp:
+        status_code = 200
+        content = b"{}"
+
+        def json(self):
+            return {
+                "success": True,
+                "message": "",
+                "error": None,
+                "data": {
+                    "LicensePlate": "HB394GP",
+                    "Company": "UNIPOL ASSICURAZIONI S.P.A.",
+                    "Expiry": "2026-12-31T00:00:00",
+                    "ExpiryTimeStamp": 1798675200,
+                    "IsInsured": True,
+                },
+            }
+
+    def _fake_get(url, headers=None, timeout=None):
+        assert url.endswith("/IT-insurance/HB394GP")
+        return _FakeResp()
+
+    fake_requests = type("_FakeRequestsModule", (), {"get": staticmethod(_fake_get)})
+    monkeypatch.setitem(sys.modules, "requests", fake_requests)
+
+    client = OpenapiAutomotiveClient(api_key="tok")
+    esito = client.cerca_assicurazione("hb394gp")
+    assert esito.trovato is True
+    assert esito.compagnia == "UNIPOL ASSICURAZIONI S.P.A."
+    assert esito.scadenza_polizza == "2026-12-31"
+    assert esito.assicurato == "Sì"
+
+
 def test_targa_form_admin_ok(authenticated_app: UtentiRepository):
     client = TestClient(app)
     login_as(client, ADMIN_EMAIL, ADMIN_PASSWORD)
