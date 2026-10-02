@@ -473,6 +473,8 @@
 
 <div id="foto-lightbox" class="lightbox" hidden>
   <button type="button" class="lightbox-close" id="lightbox-close" aria-label="Chiudi">&times;</button>
+  <button type="button" class="lightbox-nav lightbox-prev" id="lightbox-prev" aria-label="Foto precedente">&lsaquo;</button>
+  <button type="button" class="lightbox-nav lightbox-next" id="lightbox-next" aria-label="Foto successiva">&rsaquo;</button>
   <img id="lightbox-img" src="" alt="" />
 </div>
 
@@ -481,9 +483,13 @@
     var lb = document.getElementById("foto-lightbox");
     var lbImg = document.getElementById("lightbox-img");
     var closeBtn = document.getElementById("lightbox-close");
-    if (!lb || !lbImg || !closeBtn) return;
+    var prevBtn = document.getElementById("lightbox-prev");
+    var nextBtn = document.getElementById("lightbox-next");
+    if (!lb || !lbImg || !closeBtn || !prevBtn || !nextBtn) return;
 
     var isApp = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+    var thumbs = Array.prototype.slice.call(document.querySelectorAll(".foto-thumb"));
+    var currentIndex = -1;
 
     // -- Zoom/pan a due dita nel lightbox (solo app) ----------------------
     var scale = 1, panX = 0, panY = 0, startDist = 0, startScale = 1, panStart = null;
@@ -529,41 +535,100 @@
       });
     }
 
-    function openLightbox(src, alt) {
+    function aggiornaFrecce() {
+      var piuDiUna = thumbs.length > 1;
+      prevBtn.hidden = !piuDiUna;
+      nextBtn.hidden = !piuDiUna;
+    }
+    function showAt(index) {
+      if (index < 0 || index >= thumbs.length) return;
+      currentIndex = index;
+      var btn = thumbs[index];
       resetZoom();
-      lbImg.src = src;
-      lbImg.alt = alt || "";
+      lbImg.src = btn.getAttribute("data-full");
+      lbImg.alt = btn.getAttribute("data-name") || "";
       lb.hidden = false;
       document.body.classList.add("lightbox-open");
+      aggiornaFrecce();
+    }
+    function openLightbox(btn) {
+      showAt(thumbs.indexOf(btn));
     }
     function closeLightbox() {
       lb.hidden = true;
       lbImg.src = "";
       resetZoom();
+      currentIndex = -1;
       document.body.classList.remove("lightbox-open");
     }
+    function vaiPrecedente() { if (currentIndex > 0) showAt(currentIndex - 1); }
+    function vaiSuccessiva() { if (currentIndex < thumbs.length - 1) showAt(currentIndex + 1); }
+
     closeBtn.addEventListener("click", closeLightbox);
+    prevBtn.addEventListener("click", function(e) { e.stopPropagation(); vaiPrecedente(); });
+    nextBtn.addEventListener("click", function(e) { e.stopPropagation(); vaiSuccessiva(); });
     lb.addEventListener("click", function(e) {
       if (e.target === lb) closeLightbox();
     });
     document.addEventListener("keydown", function(e) {
-      if (e.key === "Escape" && !lb.hidden) closeLightbox();
+      if (lb.hidden) return;
+      if (e.key === "Escape") closeLightbox();
+      else if (e.key === "ArrowLeft") vaiPrecedente();
+      else if (e.key === "ArrowRight") vaiSuccessiva();
     });
+
+    // -- Swipe orizzontale per navigare (browser e app, quando non si sta
+    //    facendo pinch-zoom: in app lo swipe è attivo solo a scale<=1, non
+    //    interferisce coi listener di pan sopra perché quelli agiscono solo
+    //    con 2 dita o con 1 dito a zoom attivo). --------------------------
+    var swipeStartX = null, swipeStartY = null, swipeOrizzontale = false, haSwipato = false;
+    var SWIPE_SOGLIA_PX = 50;
+    lbImg.addEventListener("touchstart", function (e) {
+      // Reset qui, non solo al click dopo lo swipe: il click sintetico post-touch
+      // non è garantito raggiungere lbImg (dito sollevato vicino al bordo), quindi
+      // affidarsi solo a quel reset può lasciare haSwipato=true e far ignorare il
+      // prossimo tap legittimo per chiudere.
+      haSwipato = false;
+      if (e.touches.length !== 1 || scale > 1) { swipeStartX = null; return; }
+      swipeStartX = e.touches[0].clientX;
+      swipeStartY = e.touches[0].clientY;
+      swipeOrizzontale = false;
+    }, { passive: true });
+    lbImg.addEventListener("touchmove", function (e) {
+      if (swipeStartX === null || e.touches.length !== 1) return;
+      var dx = e.touches[0].clientX - swipeStartX;
+      var dy = e.touches[0].clientY - swipeStartY;
+      if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 10) swipeOrizzontale = true;
+    }, { passive: true });
+    lbImg.addEventListener("touchend", function (e) {
+      if (swipeStartX === null) return;
+      var ultimo = e.changedTouches && e.changedTouches[0];
+      var dx = ultimo ? ultimo.clientX - swipeStartX : 0;
+      swipeStartX = null;
+      if (swipeOrizzontale && Math.abs(dx) > SWIPE_SOGLIA_PX) {
+        haSwipato = true;
+        if (dx < 0) vaiSuccessiva(); else vaiPrecedente();
+      }
+    });
+
     if (!isApp) {
       // Browser: niente pinch-zoom qui (gestito solo in app, sopra), quindi
       // tap sulla foto stessa può chiudere senza conflitti — su schermo
       // stretto la foto riempie quasi tutto il lightbox, il margine di
       // sfondo cliccabile resta troppo sottile per essere un'uscita
       // affidabile da solo (segnalato: "non si può uscire da una foto").
-      lbImg.addEventListener("click", closeLightbox);
+      // Uno swipe appena fatto non deve anche chiudere il lightbox (il
+      // "click" scatta comunque dopo il touch).
+      lbImg.addEventListener("click", function() {
+        if (haSwipato) { haSwipato = false; return; }
+        closeLightbox();
+      });
     }
 
     if (!isApp) {
       // Browser: comportamento invariato, nessun long-press/selezione multipla.
-      document.querySelectorAll(".foto-thumb").forEach(function(btn) {
-        btn.addEventListener("click", function() {
-          openLightbox(btn.getAttribute("data-full"), btn.getAttribute("data-name"));
-        });
+      thumbs.forEach(function(btn) {
+        btn.addEventListener("click", function() { openLightbox(btn); });
       });
       return;
     }
@@ -643,7 +708,7 @@
         if (selezione.size > 0) {
           toggleSelezione(btn);
         } else {
-          openLightbox(btn.getAttribute("data-full"), btn.getAttribute("data-name"));
+          openLightbox(btn);
         }
       });
     });

@@ -1148,6 +1148,31 @@ html.is-app .lightbox img { touch-action: none; }
   cursor: pointer;
 }
 .lightbox-close:hover { background: var(--glass-hover); border-color: var(--lys-gold); }
+.lightbox-nav {
+  /* fixed per lo stesso motivo di .lightbox-close: ancorata al viewport,
+     non al contenitore, altrimenti su schermo stretto rischia di finire
+     fuori dall'area visibile/toccabile. */
+  position: fixed;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 210;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 1px solid var(--glass-border);
+  background: var(--glass);
+  color: var(--lys-grey-900);
+  font-size: 1.6rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.lightbox-nav:hover { background: var(--glass-hover); border-color: var(--lys-gold); }
+.lightbox-nav[hidden] { display: none; }
+.lightbox-prev { left: max(12px, env(safe-area-inset-left)); }
+.lightbox-next { right: max(12px, env(safe-area-inset-right)); }
+@media (max-width: 720px) {
+  .lightbox-nav { width: 40px; height: 40px; font-size: 1.3rem; }
+}
 body.lightbox-open { overflow: hidden; }
 
 /* ====== Upload dropzone ====== */
